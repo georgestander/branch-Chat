@@ -4,8 +4,7 @@ import {
   ensureConversationSnapshot,
   getBranchMessages,
 } from "@/app/shared/conversation.server";
-import { ConversationSidebar } from "@/app/pages/conversation/ConversationSidebar";
-import { BranchColumn } from "@/app/components/conversation/BranchColumn";
+import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
 import type { AppRequestInfo } from "@/worker";
 import type { Branch, ConversationGraphSnapshot } from "@/lib/conversation";
 
@@ -34,45 +33,21 @@ export async function ConversationPage({
     : [];
 
   const tree = buildBranchTree(snapshot);
+  const shouldAutoCollapse = requestUrl.searchParams.get("focus") === "child";
 
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground">
-      <ConversationSidebar
-        conversation={snapshot.conversation}
-        tree={tree}
-        activeBranchId={activeBranch.id}
-      />
-
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1">
-          {parentBranch ? (
-            <BranchColumn
-              key={parentBranch.id}
-              branch={parentBranch}
-              messages={parentMessages}
-              conversationId={result.conversationId}
-              isActive={false}
-              highlight={
-                activeBranch.createdFrom?.messageId
-                  ? {
-                      messageId: activeBranch.createdFrom.messageId,
-                      span: activeBranch.createdFrom.span ?? null,
-                    }
-                  : undefined
-              }
-            />
-          ) : null}
-
-          <BranchColumn
-            key={activeBranch.id}
-            branch={activeBranch}
-            messages={activeMessages}
-            conversationId={result.conversationId}
-            isActive
-          />
-        </div>
-      </div>
-    </div>
+    <ConversationLayout
+      conversation={snapshot.conversation}
+      tree={tree}
+      activeBranch={activeBranch}
+      activeMessages={activeMessages}
+      parentBranch={parentBranch}
+      parentMessages={parentMessages}
+      conversationId={result.conversationId}
+      initialSidebarCollapsed={shouldAutoCollapse}
+      initialParentCollapsed={shouldAutoCollapse}
+      activeBranchId={activeBranch.id}
+    />
   );
 }
 

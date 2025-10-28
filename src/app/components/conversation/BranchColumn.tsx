@@ -1,3 +1,5 @@
+"use client";
+
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type {
   Branch,
@@ -5,6 +7,7 @@ import type {
   ConversationModelId,
   Message,
 } from "@/lib/conversation";
+import { cn } from "@/lib/utils";
 
 import { BranchableMessage } from "./BranchableMessage";
 
@@ -17,6 +20,8 @@ interface BranchColumnProps {
     messageId: string;
     span?: BranchSpan | null;
   };
+  className?: string;
+  withLeftBorder?: boolean;
 }
 
 export function BranchColumn({
@@ -25,14 +30,19 @@ export function BranchColumn({
   conversationId,
   isActive,
   highlight,
+  className,
+  withLeftBorder = true,
 }: BranchColumnProps) {
-  const basisClass = isActive ? "basis-[70%]" : "basis-[30%]";
   const stateLabel = isActive ? "Active" : "Parent";
   const referenceText = branch.createdFrom?.excerpt ?? null;
 
   return (
     <section
-      className={`flex ${basisClass} flex-1 flex-col border-l border-border bg-background`}
+      className={cn(
+        "flex flex-1 flex-col bg-background",
+        withLeftBorder ? "border-l border-border" : "",
+        className,
+      )}
     >
       <header className="flex items-center justify-between border-b border-border px-5 py-4">
         <div className="flex flex-col">
