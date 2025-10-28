@@ -77,70 +77,16 @@ export async function sendMessage(
     tokenUsage: null,
   };
 
-  const openaiInput = buildResponseInputFromBranch({
-    snapshot: ensured.snapshot,
-    branchId,
-    nextUserContent: userMessage.content,
-  });
-
-  const settings = ensured.snapshot.conversation.settings;
-  const openai = ctx.getOpenAIClient();
-
-  ctx.trace("openai:request", {
-    conversationId,
-    branchId,
-    model: settings.model,
-    temperature: settings.temperature,
-    messageCount: openaiInput.length,
-  });
-
-  let assistantContent = "";
-  let promptTokens = 0;
-  let completionTokens = 0;
-
-  try {
-    const response = await openai.responses.create({
-      model: settings.model,
-      temperature: settings.temperature,
-      input: openaiInput,
-    });
-
-    assistantContent = response.output_text?.trim() ?? "";
-    promptTokens = response.usage?.input_tokens ?? 0;
-    completionTokens = response.usage?.output_tokens ?? 0;
-    ctx.trace("openai:response", {
-      conversationId,
-      branchId,
-      promptTokens,
-      completionTokens,
-    });
-  } catch (error) {
-    ctx.trace("openai:error", {
-      conversationId,
-      branchId,
-      error: error instanceof Error ? error.message : "unknown",
-    });
-    throw new Error("OpenAI completion failed");
-  }
-
-  if (!assistantContent) {
-    assistantContent = "Assistant response was empty.";
-  }
-
   const assistantMessage: Message = {
     id: crypto.randomUUID(),
     branchId,
     role: "assistant",
-    content: assistantContent,
+    content: "",
     createdAt: new Date().toISOString(),
-    tokenUsage: {
-      prompt: promptTokens,
-      completion: completionTokens,
-      cost: 0,
-    },
+    tokenUsage: null,
   };
 
-  const applied = await applyConversationUpdates(ctx, conversationId, [
+  await applyConversationUpdates(ctx, conversationId, [
     {
       type: "message:append",
       conversationId,
@@ -153,10 +99,127 @@ export async function sendMessage(
     },
   ]);
 
+  const openaiInput = buildResponseInputFromBranch({
+    snapshot: ensured.snapshot,
+    branchId,
+    nextUserContent: userMessage.content,
+  });
+
+  const settings = ensured.snapshot.conversation.settings;
+  const openai = ctx.getOpenAIClient();
+
+  ctx.trace("openai:stream:start", {
+    conversationId,
+    branchId,
+    model: settings.model,
+    temperature: settings.temperature,
+    messageCount: openaiInput.length,
+  });
+
+  const stream = await openai.responses.stream({
+    model: settings.model,
+    temperature: settings.temperature,
+    input: openaiInput,
+  });
+
+  let buffered = "";
+  let lastPublishedLength = 0;
+  let lastPublishTime = Date.now();
+  const MIN_PUBLISH_CHARS = 24;
+  const MIN_PUBLISH_MS = 150;
+
+  const publishPartialUpdate = async (content: string) => {
+    await applyConversationUpdates(ctx, conversationId, [
+      {
+        type: "message:update",
+        conversationId,
+        message: {
+          ...assistantMessage,
+          content,
+        },
+      },
+    ]);
+  };
+
+  try {
+    for await (const event of stream) {
+      if (event.type === "response.output_text.delta") {
+        const delta = typeof event.delta === "string" ? event.delta : "";
+        if (!delta) {
+          continue;
+        }
+        buffered += delta;
+        const nowTs = Date.now();
+        if (
+          buffered.length - lastPublishedLength >= MIN_PUBLISH_CHARS ||
+          nowTs - lastPublishTime >= MIN_PUBLISH_MS
+        ) {
+          lastPublishedLength = buffered.length;
+          lastPublishTime = nowTs;
+          await publishPartialUpdate(buffered);
+        }
+      }
+    }
+  } catch (error) {
+    ctx.trace("openai:stream:error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+
+  let finalContent = buffered;
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  try {
+    const finalResponse = await stream.finalResponse();
+    finalContent =
+      finalResponse.output_text?.trim() ??
+      finalResponse.output?.map((item: any) => item.content?.map?.((part: any) => part.text ?? "")?.join("") ?? "")?.join("").trim() ??
+      buffered.trim();
+    promptTokens = finalResponse.usage?.input_tokens ?? 0;
+    completionTokens = finalResponse.usage?.output_tokens ?? 0;
+    ctx.trace("openai:stream:complete", {
+      conversationId,
+      branchId,
+      promptTokens,
+      completionTokens,
+      characters: finalContent.length,
+    });
+  } catch (error) {
+    ctx.trace("openai:stream:finalize-error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    if (!finalContent.trim()) {
+      finalContent = "Assistant response interrupted. Please try again.";
+    }
+  }
+
+  const finalAssistantMessage: Message = {
+    ...assistantMessage,
+    content: finalContent,
+    tokenUsage: {
+      prompt: promptTokens,
+      completion: completionTokens,
+      cost: 0,
+    },
+  };
+
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "message:update",
+      conversationId,
+      message: finalAssistantMessage,
+    },
+  ]);
+
   return {
     conversationId,
     snapshot: applied.snapshot,
     version: applied.version,
-    appendedMessages: [userMessage, assistantMessage],
+    appendedMessages: [userMessage, finalAssistantMessage],
   };
 }

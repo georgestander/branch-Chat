@@ -333,6 +333,10 @@ export class ConversationStoreDO implements DurableObject {
           this.appendMessage(next, update.message);
           break;
         }
+        case "message:update": {
+          this.updateMessage(next, update.message);
+          break;
+        }
         default: {
           const exhaustiveCheck: never = update;
           throw new Error(`Unsupported update type ${(exhaustiveCheck as any).type}`);
@@ -355,6 +359,27 @@ export class ConversationStoreDO implements DurableObject {
       );
     }
     if (!branch.messageIds.includes(message.id)) {
+      branch.messageIds.push(message.id);
+    }
+  }
+
+  private updateMessage(
+    snapshot: ConversationGraphSnapshot,
+    message: Message,
+  ): void {
+    const existing = snapshot.messages[message.id];
+    if (!existing) {
+      throw new Error(`Cannot update missing message ${message.id}`);
+    }
+
+    snapshot.messages[message.id] = {
+      ...existing,
+      ...message,
+      tokenUsage: message.tokenUsage ?? existing.tokenUsage,
+    };
+
+    const branch = snapshot.branches[message.branchId];
+    if (branch && !branch.messageIds.includes(message.id)) {
       branch.messageIds.push(message.id);
     }
   }

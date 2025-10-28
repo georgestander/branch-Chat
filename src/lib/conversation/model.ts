@@ -67,6 +67,11 @@ export type ConversationGraphUpdate =
       message: Message;
     }
   | {
+      type: "message:update";
+      conversationId: ConversationModelId;
+      message: Message;
+    }
+  | {
       type: "branch:create";
       conversationId: ConversationModelId;
       branch: Branch;
