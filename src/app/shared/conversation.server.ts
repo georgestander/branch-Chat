@@ -1,7 +1,9 @@
 import type { AppContext } from "@/app/context";
 import {
   createConversationSnapshot,
+  type Branch,
   type BranchId,
+  type BranchSpan,
   type ConversationGraphSnapshot,
   type ConversationGraphUpdate,
   type ConversationModelId,
@@ -14,12 +16,18 @@ import { getConversationStoreClient } from "./conversationStore.server";
 const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_TEMPERATURE = 0.2;
 
-export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default";
+export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
 
 export interface ConversationLoadResult {
   conversationId: ConversationModelId;
   snapshot: ConversationGraphSnapshot;
   version: number;
+}
+
+export interface BranchTreeNode {
+  branch: Branch;
+  children: BranchTreeNode[];
+  depth: number;
 }
 
 export async function ensureConversationSnapshot(
@@ -59,6 +67,85 @@ export function getBranchMessages(
   return branch.messageIds
     .map((id) => snapshot.messages[id])
     .filter((msg): msg is Message => Boolean(msg));
+}
+
+export function getBranchAncestors(
+  snapshot: ConversationGraphSnapshot,
+  branchId: BranchId,
+): Branch[] {
+  const result: Branch[] = [];
+  let current: Branch | undefined | null = snapshot.branches[branchId];
+
+  while (current) {
+    result.push(current);
+    if (!current.parentId) {
+      break;
+    }
+    current = snapshot.branches[current.parentId] ?? null;
+  }
+
+  return result.reverse();
+}
+
+export function buildBranchTree(
+  snapshot: ConversationGraphSnapshot,
+): BranchTreeNode {
+  const childrenMap = new Map<BranchId, Branch[]>();
+
+  for (const branch of Object.values(snapshot.branches)) {
+    if (!branch.parentId) {
+      continue;
+    }
+    const siblings = childrenMap.get(branch.parentId) ?? [];
+    siblings.push(branch);
+    childrenMap.set(branch.parentId, siblings);
+  }
+
+  const buildNode = (branch: Branch, depth: number): BranchTreeNode => {
+    const children = (childrenMap.get(branch.id) ?? [])
+      .sort((a, b) =>
+        a.createdAt.localeCompare(b.createdAt),
+      )
+      .map((child) => buildNode(child, depth + 1));
+    return { branch, children, depth };
+  };
+
+  const rootBranch = snapshot.branches[snapshot.conversation.rootBranchId];
+  if (!rootBranch) {
+    throw new Error("Root branch missing from snapshot");
+  }
+
+  return buildNode(rootBranch, 0);
+}
+
+export function draftBranchFromSelection(options: {
+  snapshot: ConversationGraphSnapshot;
+  parentBranchId: BranchId;
+  messageId: string;
+  span?: BranchSpan | null;
+  title?: string;
+}): Branch {
+  const { snapshot, parentBranchId, messageId, span, title } = options;
+  const parentBranch = snapshot.branches[parentBranchId];
+  if (!parentBranch) {
+    throw new Error(`Parent branch ${parentBranchId} not found`);
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    parentId: parentBranchId,
+    title: title ?? `Branch ${id.slice(0, 6)}`,
+    createdFrom: {
+      messageId,
+      span: span ?? undefined,
+    },
+    messageIds: [],
+    createdAt: now,
+    archivedAt: undefined,
+  };
 }
 
 export async function applyConversationUpdates(

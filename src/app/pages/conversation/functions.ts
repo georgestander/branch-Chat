@@ -8,9 +8,12 @@ import {
   applyConversationUpdates,
   ensureConversationSnapshot,
   buildResponseInputFromBranch,
+  draftBranchFromSelection,
 } from "@/app/shared/conversation.server";
 import type {
+  Branch,
   BranchId,
+  BranchSpan,
   ConversationGraphSnapshot,
   ConversationModelId,
   Message,
@@ -34,6 +37,17 @@ export interface SendMessageInput extends ConversationPayload {
 
 export interface SendMessageResponse extends LoadConversationResponse {
   appendedMessages: Message[];
+}
+
+export interface CreateBranchInput extends ConversationPayload {
+  parentBranchId: BranchId;
+  messageId: string;
+  span?: BranchSpan | null;
+  title?: string;
+}
+
+export interface CreateBranchResponse extends LoadConversationResponse {
+  branch: Branch;
 }
 
 export async function loadConversation(
@@ -86,7 +100,7 @@ export async function sendMessage(
     tokenUsage: null,
   };
 
-  await applyConversationUpdates(ctx, conversationId, [
+  const appendedSnapshot = await applyConversationUpdates(ctx, conversationId, [
     {
       type: "message:append",
       conversationId,
@@ -100,7 +114,7 @@ export async function sendMessage(
   ]);
 
   const openaiInput = buildResponseInputFromBranch({
-    snapshot: ensured.snapshot,
+    snapshot: appendedSnapshot.snapshot,
     branchId,
     nextUserContent: userMessage.content,
   });
@@ -221,5 +235,42 @@ export async function sendMessage(
     snapshot: applied.snapshot,
     version: applied.version,
     appendedMessages: [userMessage, finalAssistantMessage],
+  };
+}
+
+export async function createBranchFromSelection(
+  input: CreateBranchInput,
+): Promise<CreateBranchResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const draft = draftBranchFromSelection({
+    snapshot: ensured.snapshot,
+    parentBranchId: input.parentBranchId,
+    messageId: input.messageId,
+    span: input.span,
+    title: input.title,
+  });
+
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "branch:create",
+      conversationId,
+      branch: draft,
+    },
+  ]);
+
+  const branch = applied.snapshot.branches[draft.id];
+  if (!branch) {
+    throw new Error("Branch creation failed to persist");
+  }
+
+  return {
+    conversationId,
+    snapshot: applied.snapshot,
+    version: applied.version,
+    branch,
   };
 }
