@@ -207,16 +207,21 @@ export async function sendMessage(
   const MIN_PUBLISH_MS = 150;
 
   const publishPartialUpdate = async (content: string) => {
-    await applyConversationUpdates(ctx, conversationId, [
-      {
-        type: "message:update",
-        conversationId,
-        message: {
-          ...assistantMessage,
-          content,
+    await applyConversationUpdates(
+      ctx,
+      conversationId,
+      [
+        {
+          type: "message:update",
+          conversationId,
+          message: {
+            ...assistantMessage,
+            content,
+          },
         },
-      },
-    ]);
+      ],
+      { touchDirectory: false },
+    );
   };
 
   try {
@@ -314,17 +319,6 @@ export async function sendMessage(
     });
   });
 
-  const finalSnapshot = applied.snapshot;
-  const branchCount = Object.keys(finalSnapshot.branches).length;
-  const rootBranch =
-    finalSnapshot.branches[finalSnapshot.conversation.rootBranchId];
-  await touchConversationDirectoryEntry(ctx, {
-    id: conversationId,
-    title: rootBranch?.title ?? conversationId,
-    branchCount,
-    lastActiveAt: new Date().toISOString(),
-  });
-
   return {
     conversationId,
     snapshot: applied.snapshot,
@@ -362,16 +356,6 @@ export async function createBranchFromSelection(
   if (!branch) {
     throw new Error("Branch creation failed to persist");
   }
-
-  const branchCount = Object.keys(applied.snapshot.branches).length;
-  const rootBranch =
-    applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
-  await touchConversationDirectoryEntry(ctx, {
-    id: conversationId,
-    title: rootBranch?.title ?? conversationId,
-    branchCount,
-    lastActiveAt: new Date().toISOString(),
-  });
 
   return {
     conversationId,
