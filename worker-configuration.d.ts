@@ -4,12 +4,13 @@
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/worker");
-		durableNamespaces: "ConversationStoreDO";
-	}
-	interface Env {
-		ConversationGraphDO: DurableObjectNamespace<import("./src/worker").ConversationStoreDO>;
-		ASSETS: Fetcher;
-	}
+                durableNamespaces: "ConversationStoreDO" | "ConversationDirectoryDO";
+        }
+        interface Env {
+                ConversationGraphDO: DurableObjectNamespace<import("./src/worker").ConversationStoreDO>;
+                ConversationDirectoryDO: DurableObjectNamespace<import("./src/worker").ConversationDirectoryDO>;
+                ASSETS: Fetcher;
+        }
 }
 interface Env extends Cloudflare.Env {}
 

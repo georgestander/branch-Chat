@@ -209,7 +209,7 @@ function MessageBubble({
         {message.role}
       </span>
       <span className="text-xs text-muted-foreground">
-        {new Date(message.createdAt).toLocaleString()}
+        {formatTimestamp(message.createdAt)}
       </span>
     </div>
   );
@@ -238,6 +238,17 @@ function MessageBubble({
       </div>
     </div>
   );
+}
+
+function formatTimestamp(isoString: string): string {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return isoString;
+  }
+  const iso = date.toISOString();
+  const [dayPart, timePart] = iso.split("T");
+  const time = timePart?.slice(0, 8) ?? "00:00:00";
+  return `${dayPart}, ${time} UTC`;
 }
 
 function renderHighlightedContent(content: string, span: BranchSpan) {
