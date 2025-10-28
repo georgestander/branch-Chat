@@ -13,8 +13,8 @@ import {
 
 import { getConversationStoreClient } from "./conversationStore.server";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
-const DEFAULT_TEMPERATURE = 0.2;
+const DEFAULT_MODEL = "gpt-5-nano";
+const DEFAULT_TEMPERATURE = 0.1;
 
 export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
 
