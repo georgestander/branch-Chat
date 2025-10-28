@@ -1,24 +1,47 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { sendMessage } from "@/app/pages/conversation/functions";
 
 interface ConversationComposerProps {
   branchId: string;
   conversationId: string;
+  autoFocus?: boolean;
+  className?: string;
 }
 
 export function ConversationComposer({
   branchId,
   conversationId,
+  autoFocus = false,
+  className,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  useEffect(() => {
+    if (!autoFocus) {
+      return;
+    }
+
+    const node = textareaRef.current;
+    if (!node) {
+      return;
+    }
+
+    node.focus({ preventScroll: true });
+    const length = node.value.length;
+    node.setSelectionRange(length, length);
+  }, [autoFocus, branchId]);
+
+  const submitMessage = () => {
+    if (isPending) {
+      return;
+    }
+
     const content = value.trim();
     if (!content) {
       setError("Enter a message before sending.");
@@ -41,23 +64,42 @@ export function ConversationComposer({
     });
   };
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitMessage();
+  };
+
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-sm"
+      className={`flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-sm ${
+        className ?? ""
+      }`}
     >
       <label className="flex flex-col gap-2">
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           New Message
         </span>
         <textarea
+          ref={textareaRef}
           value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder="Ask Connexus to explore a new direction..."
           rows={4}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              submitMessage();
+            }
+          }}
           className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70"
           disabled={isPending}
           aria-disabled={isPending}
+          aria-invalid={error ? true : undefined}
         />
       </label>
 
@@ -68,7 +110,7 @@ export function ConversationComposer({
           </p>
         ) : (
           <span className="text-xs text-muted-foreground">
-            Shift+Enter for line break
+            Enter to send · Shift+Enter for line break
           </span>
         )}
 

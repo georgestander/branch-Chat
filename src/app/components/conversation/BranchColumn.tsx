@@ -56,7 +56,7 @@ export function BranchColumn({
       ) : null}
 
       <div className="flex-1 overflow-y-auto px-5 py-6">
-        <ol className="flex flex-col gap-4">
+        <ol className="flex flex-col gap-4 pb-36">
           {messages.map((message) => (
             <li key={message.id}>
               <MessageBubble
@@ -73,20 +73,21 @@ export function BranchColumn({
             </li>
           ))}
         </ol>
+        <div className="sticky bottom-0 mt-6 -mx-5 bg-gradient-to-t from-background via-background/95 to-transparent px-5 pb-6 pt-4 backdrop-blur-sm">
+          {isActive ? (
+            <ConversationComposer
+              branchId={branch.id}
+              conversationId={conversationId}
+              autoFocus
+              className="shadow-lg shadow-black/5"
+            />
+          ) : (
+            <div className="rounded-lg border border-dashed border-border bg-card/80 px-4 py-3 text-sm text-muted-foreground">
+              Switch to this branch to continue the conversation.
+            </div>
+          )}
+        </div>
       </div>
-
-      {isActive ? (
-        <div className="border-t border-border px-5 py-4">
-          <ConversationComposer
-            branchId={branch.id}
-            conversationId={conversationId}
-          />
-        </div>
-      ) : (
-        <div className="border-t border-border px-5 py-4 text-sm text-muted-foreground">
-          Switch to this branch to continue the conversation.
-        </div>
-      )}
     </section>
   );
 }
