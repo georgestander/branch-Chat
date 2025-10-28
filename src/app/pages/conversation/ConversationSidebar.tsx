@@ -1,6 +1,8 @@
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import type { Conversation } from "@/lib/conversation";
 
+import { cn } from "@/lib/utils";
+
 interface ConversationSidebarProps {
   conversation: Conversation;
   tree: BranchTreeNode;
@@ -49,16 +51,35 @@ function BranchTree({
   level: number;
 }) {
   const isActive = tree.branch.id === activeBranchId;
+  const hasActiveDescendant = tree.children.some((child) =>
+    branchContainsActive(child, activeBranchId),
+  );
 
   return (
     <div className="flex flex-col">
       <a
         href={buildBranchHref(tree.branch.id)}
-        className={`flex items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80 ${isActive ? "bg-primary/10 font-semibold text-primary" : "text-foreground"}`}
+        className={cn(
+          "group relative flex items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80",
+          isActive
+            ? "bg-primary/15 font-semibold text-primary shadow-sm ring-1 ring-primary/60"
+            : hasActiveDescendant
+              ? "bg-muted/50 text-foreground"
+              : "text-muted-foreground",
+        )}
         data-active={isActive}
+        aria-current={isActive ? "page" : undefined}
         style={{ paddingLeft: `${level * 0.75 + 0.75}rem` }}
       >
-        <span>{tree.branch.title || "Untitled Branch"}</span>
+        <span className="flex-1 truncate">
+          {tree.branch.title || "Untitled Branch"}
+        </span>
+        {isActive ? (
+          <span
+            aria-hidden="true"
+            className="ml-2 inline-flex h-2 w-2 shrink-0 rounded-full bg-primary"
+          />
+        ) : null}
         {tree.children.length > 0 ? (
           <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             {tree.children.length}
@@ -87,4 +108,12 @@ function buildBranchHref(branchId: string): string {
     return "/";
   }
   return `/?branchId=${encodeURIComponent(branchId)}`;
+}
+
+function branchContainsActive(node: BranchTreeNode, activeBranchId: string): boolean {
+  if (node.branch.id === activeBranchId) {
+    return true;
+  }
+
+  return node.children.some((child) => branchContainsActive(child, activeBranchId));
 }
