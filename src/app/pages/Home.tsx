@@ -1,6 +1,7 @@
-import { Welcome } from "./Welcome.js";
+import type { AppRequestInfo } from "@/worker";
 
-export const Home = () => {
-  // _Feel free to delete this element and its import_
-  return <Welcome />;
+import { ConversationPage } from "./conversation/ConversationPage";
+
+export const Home = async (requestInfo: AppRequestInfo) => {
+  return ConversationPage(requestInfo);
 };
