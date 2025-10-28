@@ -112,7 +112,7 @@ export function BranchColumn({
   return (
     <section
       className={cn(
-        "flex flex-1 flex-col bg-background",
+        "flex min-h-0 flex-1 flex-col bg-background",
         withLeftBorder ? "border-l border-border" : "",
         className,
       )}
@@ -138,8 +138,11 @@ export function BranchColumn({
         </div>
       ) : null}
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 py-6">
-        <ol className="flex flex-col gap-4 pb-36">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-5 py-6 pb-24"
+      >
+        <ol className="flex flex-col gap-4">
           {messages.map((message) => (
             <li key={message.id}>
               <MessageBubble
@@ -156,8 +159,15 @@ export function BranchColumn({
             </li>
           ))}
         </ol>
+        <div ref={sentinelRef} aria-hidden className="h-px w-px" />
+      </div>
 
-        <div className="sticky bottom-0 mt-6 -mx-5 bg-gradient-to-t from-background via-background/95 to-transparent px-5 pb-6 pt-4 backdrop-blur-sm">
+      <div className="relative border-t border-border/60 bg-background px-5 pb-6 pt-4">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-10 left-0 right-0 h-10 bg-gradient-to-t from-background via-background/95 to-transparent"
+        />
+        <div className="relative z-10">
           {isActive ? (
             <ConversationComposer
               branchId={branch.id}
@@ -171,8 +181,6 @@ export function BranchColumn({
             </div>
           )}
         </div>
-
-        <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
     </section>
   );
