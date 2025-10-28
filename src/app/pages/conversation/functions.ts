@@ -9,9 +9,11 @@ import {
   ensureConversationSnapshot,
   buildResponseInputFromBranch,
   draftBranchFromSelection,
+  generateConversationId,
   maybeAutoSummarizeRootBranchTitle,
   sanitizeBranchTitle,
 } from "@/app/shared/conversation.server";
+import { touchConversationDirectoryEntry } from "@/app/shared/conversationDirectory.server";
 import type {
   Branch,
   BranchId,
@@ -70,6 +72,12 @@ export interface CreateBranchResponse extends LoadConversationResponse {
   branch: Branch;
 }
 
+export interface CreateConversationInput extends ConversationPayload {
+  title?: string;
+}
+
+export type CreateConversationResponse = LoadConversationResponse;
+
 export interface RenameBranchInput extends ConversationPayload {
   branchId: BranchId;
   title: string;
@@ -87,7 +95,35 @@ export async function loadConversation(
   const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
 
   const result = await ensureConversationSnapshot(ctx, conversationId);
+  const rootBranch =
+    result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount: Object.keys(result.snapshot.branches).length,
+  });
   return result;
+}
+
+export async function createConversation(
+  input: CreateConversationInput = {},
+): Promise<CreateConversationResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? generateConversationId();
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const rootBranch =
+    ensured.snapshot.branches[ensured.snapshot.conversation.rootBranchId];
+  const title = input.title?.trim() || rootBranch?.title || conversationId;
+
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title,
+    branchCount: Object.keys(ensured.snapshot.branches).length,
+  });
+
+  return ensured;
 }
 
 export async function sendMessage(
@@ -218,7 +254,14 @@ export async function sendMessage(
     const finalResponse = await stream.finalResponse();
     finalContent =
       finalResponse.output_text?.trim() ??
-      finalResponse.output?.map((item: any) => item.content?.map?.((part: any) => part.text ?? "")?.join("") ?? "")?.join("").trim() ??
+      finalResponse.output
+        ?.map((item: any) =>
+          item.content
+            ?.map?.((part: any) => part.text ?? "")
+            ?.join("") ?? "",
+        )
+        ?.join("")
+        .trim() ??
       buffered.trim();
     promptTokens = finalResponse.usage?.input_tokens ?? 0;
     completionTokens = finalResponse.usage?.output_tokens ?? 0;
@@ -258,7 +301,7 @@ export async function sendMessage(
     },
   ]);
 
-  maybeAutoSummarizeRootBranchTitle({
+  void maybeAutoSummarizeRootBranchTitle({
     ctx,
     conversationId,
     snapshot: applied.snapshot,
@@ -269,6 +312,17 @@ export async function sendMessage(
       branchId,
       error: error instanceof Error ? error.message : "unknown",
     });
+  });
+
+  const finalSnapshot = applied.snapshot;
+  const branchCount = Object.keys(finalSnapshot.branches).length;
+  const rootBranch =
+    finalSnapshot.branches[finalSnapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount,
+    lastActiveAt: new Date().toISOString(),
   });
 
   return {
@@ -308,6 +362,16 @@ export async function createBranchFromSelection(
   if (!branch) {
     throw new Error("Branch creation failed to persist");
   }
+
+  const branchCount = Object.keys(applied.snapshot.branches).length;
+  const rootBranch =
+    applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount,
+    lastActiveAt: new Date().toISOString(),
+  });
 
   return {
     conversationId,

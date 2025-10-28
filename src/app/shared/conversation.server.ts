@@ -12,6 +12,10 @@ import {
 } from "@/lib/conversation";
 
 import { getConversationStoreClient } from "./conversationStore.server";
+import {
+  ensureConversationDirectoryEntry,
+  touchConversationDirectoryEntry,
+} from "./conversationDirectory.server";
 
 const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_TEMPERATURE = 0.1;
@@ -20,6 +24,11 @@ export const DEFAULT_BRANCH_TITLE = "Main Branch";
 export const MAX_BRANCH_TITLE_LENGTH = 60;
 
 export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
+
+export function generateConversationId(): ConversationModelId {
+  const random = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  return `conversation-${random}` as ConversationModelId;
+}
 
 type SnapshotCacheEntry = {
   version: number;
@@ -212,6 +221,15 @@ export async function applyConversationUpdates(
   setCachedSnapshot(conversationId, {
     version: applied.version,
     snapshot: applied.snapshot,
+  });
+
+  const branchCount = Object.keys(applied.snapshot.branches).length;
+  const rootBranch =
+    applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    branchCount,
+    title: rootBranch?.title ?? conversationId,
   });
 
   return {
@@ -508,6 +526,16 @@ async function initializeConversation(
   setCachedSnapshot(conversationId, {
     version: replaced.version,
     snapshot: replaced.snapshot,
+  });
+
+  const branchCount = Object.keys(replaced.snapshot.branches).length;
+  const rootBranch =
+    replaced.snapshot.branches[replaced.snapshot.conversation.rootBranchId];
+  await ensureConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount,
+    lastActiveAt: now,
   });
 
   return {

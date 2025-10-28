@@ -8,6 +8,10 @@ import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
 import {
+  ConversationDirectoryClient,
+  getConversationDirectoryStub,
+} from "@/lib/durable-objects/ConversationDirectory";
+import {
   createOpenAIClient,
   type OpenAIClient,
 } from "@/lib/openai/client";
@@ -60,6 +64,18 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
     conversationId,
   ) => getConversationStoreClient(ctx as AppContext, conversationId);
 
+  const directorySymbol = Symbol.for("connexus.conversation-directory-client");
+  const getConversationDirectory: AppContext["getConversationDirectory"] = () => {
+    const cached = locals[directorySymbol] as ConversationDirectoryClient | undefined;
+    if (cached) {
+      return cached;
+    }
+    const stub = getConversationDirectoryStub(env.ConversationDirectoryDO);
+    const client = new ConversationDirectoryClient(stub);
+    locals[directorySymbol] = client;
+    return client;
+  };
+
   const context = ctx as AppContext;
   context.env = env;
   context.locals = locals;
@@ -67,6 +83,7 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   context.trace = trace;
   context.getOpenAIClient = getOpenAIClient;
   context.getConversationStore = getConversationStore;
+  context.getConversationDirectory = getConversationDirectory;
 };
 
 const app = defineApp<AppRequestInfo>([
@@ -82,3 +99,4 @@ export default {
 };
 
 export { ConversationStoreDO } from "@/lib/durable-objects/ConversationStore";
+export { ConversationDirectoryDO } from "@/lib/durable-objects/ConversationDirectory";

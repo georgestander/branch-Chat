@@ -10,6 +10,7 @@ import type {
   ConversationModelId,
   Message,
 } from "@/lib/conversation";
+import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
 import {
   PanelLeftClose,
@@ -30,6 +31,7 @@ interface ConversationLayoutProps {
   initialSidebarCollapsed?: boolean;
   initialParentCollapsed?: boolean;
   activeBranchId: string;
+  conversations: ConversationDirectoryEntry[];
 }
 
 export function ConversationLayout({
@@ -43,6 +45,7 @@ export function ConversationLayout({
   initialSidebarCollapsed = false,
   initialParentCollapsed = false,
   activeBranchId,
+  conversations,
 }: ConversationLayoutProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     initialSidebarCollapsed,
@@ -73,7 +76,7 @@ export function ConversationLayout({
     "inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground">
+    <div className="flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
       <div
         className={cn(
           "relative flex h-full flex-shrink-0 overflow-hidden transition-[width] duration-300",
@@ -94,11 +97,13 @@ export function ConversationLayout({
             tree={tree}
             activeBranchId={activeBranch.id}
             className="w-72"
+            conversationId={conversationId}
+            conversations={conversations}
           />
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-2">
           <div className="flex items-center gap-2">
             <button
@@ -145,7 +150,7 @@ export function ConversationLayout({
           )}
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           {showParentColumn && parentBranch ? (
             <BranchColumn
               key={parentBranch.id}
@@ -153,7 +158,7 @@ export function ConversationLayout({
               messages={parentMessages}
               conversationId={conversationId}
               isActive={false}
-              className="w-full max-w-xl shrink-0 basis-[32%] bg-background"
+              className="w-full max-w-xl shrink-0 basis-[32%] bg-background min-h-0"
               highlight={
                 activeBranch.createdFrom?.messageId
                   ? {
@@ -172,7 +177,7 @@ export function ConversationLayout({
             conversationId={conversationId}
             isActive
             className={cn(
-              "flex-1",
+              "min-h-0 flex-1",
               showParentColumn ? "md:basis-[68%]" : "basis-full border-l-0",
             )}
             withLeftBorder={showParentColumn}
