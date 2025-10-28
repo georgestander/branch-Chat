@@ -12,6 +12,22 @@
   "compatibility_date": "2025-08-21",
   "compatibility_flags": ["nodejs_compat"],
 
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ConversationGraphDO",
+        "class_name": "ConversationStoreDO"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1-conversation-store",
+      "new_classes": ["ConversationStoreDO"]
+    }
+  ],
+
   // Assets configuration
   "assets": {
     "binding": "ASSETS"

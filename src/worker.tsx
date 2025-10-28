@@ -1,17 +1,84 @@
-import { render, route } from "rwsdk/router";
-import { defineApp } from "rwsdk/worker";
+import { AsyncLocalStorage } from "async_hooks";
+import { render, route, type RouteMiddleware } from "rwsdk/router";
+import { defineApp, type RequestInfo } from "rwsdk/worker";
 
 import { Document } from "@/app/Document";
+import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
+import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
+import {
+  createOpenAIClient,
+  type OpenAIClient,
+} from "@/lib/openai/client";
 
-export type AppContext = {};
+export type AppRequestInfo = RequestInfo<any, AppContext>;
 
-export default defineApp([
+const envStorage = new AsyncLocalStorage<Env>();
+const openAIClientSymbol = Symbol.for("connexus.openai-client");
+
+const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) => {
+  const { ctx, request } = requestInfo;
+  if ((ctx as Partial<AppContext>).env) {
+    return;
+  }
+
+  const env = envStorage.getStore();
+  if (!env) {
+    throw new Error("Environment bindings unavailable in request context");
+  }
+
+  const locals = ctx.locals ?? {};
+  const requestId =
+    request.headers.get("cf-ray") ?? crypto.randomUUID();
+
+  const trace: AppContext["trace"] = (event, data = {}) => {
+    const payload = {
+      requestId,
+      event,
+      ...data,
+    };
+    console.log(
+      `[TRACE] ${event}`,
+      JSON.stringify(payload),
+    );
+  };
+
+  const getOpenAIClient = (): OpenAIClient => {
+    const cached = locals[openAIClientSymbol] as OpenAIClient | undefined;
+    if (cached) {
+      return cached;
+    }
+    const client = createOpenAIClient({
+      apiKey: env.OPENAI_API_KEY,
+    });
+    locals[openAIClientSymbol] = client;
+    return client;
+  };
+
+  const getConversationStore: AppContext["getConversationStore"] = (
+    conversationId,
+  ) => getConversationStoreClient(ctx as AppContext, conversationId);
+
+  const context = ctx as AppContext;
+  context.env = env;
+  context.locals = locals;
+  context.requestId = requestId;
+  context.trace = trace;
+  context.getOpenAIClient = getOpenAIClient;
+  context.getConversationStore = getConversationStore;
+};
+
+const app = defineApp<AppRequestInfo>([
+  provideAppContext(),
   setCommonHeaders(),
-  ({ ctx }) => {
-    // setup ctx here
-    ctx;
-  },
   render(Document, [route("/", Home)]),
 ]);
+
+export default {
+  fetch(request: Request, env: Env, cf: ExecutionContext) {
+    return envStorage.run(env, () => app.fetch(request, env, cf));
+  },
+};
+
+export { ConversationStoreDO } from "@/lib/durable-objects/ConversationStore";
