@@ -32,7 +32,7 @@ export function BranchColumn({
 
   return (
     <section
-      className={`flex ${basisClass} flex-1 flex-col border-l border-border bg-background`}
+      className={`flex ${basisClass} min-h-0 flex-1 flex-col overflow-hidden border-l border-border bg-background`}
     >
       <header className="flex items-center justify-between border-b border-border px-5 py-4">
         <div className="flex flex-col">
@@ -55,38 +55,40 @@ export function BranchColumn({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto px-5 py-6">
-        <ol className="flex flex-col gap-4">
-          {messages.map((message) => (
-            <li key={message.id}>
-              <MessageBubble
-                message={message}
-                isActive={isActive}
-                highlight={
-                  highlight?.messageId === message.id
-                    ? highlight?.span ?? null
-                    : null
-                }
-                conversationId={conversationId}
-                branch={branch}
-              />
-            </li>
-          ))}
-        </ol>
-      </div>
+      <div className="flex flex-1 min-h-0 flex-col">
+        <div className="flex-1 overflow-y-auto px-5 py-6">
+          <ol className="flex flex-col gap-4">
+            {messages.map((message) => (
+              <li key={message.id}>
+                <MessageBubble
+                  message={message}
+                  isActive={isActive}
+                  highlight={
+                    highlight?.messageId === message.id
+                      ? highlight?.span ?? null
+                      : null
+                  }
+                  conversationId={conversationId}
+                  branch={branch}
+                />
+              </li>
+            ))}
+          </ol>
+        </div>
 
-      {isActive ? (
-        <div className="border-t border-border px-5 py-4">
-          <ConversationComposer
-            branchId={branch.id}
-            conversationId={conversationId}
-          />
-        </div>
-      ) : (
-        <div className="border-t border-border px-5 py-4 text-sm text-muted-foreground">
-          Switch to this branch to continue the conversation.
-        </div>
-      )}
+        {isActive ? (
+          <div className="border-t border-border bg-background/95 px-5 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+            <ConversationComposer
+              branchId={branch.id}
+              conversationId={conversationId}
+            />
+          </div>
+        ) : (
+          <div className="border-t border-border px-5 py-4 text-sm text-muted-foreground">
+            Switch to this branch to continue the conversation.
+          </div>
+        )}
+      </div>
     </section>
   );
 }

@@ -43,8 +43,8 @@ export async function ConversationPage({
         activeBranchId={activeBranch.id}
       />
 
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1">
+      <div className="flex flex-1 min-h-0 flex-col">
+        <div className="flex flex-1 min-h-0">
           {parentBranch ? (
             <BranchColumn
               key={parentBranch.id}

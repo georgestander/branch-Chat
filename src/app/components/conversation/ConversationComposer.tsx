@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { sendMessage } from "@/app/pages/conversation/functions";
 
@@ -13,12 +13,21 @@ export function ConversationComposer({
   branchId,
   conversationId,
 }: ConversationComposerProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    textareaRef.current?.focus({ preventScroll: true });
+  }, [branchId]);
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isPending) {
+      return;
+    }
     const content = value.trim();
     if (!content) {
       setError("Enter a message before sending.");
@@ -41,8 +50,24 @@ export function ConversationComposer({
     });
   };
 
+  const handleKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      if (!isPending) {
+        formRef.current?.requestSubmit();
+      }
+    }
+  };
+
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit}
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 shadow-sm"
     >
@@ -51,8 +76,10 @@ export function ConversationComposer({
           New Message
         </span>
         <textarea
+          ref={textareaRef}
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Ask Connexus to explore a new direction..."
           rows={4}
           className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70"
