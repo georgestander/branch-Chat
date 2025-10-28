@@ -84,7 +84,9 @@ export function BranchableMessage({
           };
           const response = await createBranchFromSelection(payload);
           clearSelection();
-          navigate(`/?branchId=${encodeURIComponent(response.branch.id)}`);
+          navigate(
+            `/?branchId=${encodeURIComponent(response.branch.id)}&focus=child`,
+          );
         } catch (cause) {
           console.error("createBranchFromSelection failed", cause);
           setError("Could not create branch. Please try again.");

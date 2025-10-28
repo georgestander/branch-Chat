@@ -1,3 +1,5 @@
+"use client";
+
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import type { Conversation } from "@/lib/conversation";
 import { cn } from "@/lib/utils";
@@ -6,15 +8,22 @@ interface ConversationSidebarProps {
   conversation: Conversation;
   tree: BranchTreeNode;
   activeBranchId: string;
+  className?: string;
 }
 
 export function ConversationSidebar({
   conversation,
   tree,
   activeBranchId,
+  className,
 }: ConversationSidebarProps) {
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-border bg-muted/30">
+    <aside
+      className={cn(
+        "flex h-full w-72 flex-col border-r border-border bg-muted/30",
+        className,
+      )}
+    >
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           Conversations
