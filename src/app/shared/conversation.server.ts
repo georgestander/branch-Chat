@@ -18,6 +18,26 @@ const DEFAULT_TEMPERATURE = 0.2;
 
 export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
 
+type SnapshotCacheEntry = {
+  version: number;
+  snapshot: ConversationGraphSnapshot;
+};
+
+const SNAPSHOT_CACHE: Map<ConversationModelId, SnapshotCacheEntry> = new Map();
+
+function getCachedSnapshot(
+  conversationId: ConversationModelId,
+): SnapshotCacheEntry | undefined {
+  return SNAPSHOT_CACHE.get(conversationId);
+}
+
+function setCachedSnapshot(
+  conversationId: ConversationModelId,
+  entry: SnapshotCacheEntry,
+): void {
+  SNAPSHOT_CACHE.set(conversationId, entry);
+}
+
 export interface ConversationLoadResult {
   conversationId: ConversationModelId;
   snapshot: ConversationGraphSnapshot;
@@ -34,6 +54,19 @@ export async function ensureConversationSnapshot(
   ctx: AppContext,
   conversationId: ConversationModelId = DEFAULT_CONVERSATION_ID,
 ): Promise<ConversationLoadResult> {
+  const cached = getCachedSnapshot(conversationId);
+  if (cached) {
+    ctx.trace("conversation:cache:hit", {
+      conversationId,
+      version: cached.version,
+    });
+    return {
+      conversationId,
+      snapshot: cached.snapshot,
+      version: cached.version,
+    };
+  }
+
   const client = getConversationStoreClient(ctx, conversationId);
   const result = await client.read();
 
@@ -42,6 +75,11 @@ export async function ensureConversationSnapshot(
       conversationId,
       version: result.version,
       payloadBytes: JSON.stringify(result.snapshot).length,
+    });
+
+    setCachedSnapshot(conversationId, {
+      snapshot: result.snapshot,
+      version: result.version,
     });
 
     return {
@@ -166,6 +204,11 @@ export async function applyConversationUpdates(
     conversationId,
     version: applied.version,
     updateCount: updates.length,
+  });
+
+  setCachedSnapshot(conversationId, {
+    version: applied.version,
+    snapshot: applied.snapshot,
   });
 
   return {
@@ -328,6 +371,11 @@ async function initializeConversation(
   ctx.trace("conversation:init", {
     conversationId,
     version: replaced.version,
+  });
+
+  setCachedSnapshot(conversationId, {
+    version: replaced.version,
+    snapshot: replaced.snapshot,
   });
 
   return {
