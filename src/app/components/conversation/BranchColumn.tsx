@@ -5,6 +5,7 @@ import type {
   ConversationModelId,
   Message,
 } from "@/lib/conversation";
+import { cn } from "@/lib/utils";
 
 import { BranchableMessage } from "./BranchableMessage";
 
@@ -17,6 +18,7 @@ interface BranchColumnProps {
     messageId: string;
     span?: BranchSpan | null;
   };
+  className?: string;
 }
 
 export function BranchColumn({
@@ -25,6 +27,7 @@ export function BranchColumn({
   conversationId,
   isActive,
   highlight,
+  className,
 }: BranchColumnProps) {
   const basisClass = isActive ? "basis-[70%]" : "basis-[30%]";
   const stateLabel = isActive ? "Active" : "Parent";
@@ -32,7 +35,11 @@ export function BranchColumn({
 
   return (
     <section
-      className={`flex ${basisClass} flex-1 flex-col border-l border-border bg-background`}
+      className={cn(
+        "flex flex-1 flex-col border-l border-border bg-background",
+        basisClass,
+        className,
+      )}
     >
       <header className="flex items-center justify-between border-b border-border px-5 py-4">
         <div className="flex flex-col">
