@@ -10,6 +10,7 @@ import type {
   ConversationModelId,
   Message,
 } from "@/lib/conversation";
+import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
 import {
   PanelLeftClose,
@@ -30,6 +31,7 @@ interface ConversationLayoutProps {
   initialSidebarCollapsed?: boolean;
   initialParentCollapsed?: boolean;
   activeBranchId: string;
+  conversations: ConversationDirectoryEntry[];
 }
 
 export function ConversationLayout({
@@ -43,6 +45,7 @@ export function ConversationLayout({
   initialSidebarCollapsed = false,
   initialParentCollapsed = false,
   activeBranchId,
+  conversations,
 }: ConversationLayoutProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     initialSidebarCollapsed,
@@ -94,6 +97,8 @@ export function ConversationLayout({
             tree={tree}
             activeBranchId={activeBranch.id}
             className="w-72"
+            conversationId={conversationId}
+            conversations={conversations}
           />
         </div>
       </div>
