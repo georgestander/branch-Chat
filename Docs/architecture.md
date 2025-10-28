@@ -23,6 +23,11 @@
 - `AppContext.getOpenAIClient` lazily instantiates the shared OpenAI SDK client (see `src/lib/openai/client.ts`) using the Cloudflare secret `OPENAI_API_KEY`; it is cached in request-local storage to avoid duplicate initialisations.
 - Downstream server functions will call this helper to ensure all OpenAI traffic is tracked via the same context-aware instance.
 
+### Local development
+
+- Copy `.dev.vars.example` to `.dev.vars` and set `OPENAI_API_KEY="sk-..."` before running `pnpm dev` or `pnpm worker:run`. Wrangler automatically injects these values when present.
+- Production/staging deployments should use `wrangler secret put OPENAI_API_KEY` so the binding matches the `Env` type declared in `types/env.d.ts`.
+
 ## Follow-ups
 
 1. Hardening `ConversationStoreClient.apply` to support optimistic concurrency tokens.
