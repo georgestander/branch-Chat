@@ -4,10 +4,9 @@ import {
   ensureConversationSnapshot,
   getBranchMessages,
 } from "@/app/shared/conversation.server";
-import { ConversationSidebar } from "@/app/pages/conversation/ConversationSidebar";
-import { BranchColumn } from "@/app/components/conversation/BranchColumn";
+import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
 import type { AppRequestInfo } from "@/worker";
-import type { Branch, ConversationGraphSnapshot } from "@/lib/conversation";
+import type { Branch, BranchSpan, ConversationGraphSnapshot } from "@/lib/conversation";
 
 interface ConversationPageProps extends AppRequestInfo {
   conversationId?: string;
@@ -35,44 +34,19 @@ export async function ConversationPage({
 
   const tree = buildBranchTree(snapshot);
 
+  const parentHighlight = buildParentHighlight(activeBranch.createdFrom);
+
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground">
-      <ConversationSidebar
-        conversation={snapshot.conversation}
-        tree={tree}
-        activeBranchId={activeBranch.id}
-      />
-
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1">
-          {parentBranch ? (
-            <BranchColumn
-              key={parentBranch.id}
-              branch={parentBranch}
-              messages={parentMessages}
-              conversationId={result.conversationId}
-              isActive={false}
-              highlight={
-                activeBranch.createdFrom?.messageId
-                  ? {
-                      messageId: activeBranch.createdFrom.messageId,
-                      span: activeBranch.createdFrom.span ?? null,
-                    }
-                  : undefined
-              }
-            />
-          ) : null}
-
-          <BranchColumn
-            key={activeBranch.id}
-            branch={activeBranch}
-            messages={activeMessages}
-            conversationId={result.conversationId}
-            isActive
-          />
-        </div>
-      </div>
-    </div>
+    <ConversationLayout
+      conversation={snapshot.conversation}
+      tree={tree}
+      activeBranch={activeBranch}
+      parentBranch={parentBranch}
+      activeMessages={activeMessages}
+      parentMessages={parentMessages}
+      parentHighlight={parentHighlight}
+      conversationId={result.conversationId}
+    />
   );
 }
 
@@ -90,4 +64,23 @@ function determineActiveBranch(
 
   const branch = snapshot.branches[branchIdParam];
   return branch ?? fallbackBranch;
+}
+
+function buildParentHighlight(
+  createdFrom:
+    | {
+        messageId: string;
+        span?: BranchSpan | null;
+      }
+    | null
+    | undefined,
+) {
+  if (!createdFrom) {
+    return undefined;
+  }
+
+  return {
+    messageId: createdFrom.messageId,
+    span: createdFrom.span ?? null,
+  };
 }

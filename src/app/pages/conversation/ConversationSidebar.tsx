@@ -1,3 +1,7 @@
+"use client";
+
+import { PanelLeftClose } from "lucide-react";
+
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import type { Conversation } from "@/lib/conversation";
 
@@ -5,19 +9,33 @@ interface ConversationSidebarProps {
   conversation: Conversation;
   tree: BranchTreeNode;
   activeBranchId: string;
+  onCollapse?: () => void;
 }
 
 export function ConversationSidebar({
   conversation,
   tree,
   activeBranchId,
+  onCollapse,
 }: ConversationSidebarProps) {
   return (
     <aside className="flex h-full w-72 flex-col border-r border-border bg-muted/30">
       <div className="border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Conversations
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Conversations
+          </h2>
+          {onCollapse ? (
+            <button
+              type="button"
+              onClick={onCollapse}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/40 bg-background/80 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              aria-label="Collapse conversation sidebar"
+            >
+              <PanelLeftClose className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
         <div className="mt-2 rounded-md bg-card px-3 py-2 text-sm text-foreground shadow-sm">
           {conversation.settings.systemPrompt ? (
             <div className="flex flex-col gap-1">

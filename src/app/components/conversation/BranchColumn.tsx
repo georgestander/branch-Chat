@@ -1,3 +1,7 @@
+"use client";
+
+import { type ReactNode } from "react";
+
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type {
   Branch,
@@ -17,6 +21,7 @@ interface BranchColumnProps {
     messageId: string;
     span?: BranchSpan | null;
   };
+  headerActions?: ReactNode;
 }
 
 export function BranchColumn({
@@ -25,6 +30,7 @@ export function BranchColumn({
   conversationId,
   isActive,
   highlight,
+  headerActions,
 }: BranchColumnProps) {
   const basisClass = isActive ? "basis-[70%]" : "basis-[30%]";
   const stateLabel = isActive ? "Active" : "Parent";
@@ -34,7 +40,7 @@ export function BranchColumn({
     <section
       className={`flex ${basisClass} flex-1 flex-col border-l border-border bg-background`}
     >
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
+      <header className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
         <div className="flex flex-col">
           <h2 className="text-lg font-semibold text-foreground">
             {branch.title || "Untitled Branch"}
@@ -43,8 +49,17 @@ export function BranchColumn({
             {stateLabel} Branch
           </span>
         </div>
-        <div className={`rounded-full px-3 py-1 text-xs ${isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
-          {isActive ? "Editing" : "View Only"}
+        <div className="flex items-center gap-2">
+          {headerActions ? (
+            <div className="flex items-center">{headerActions}</div>
+          ) : null}
+          <div
+            className={`rounded-full px-3 py-1 text-xs ${
+              isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {isActive ? "Editing" : "View Only"}
+          </div>
         </div>
       </header>
 
