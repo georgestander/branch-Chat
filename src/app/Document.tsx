@@ -17,12 +17,8 @@ export const Document: React.FC<DocumentProps> = ({ children, rw }) => (
       <link rel="stylesheet" href={styles} />
     </head>
     <body>
-      <div id="root">{children}</div>
-      <script
-        nonce={rw.nonce}
-        type="module"
-        src="/src/client.tsx"
-      />
+      <div id="hydrate-root">{children}</div>
+      <script nonce={rw.nonce} type="module" src="/src/client.tsx"></script>
     </body>
   </html>
 );

@@ -86,6 +86,48 @@ export async function applyConversationUpdates(
   };
 }
 
+export function buildResponseInputFromBranch(options: {
+  snapshot: ConversationGraphSnapshot;
+  branchId: BranchId;
+  nextUserContent: string;
+}): Array<{
+  role: "system" | "user" | "assistant";
+  content: string;
+}> {
+  const { snapshot, branchId, nextUserContent } = options;
+  const branchMessages = getBranchMessages(snapshot, branchId);
+
+  const inputs: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }> = [];
+
+  const systemPrompt = snapshot.conversation.settings.systemPrompt;
+  if (systemPrompt?.trim()) {
+    inputs.push({
+      role: "system",
+      content: systemPrompt,
+    });
+  }
+
+  for (const message of branchMessages) {
+    if (!message.content.trim()) {
+      continue;
+    }
+    inputs.push({
+      role: message.role,
+      content: message.content,
+    });
+  }
+
+  inputs.push({
+    role: "user",
+    content: nextUserContent,
+  });
+
+  return inputs;
+}
+
 function getDefaultConversationSettings(): ConversationSettings {
   return {
     model: DEFAULT_MODEL,

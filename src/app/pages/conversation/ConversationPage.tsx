@@ -1,12 +1,11 @@
-import { Fragment } from "react";
-
 import {
   DEFAULT_CONVERSATION_ID,
   ensureConversationSnapshot,
   getBranchMessages,
 } from "@/app/shared/conversation.server";
-import type { Message } from "@/lib/conversation";
+import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { AppRequestInfo } from "@/worker";
+import type { Message } from "@/lib/conversation";
 
 interface ConversationPageProps extends AppRequestInfo {
   conversationId?: string;
@@ -37,7 +36,10 @@ export async function ConversationPage({
 
       <section className="flex flex-1 flex-col gap-6">
         <ConversationTimeline messages={messages} />
-        <ComposerPlaceholder />
+        <ConversationComposer
+          branchId={branchId}
+          conversationId={result.conversationId}
+        />
       </section>
     </main>
   );
@@ -73,21 +75,5 @@ function ConversationTimeline({ messages }: { messages: Message[] }) {
         </li>
       ))}
     </ol>
-  );
-}
-
-function ComposerPlaceholder() {
-  return (
-    <Fragment>
-      <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-        Composer island and streaming actions will mount here. This placeholder
-        confirms that server-rendered state flows from Durable Objects. Use the
-        server action stubs in{" "}
-        <code className="rounded bg-muted px-2 py-1 text-xs text-foreground">
-          src/app/pages/conversation/functions.ts
-        </code>{" "}
-        to continue wiring UI once the client layer is ready.
-      </div>
-    </Fragment>
   );
 }

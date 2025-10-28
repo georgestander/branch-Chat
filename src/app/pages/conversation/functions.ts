@@ -7,6 +7,7 @@ import {
   DEFAULT_CONVERSATION_ID,
   applyConversationUpdates,
   ensureConversationSnapshot,
+  buildResponseInputFromBranch,
 } from "@/app/shared/conversation.server";
 import type {
   BranchId,
@@ -76,14 +77,67 @@ export async function sendMessage(
     tokenUsage: null,
   };
 
-  // TODO: Replace placeholder generation with OpenAI streaming pipeline.
+  const openaiInput = buildResponseInputFromBranch({
+    snapshot: ensured.snapshot,
+    branchId,
+    nextUserContent: userMessage.content,
+  });
+
+  const settings = ensured.snapshot.conversation.settings;
+  const openai = ctx.getOpenAIClient();
+
+  ctx.trace("openai:request", {
+    conversationId,
+    branchId,
+    model: settings.model,
+    temperature: settings.temperature,
+    messageCount: openaiInput.length,
+  });
+
+  let assistantContent = "";
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  try {
+    const response = await openai.responses.create({
+      model: settings.model,
+      temperature: settings.temperature,
+      input: openaiInput,
+    });
+
+    assistantContent = response.output_text?.trim() ?? "";
+    promptTokens = response.usage?.input_tokens ?? 0;
+    completionTokens = response.usage?.output_tokens ?? 0;
+    ctx.trace("openai:response", {
+      conversationId,
+      branchId,
+      promptTokens,
+      completionTokens,
+    });
+  } catch (error) {
+    ctx.trace("openai:error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    throw new Error("OpenAI completion failed");
+  }
+
+  if (!assistantContent) {
+    assistantContent = "Assistant response was empty.";
+  }
+
   const assistantMessage: Message = {
     id: crypto.randomUUID(),
     branchId,
     role: "assistant",
-    content: generateAssistantPlaceholder(input.content),
+    content: assistantContent,
     createdAt: new Date().toISOString(),
-    tokenUsage: null,
+    tokenUsage: {
+      prompt: promptTokens,
+      completion: completionTokens,
+      cost: 0,
+    },
   };
 
   const applied = await applyConversationUpdates(ctx, conversationId, [
@@ -105,19 +159,4 @@ export async function sendMessage(
     version: applied.version,
     appendedMessages: [userMessage, assistantMessage],
   };
-}
-
-function generateAssistantPlaceholder(content: string): string {
-  const trimmed = content.trim();
-  if (!trimmed) {
-    return "I'm ready when you are.";
-  }
-
-  return [
-    "Echoing until OpenAI streaming is wired:",
-    "",
-    `> ${trimmed}`,
-    "",
-    "Streaming integration TBD.",
-  ].join("\n");
 }
