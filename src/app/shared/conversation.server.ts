@@ -182,7 +182,34 @@ export function buildResponseInputFromBranch(options: {
   content: string;
 }> {
   const { snapshot, branchId, nextUserContent } = options;
-  const branchMessages = getBranchMessages(snapshot, branchId);
+  const chain = getBranchChain(snapshot, branchId);
+
+  const orderedMessages: Message[] = [];
+  for (let index = 0; index < chain.length; index++) {
+    const branch = chain[index];
+    const branchMessages = getBranchMessages(snapshot, branch.id);
+
+    const isTargetBranch = index === chain.length - 1;
+    if (isTargetBranch) {
+      orderedMessages.push(...branchMessages.filter((message) => message.content.trim().length > 0));
+      continue;
+    }
+
+    const childBranch = chain[index + 1];
+    const cutOffId = childBranch.createdFrom?.messageId;
+    if (!cutOffId) {
+      orderedMessages.push(...branchMessages.filter((message) => message.content.trim().length > 0));
+      continue;
+    }
+
+    const cutOffIndex = branchMessages.findIndex((message) => message.id === cutOffId);
+    const sliceEnd = cutOffIndex >= 0 ? cutOffIndex + 1 : branchMessages.length;
+    orderedMessages.push(
+      ...branchMessages
+        .slice(0, sliceEnd)
+        .filter((message) => message.content.trim().length > 0),
+    );
+  }
 
   const inputs: Array<{
     role: "system" | "user" | "assistant";
@@ -197,10 +224,7 @@ export function buildResponseInputFromBranch(options: {
     });
   }
 
-  for (const message of branchMessages) {
-    if (!message.content.trim()) {
-      continue;
-    }
+  for (const message of orderedMessages) {
     inputs.push({
       role: message.role,
       content: message.content,
@@ -213,6 +237,24 @@ export function buildResponseInputFromBranch(options: {
   });
 
   return inputs;
+}
+
+export function getBranchChain(
+  snapshot: ConversationGraphSnapshot,
+  branchId: BranchId,
+): Branch[] {
+  const chain: Branch[] = [];
+  let current: Branch | undefined = snapshot.branches[branchId];
+
+  while (current) {
+    chain.push(current);
+    if (!current.parentId) {
+      break;
+    }
+    current = snapshot.branches[current.parentId];
+  }
+
+  return chain.reverse();
 }
 
 function getDefaultConversationSettings(): ConversationSettings {
