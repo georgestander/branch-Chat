@@ -20,6 +20,9 @@ import {
 const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_TEMPERATURE = 0.1;
 
+export const DEFAULT_BRANCH_TITLE = "Main Branch";
+export const MAX_BRANCH_TITLE_LENGTH = 60;
+
 export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
 
 export function generateConversationId(): ConversationModelId {
@@ -236,6 +239,135 @@ export async function applyConversationUpdates(
   };
 }
 
+export function sanitizeBranchTitle(
+  input: string | null | undefined,
+  fallback: string = DEFAULT_BRANCH_TITLE,
+): string {
+  if (!input) {
+    return fallback;
+  }
+
+  const collapsed = input.replace(/\s+/g, " ").trim();
+  if (!collapsed) {
+    return fallback;
+  }
+
+  if (collapsed.length <= MAX_BRANCH_TITLE_LENGTH) {
+    return collapsed;
+  }
+
+  return collapsed.slice(0, MAX_BRANCH_TITLE_LENGTH).trimEnd();
+}
+
+export async function maybeAutoSummarizeRootBranchTitle(options: {
+  ctx: AppContext;
+  conversationId: ConversationModelId;
+  snapshot: ConversationGraphSnapshot;
+  branchId: BranchId;
+}): Promise<ConversationLoadResult | null> {
+  const { ctx, conversationId, snapshot, branchId } = options;
+  const branch = snapshot.branches[branchId];
+  if (!branch || branch.parentId) {
+    return null;
+  }
+
+  if (branch.title && branch.title !== DEFAULT_BRANCH_TITLE) {
+    return null;
+  }
+
+  const messages = getBranchMessages(snapshot, branchId);
+  const nonSystemMessages = messages.filter((message) => message.role !== "system");
+  const firstUserMessage = nonSystemMessages.find(
+    (message) => message.role === "user" && message.content.trim().length > 0,
+  );
+  const firstAssistantMessage = nonSystemMessages.find(
+    (message) => message.role === "assistant" && message.content.trim().length > 0,
+  );
+
+  if (!firstUserMessage || !firstAssistantMessage) {
+    return null;
+  }
+
+  const openai = ctx.getOpenAIClient();
+  const truncateForPrompt = (value: string): string => {
+    const trimmed = value.trim();
+    if (trimmed.length <= 512) {
+      return trimmed;
+    }
+    return `${trimmed.slice(0, 509).trimEnd()}…`;
+  };
+
+  const promptUser = truncateForPrompt(firstUserMessage.content);
+  const promptAssistant = truncateForPrompt(firstAssistantMessage.content);
+
+  try {
+    ctx.trace("conversation:auto-title:start", {
+      conversationId,
+      branchId,
+      model: "gpt-5-nano",
+    });
+
+    const response = await openai.responses.create({
+      model: "gpt-5-nano",
+      temperature: 0.2,
+      max_output_tokens: 32,
+      input: [
+        {
+          role: "system",
+          content:
+            "You generate concise chat titles. Respond with a short title under 6 words summarizing the conversation. Avoid quotation marks and punctuation at the end.",
+        },
+        {
+          role: "user",
+          content: `User request: ${promptUser}\nAssistant reply: ${promptAssistant}\nTitle:`,
+        },
+      ],
+    });
+
+    const candidate = response.output_text?.trim();
+    const cleaned = candidate
+      ? candidate
+          .replace(/^["'\-\s]+/, "")
+          .replace(/["'\s]+$/, "")
+          .replace(/\.\s*$/, "")
+      : "";
+    const sanitized = sanitizeBranchTitle(cleaned, DEFAULT_BRANCH_TITLE);
+
+    if (!sanitized || sanitized === branch.title) {
+      ctx.trace("conversation:auto-title:skip", {
+        conversationId,
+        branchId,
+        reason: "empty-or-unchanged",
+      });
+      return null;
+    }
+
+    ctx.trace("conversation:auto-title:applied", {
+      conversationId,
+      branchId,
+      title: sanitized,
+    });
+
+    return applyConversationUpdates(ctx, conversationId, [
+      {
+        type: "branch:update",
+        conversationId,
+        branch: {
+          ...branch,
+          title: sanitized,
+        },
+      },
+    ]);
+  } catch (error) {
+    ctx.trace("conversation:auto-title:error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    return null;
+  }
+}
+
 export function buildResponseInputFromBranch(options: {
   snapshot: ConversationGraphSnapshot;
   branchId: BranchId;
@@ -373,7 +505,7 @@ async function initializeConversation(
     settings: getDefaultConversationSettings(),
     rootBranch: {
       id: rootBranchId,
-      title: "Main Branch",
+      title: DEFAULT_BRANCH_TITLE,
       createdFrom: { messageId: systemMessageId },
       createdAt: now,
     },

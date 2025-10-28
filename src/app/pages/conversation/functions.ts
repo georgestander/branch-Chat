@@ -10,7 +10,10 @@ import {
   buildResponseInputFromBranch,
   draftBranchFromSelection,
   generateConversationId,
+  maybeAutoSummarizeRootBranchTitle,
+  sanitizeBranchTitle,
 } from "@/app/shared/conversation.server";
+import { touchConversationDirectoryEntry } from "@/app/shared/conversationDirectory.server";
 import type {
   Branch,
   BranchId,
@@ -20,22 +23,21 @@ import type {
   Message,
 } from "@/lib/conversation";
 import type { AppRequestInfo } from "@/worker";
-import { touchConversationDirectoryEntry } from "@/app/shared/conversationDirectory.server";
 
-const TEMPERATURE_UNSUPPORTED_MODELS = new Set([
-  "gpt-5-nano",
-]);
+const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano"]);
 
 function buildResponseOptions(settings: {
   model: string;
   temperature: number;
-}) {
-  const request: Record<string, unknown> = {
+}): { model: string; temperature?: number } {
+  const request: { model: string; temperature?: number } = {
     model: settings.model,
   };
+
   if (!TEMPERATURE_UNSUPPORTED_MODELS.has(settings.model)) {
     request.temperature = settings.temperature;
   }
+
   return request;
 }
 
@@ -75,6 +77,15 @@ export interface CreateConversationInput extends ConversationPayload {
 }
 
 export type CreateConversationResponse = LoadConversationResponse;
+
+export interface RenameBranchInput extends ConversationPayload {
+  branchId: BranchId;
+  title: string;
+}
+
+export interface RenameBranchResponse extends LoadConversationResponse {
+  branch: Branch;
+}
 
 export async function loadConversation(
   input: ConversationPayload = {},
@@ -243,7 +254,14 @@ export async function sendMessage(
     const finalResponse = await stream.finalResponse();
     finalContent =
       finalResponse.output_text?.trim() ??
-      finalResponse.output?.map((item: any) => item.content?.map?.((part: any) => part.text ?? "")?.join("") ?? "")?.join("").trim() ??
+      finalResponse.output
+        ?.map((item: any) =>
+          item.content
+            ?.map?.((part: any) => part.text ?? "")
+            ?.join("") ?? "",
+        )
+        ?.join("")
+        .trim() ??
       buffered.trim();
     promptTokens = finalResponse.usage?.input_tokens ?? 0;
     completionTokens = finalResponse.usage?.output_tokens ?? 0;
@@ -282,6 +300,19 @@ export async function sendMessage(
       message: finalAssistantMessage,
     },
   ]);
+
+  void maybeAutoSummarizeRootBranchTitle({
+    ctx,
+    conversationId,
+    snapshot: applied.snapshot,
+    branchId,
+  }).catch((error) => {
+    ctx.trace("conversation:auto-title:deferred-error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  });
 
   const finalSnapshot = applied.snapshot;
   const branchCount = Object.keys(finalSnapshot.branches).length;
@@ -341,6 +372,62 @@ export async function createBranchFromSelection(
     branchCount,
     lastActiveAt: new Date().toISOString(),
   });
+
+  return {
+    conversationId,
+    snapshot: applied.snapshot,
+    version: applied.version,
+    branch,
+  };
+}
+
+export async function renameBranch(
+  input: RenameBranchInput,
+): Promise<RenameBranchResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  if (!input.branchId) {
+    throw new Error("Branch ID is required");
+  }
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const existingBranch = ensured.snapshot.branches[input.branchId];
+
+  if (!existingBranch) {
+    throw new Error(`Branch ${input.branchId} not found for conversation`);
+  }
+
+  const nextTitle = sanitizeBranchTitle(
+    input.title,
+    existingBranch.title || undefined,
+  );
+
+  if (nextTitle === existingBranch.title) {
+    return {
+      conversationId,
+      snapshot: ensured.snapshot,
+      version: ensured.version,
+      branch: existingBranch,
+    };
+  }
+
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "branch:update",
+      conversationId,
+      branch: {
+        ...existingBranch,
+        title: nextTitle,
+      },
+    },
+  ]);
+
+  const branch = applied.snapshot.branches[input.branchId];
+  if (!branch) {
+    throw new Error("Branch rename failed to persist");
+  }
 
   return {
     conversationId,

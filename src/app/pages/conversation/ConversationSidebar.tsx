@@ -1,16 +1,25 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import type { FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
+import {
+  createConversation,
+  renameBranch,
+} from "@/app/pages/conversation/functions";
 import type {
   Conversation,
   ConversationModelId,
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
-import { createConversation } from "@/app/pages/conversation/functions";
 import { cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { navigate } from "rwsdk/client";
 
 interface ConversationSidebarProps {
@@ -22,6 +31,11 @@ interface ConversationSidebarProps {
   className?: string;
 }
 
+const DEFAULT_BRANCH_TITLE = "Main Branch";
+const UNTITLED_BRANCH = "Untitled Branch";
+const MAX_DISPLAY_TITLE_LENGTH = 32;
+const MAX_BRANCH_TITLE_LENGTH = 60;
+
 export function ConversationSidebar({
   conversation,
   tree,
@@ -30,8 +44,8 @@ export function ConversationSidebar({
   conversations,
   className,
 }: ConversationSidebarProps) {
-  const [isPending, startTransition] = useTransition();
   const [creationError, setCreationError] = useState<string | null>(null);
+  const [isCreating, startCreateTransition] = useTransition();
 
   const activeEntry = useMemo(() => {
     return (
@@ -51,11 +65,11 @@ export function ConversationSidebar({
   );
 
   const startNewConversation = () => {
-    if (isPending) {
+    if (isCreating) {
       return;
     }
     setCreationError(null);
-    startTransition(async () => {
+    startCreateTransition(async () => {
       try {
         const result = await createConversation();
         navigate(
@@ -88,11 +102,11 @@ export function ConversationSidebar({
           <button
             type="button"
             onClick={startNewConversation}
-            disabled={isPending}
+            disabled={isCreating}
             className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            {isPending ? "Creating…" : "New chat"}
+            {isCreating ? "Creating…" : "New chat"}
           </button>
         </div>
         {creationError ? (
@@ -138,25 +152,141 @@ function ActiveConversationPanel({
   tree: BranchTreeNode;
   activeBranchId: string;
 }) {
-  const title = entry.title.trim() ? entry.title : conversation.id;
+  const rootBranch = tree.branch;
+  const resolvedTitle = rootBranch.title?.trim() || DEFAULT_BRANCH_TITLE;
+  const [optimisticTitle, setOptimisticTitle] = useState<string | null>(null);
+  const effectiveTitle = optimisticTitle ?? resolvedTitle;
+  const displayTitle = useMemo(
+    () => formatBranchTitle(effectiveTitle),
+    [effectiveTitle],
+  );
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [value, setValue] = useState(effectiveTitle);
+  const [error, setError] = useState<string | null>(null);
+  const [isRenaming, startRenameTransition] = useTransition();
+
+  useEffect(() => {
+    setOptimisticTitle(null);
+  }, [resolvedTitle]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setValue(effectiveTitle);
+    }
+  }, [effectiveTitle, isEditing]);
+
+  const submitRename = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    if (isRenaming) {
+      return;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("Enter a name for this chat.");
+      return;
+    }
+
+    setError(null);
+    startRenameTransition(async () => {
+      try {
+        await renameBranch({
+          conversationId: conversation.id,
+          branchId: rootBranch.id,
+          title: trimmed,
+        });
+        setOptimisticTitle(trimmed);
+        setValue(trimmed);
+        setIsEditing(false);
+      } catch (cause) {
+        console.error("[Sidebar] renameBranch failed", cause);
+        setError("We couldn't rename this chat. Try again.");
+      }
+    });
+  };
+
+  const branchCount = countBranches(tree);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="font-semibold leading-tight">{title}</span>
-            <span className="text-xs text-muted-foreground">
-              {conversation.settings.model}
-            </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-foreground" title={effectiveTitle}>
+              {displayTitle}
+            </p>
+            <p
+              className="mt-0.5 text-xs text-muted-foreground"
+              title={`${conversation.settings.model} · ${conversation.id}`}
+            >
+              {conversation.settings.model} · {conversation.id}
+            </p>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">
-            {entry.branchCount} branch{entry.branchCount === 1 ? "" : "es"}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              {branchCount} branch{branchCount === 1 ? "" : "es"}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditing((value) => !value);
+                setError(null);
+              }}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-label={isEditing ? "Cancel rename" : "Rename chat"}
+            >
+              <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <p className="mt-1 text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-          {conversation.id}
-        </p>
+
+        {isEditing ? (
+          <form
+            onSubmit={submitRename}
+            className="mt-3 flex flex-col gap-2"
+          >
+            <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+              Rename Chat
+              <input
+                value={value}
+                maxLength={MAX_BRANCH_TITLE_LENGTH}
+                onChange={(event) => setValue(event.target.value)}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70"
+                placeholder="Enter a short title"
+                disabled={isRenaming}
+              />
+            </label>
+            {error ? (
+              <p className="text-xs text-destructive" role="status">
+                {error}
+              </p>
+            ) : null}
+            <div className="flex items-center justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditing(false);
+                  setValue(resolvedTitle);
+                  setError(null);
+                }}
+                className="text-muted-foreground transition hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isRenaming}
+                className="inline-flex items-center rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isRenaming ? "Saving…" : "Save"}
+              </button>
+            </div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              {value.length}/{MAX_BRANCH_TITLE_LENGTH} characters
+            </p>
+          </form>
+        ) : null}
       </div>
 
       <BranchTree
@@ -231,7 +361,12 @@ function BranchTree({
             )}
             aria-hidden
           />
-          <span>{tree.branch.title || "Untitled Branch"}</span>
+          <span
+            className="truncate"
+            title={tree.branch.title?.trim() || UNTITLED_BRANCH}
+          >
+            {formatBranchTitle(tree.branch.title)}
+          </span>
         </span>
         {tree.children.length > 0 ? (
           <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -297,4 +432,13 @@ function branchContainsActive(
   return node.children.some((child) =>
     branchContainsActive(child, activeBranchId),
   );
+}
+
+function formatBranchTitle(title?: string | null): string {
+  const base = title?.trim() || UNTITLED_BRANCH;
+  if (base.length <= MAX_DISPLAY_TITLE_LENGTH) {
+    return base;
+  }
+
+  return `${base.slice(0, MAX_DISPLAY_TITLE_LENGTH - 3).trimEnd()}...`;
 }
