@@ -22,6 +22,23 @@ import type {
 } from "@/lib/conversation";
 import type { AppRequestInfo } from "@/worker";
 
+const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano"]);
+
+function buildResponseOptions(settings: {
+  model: string;
+  temperature: number;
+}): { model: string; temperature?: number } {
+  const request: { model: string; temperature?: number } = {
+    model: settings.model,
+  };
+
+  if (!TEMPERATURE_UNSUPPORTED_MODELS.has(settings.model)) {
+    request.temperature = settings.temperature;
+  }
+
+  return request;
+}
+
 export interface ConversationPayload {
   conversationId?: ConversationModelId;
 }
@@ -143,8 +160,7 @@ export async function sendMessage(
   });
 
   const stream = await openai.responses.stream({
-    model: settings.model,
-    temperature: settings.temperature,
+    ...buildResponseOptions(settings),
     input: openaiInput,
   });
 
@@ -242,19 +258,23 @@ export async function sendMessage(
     },
   ]);
 
-  const maybeRenamed = await maybeAutoSummarizeRootBranchTitle({
+  maybeAutoSummarizeRootBranchTitle({
     ctx,
     conversationId,
     snapshot: applied.snapshot,
     branchId,
+  }).catch((error) => {
+    ctx.trace("conversation:auto-title:deferred-error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
   });
-
-  const finalResult = maybeRenamed ?? applied;
 
   return {
     conversationId,
-    snapshot: finalResult.snapshot,
-    version: finalResult.version,
+    snapshot: applied.snapshot,
+    version: applied.version,
     appendedMessages: [userMessage, finalAssistantMessage],
   };
 }
