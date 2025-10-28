@@ -1,21 +1,43 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { sendMessage } from "@/app/pages/conversation/functions";
 
 interface ConversationComposerProps {
   branchId: string;
   conversationId: string;
+  autoFocus?: boolean;
 }
 
 export function ConversationComposer({
   branchId,
   conversationId,
+  autoFocus = false,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!autoFocus) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+      const length = textarea.value.length;
+      textarea.setSelectionRange(length, length);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus, branchId]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -51,8 +73,17 @@ export function ConversationComposer({
           New Message
         </span>
         <textarea
+          ref={textareaRef}
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              if (!isPending) {
+                event.currentTarget.form?.requestSubmit();
+              }
+            }
+          }}
           placeholder="Ask Connexus to explore a new direction..."
           rows={4}
           className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70"
@@ -68,7 +99,7 @@ export function ConversationComposer({
           </p>
         ) : (
           <span className="text-xs text-muted-foreground">
-            Shift+Enter for line break
+            Enter to send · Shift+Enter for line break
           </span>
         )}
 
