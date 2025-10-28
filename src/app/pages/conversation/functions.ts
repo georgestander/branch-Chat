@@ -9,6 +9,8 @@ import {
   ensureConversationSnapshot,
   buildResponseInputFromBranch,
   draftBranchFromSelection,
+  maybeAutoSummarizeRootBranchTitle,
+  sanitizeBranchTitle,
 } from "@/app/shared/conversation.server";
 import type {
   Branch,
@@ -48,6 +50,15 @@ export interface CreateBranchInput extends ConversationPayload {
 }
 
 export interface CreateBranchResponse extends LoadConversationResponse {
+  branch: Branch;
+}
+
+export interface RenameBranchInput extends ConversationPayload {
+  branchId: BranchId;
+  title: string;
+}
+
+export interface RenameBranchResponse extends LoadConversationResponse {
   branch: Branch;
 }
 
@@ -231,10 +242,19 @@ export async function sendMessage(
     },
   ]);
 
-  return {
+  const maybeRenamed = await maybeAutoSummarizeRootBranchTitle({
+    ctx,
     conversationId,
     snapshot: applied.snapshot,
-    version: applied.version,
+    branchId,
+  });
+
+  const finalResult = maybeRenamed ?? applied;
+
+  return {
+    conversationId,
+    snapshot: finalResult.snapshot,
+    version: finalResult.version,
     appendedMessages: [userMessage, finalAssistantMessage],
   };
 }
@@ -267,6 +287,62 @@ export async function createBranchFromSelection(
   const branch = applied.snapshot.branches[draft.id];
   if (!branch) {
     throw new Error("Branch creation failed to persist");
+  }
+
+  return {
+    conversationId,
+    snapshot: applied.snapshot,
+    version: applied.version,
+    branch,
+  };
+}
+
+export async function renameBranch(
+  input: RenameBranchInput,
+): Promise<RenameBranchResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  if (!input.branchId) {
+    throw new Error("Branch ID is required");
+  }
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const existingBranch = ensured.snapshot.branches[input.branchId];
+
+  if (!existingBranch) {
+    throw new Error(`Branch ${input.branchId} not found for conversation`);
+  }
+
+  const nextTitle = sanitizeBranchTitle(
+    input.title,
+    existingBranch.title || undefined,
+  );
+
+  if (nextTitle === existingBranch.title) {
+    return {
+      conversationId,
+      snapshot: ensured.snapshot,
+      version: ensured.version,
+      branch: existingBranch,
+    };
+  }
+
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "branch:update",
+      conversationId,
+      branch: {
+        ...existingBranch,
+        title: nextTitle,
+      },
+    },
+  ]);
+
+  const branch = applied.snapshot.branches[input.branchId];
+  if (!branch) {
+    throw new Error("Branch rename failed to persist");
   }
 
   return {
