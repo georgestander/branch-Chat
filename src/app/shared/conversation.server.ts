@@ -124,8 +124,9 @@ export function draftBranchFromSelection(options: {
   messageId: string;
   span?: BranchSpan | null;
   title?: string;
+  excerpt?: string | null;
 }): Branch {
-  const { snapshot, parentBranchId, messageId, span, title } = options;
+  const { snapshot, parentBranchId, messageId, span, title, excerpt } = options;
   const parentBranch = snapshot.branches[parentBranchId];
   if (!parentBranch) {
     throw new Error(`Parent branch ${parentBranchId} not found`);
@@ -141,6 +142,7 @@ export function draftBranchFromSelection(options: {
     createdFrom: {
       messageId,
       span: span ?? undefined,
+      excerpt: excerpt ?? undefined,
     },
     messageIds: [],
     createdAt: now,
@@ -224,10 +226,29 @@ export function buildResponseInputFromBranch(options: {
     });
   }
 
+  if (orderedMessages.length > 0) {
+    const lastMessage = orderedMessages[orderedMessages.length - 1];
+    if (
+      lastMessage.role === "user" &&
+      lastMessage.content.trim() === nextUserContent.trim()
+    ) {
+      orderedMessages.pop();
+    }
+  }
+
   for (const message of orderedMessages) {
     inputs.push({
       role: message.role,
       content: message.content,
+    });
+  }
+
+  const branch = snapshot.branches[branchId];
+  const excerpt = branch?.createdFrom?.excerpt?.trim();
+  if (excerpt) {
+    inputs.push({
+      role: "user",
+      content: `For reference, this question refers to the highlighted portion of the parent response: "${excerpt}"`,
     });
   }
 

@@ -71,7 +71,7 @@ export function BranchableMessage({
   }, []);
 
   const runCreateBranch = useCallback(
-    (span?: { start: number; end: number }) => {
+    (span?: { start: number; end: number }, excerpt?: string) => {
       setError(null);
       startTransition(async () => {
         try {
@@ -80,6 +80,7 @@ export function BranchableMessage({
             parentBranchId: branchId,
             messageId,
             span: span ? { start: span.start, end: span.end } : undefined,
+            excerpt: excerpt ?? null,
           };
           const response = await createBranchFromSelection(payload);
           clearSelection();
@@ -114,7 +115,12 @@ export function BranchableMessage({
 
         <button
           type="button"
-          onClick={() => runCreateBranch()}
+          onClick={() =>
+            runCreateBranch(
+              undefined,
+              content.length > 280 ? `${content.slice(0, 277)}…` : content,
+            )
+          }
           disabled={isPending}
           className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
         >
@@ -126,7 +132,12 @@ export function BranchableMessage({
         <SelectionPopover
           selection={selection}
           isPending={isPending}
-          onCreate={() => runCreateBranch({ start: selection.start, end: selection.end })}
+          onCreate={() =>
+            runCreateBranch(
+              { start: selection.start, end: selection.end },
+              selection.text,
+            )
+          }
           onCancel={clearSelection}
         />
       ) : null}

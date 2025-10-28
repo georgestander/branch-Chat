@@ -27,6 +27,7 @@ export interface BranchSpan {
 export interface BranchCreationSource {
   messageId: MessageId;
   span?: BranchSpan | null;
+  excerpt?: string | null;
 }
 
 export interface Branch {

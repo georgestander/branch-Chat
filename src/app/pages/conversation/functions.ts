@@ -44,6 +44,7 @@ export interface CreateBranchInput extends ConversationPayload {
   messageId: string;
   span?: BranchSpan | null;
   title?: string;
+  excerpt?: string | null;
 }
 
 export interface CreateBranchResponse extends LoadConversationResponse {
@@ -252,6 +253,7 @@ export async function createBranchFromSelection(
     messageId: input.messageId,
     span: input.span,
     title: input.title,
+    excerpt: input.excerpt,
   });
 
   const applied = await applyConversationUpdates(ctx, conversationId, [

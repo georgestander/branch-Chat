@@ -28,6 +28,7 @@ export function BranchColumn({
 }: BranchColumnProps) {
   const basisClass = isActive ? "basis-[70%]" : "basis-[30%]";
   const stateLabel = isActive ? "Active" : "Parent";
+  const referenceText = branch.createdFrom?.excerpt ?? null;
 
   return (
     <section
@@ -46,6 +47,13 @@ export function BranchColumn({
           {isActive ? "Editing" : "View Only"}
         </div>
       </header>
+
+      {isActive && referenceText ? (
+        <div className="border-b border-border/60 bg-primary/5 px-5 py-3 text-sm text-primary">
+          <span className="font-semibold">Reference:</span>{" "}
+          <span className="text-foreground/90">“{referenceText}”</span>
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-y-auto px-5 py-6">
         <ol className="flex flex-col gap-4">

@@ -134,6 +134,11 @@ function validateBranch(value: unknown): Branch {
     typeof messageId === "string" && messageId.length > 0,
     "branch.createdFrom.messageId invalid",
   );
+  const { excerpt } = createdFrom as RecordLike;
+  assert(
+    excerpt === undefined || excerpt === null || typeof excerpt === "string",
+    "branch.createdFrom.excerpt invalid",
+  );
   const validatedSpan = validateBranchSpan(span);
 
   assert(Array.isArray(messageIds), "branch.messageIds invalid");
@@ -154,7 +159,11 @@ function validateBranch(value: unknown): Branch {
     id: id as BranchId,
     parentId: parentId ?? undefined,
     title,
-    createdFrom: { messageId: messageId as MessageId, span: validatedSpan },
+    createdFrom: {
+      messageId: messageId as MessageId,
+      span: validatedSpan,
+      excerpt: excerpt ?? undefined,
+    },
     messageIds: validatedMessageIds,
     createdAt,
     archivedAt: archivedAt ?? undefined,
