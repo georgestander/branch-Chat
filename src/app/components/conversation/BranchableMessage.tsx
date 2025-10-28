@@ -84,9 +84,12 @@ export function BranchableMessage({
           };
           const response = await createBranchFromSelection(payload);
           clearSelection();
-          navigate(
-            `/?branchId=${encodeURIComponent(response.branch.id)}&focus=child`,
-          );
+          const params = new URLSearchParams({
+            conversationId,
+            branchId: response.branch.id,
+            focus: "child",
+          });
+          navigate(`/?${params.toString()}`);
         } catch (cause) {
           console.error("createBranchFromSelection failed", cause);
           setError("Could not create branch. Please try again.");

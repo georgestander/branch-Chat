@@ -22,6 +22,23 @@ import type {
 import type { AppRequestInfo } from "@/worker";
 import { touchConversationDirectoryEntry } from "@/app/shared/conversationDirectory.server";
 
+const TEMPERATURE_UNSUPPORTED_MODELS = new Set([
+  "gpt-5-nano",
+]);
+
+function buildResponseOptions(settings: {
+  model: string;
+  temperature: number;
+}) {
+  const request: Record<string, unknown> = {
+    model: settings.model,
+  };
+  if (!TEMPERATURE_UNSUPPORTED_MODELS.has(settings.model)) {
+    request.temperature = settings.temperature;
+  }
+  return request;
+}
+
 export interface ConversationPayload {
   conversationId?: ConversationModelId;
 }
@@ -168,8 +185,7 @@ export async function sendMessage(
   });
 
   const stream = await openai.responses.stream({
-    model: settings.model,
-    temperature: settings.temperature,
+    ...buildResponseOptions(settings),
     input: openaiInput,
   });
 
@@ -267,6 +283,17 @@ export async function sendMessage(
     },
   ]);
 
+  const finalSnapshot = applied.snapshot;
+  const branchCount = Object.keys(finalSnapshot.branches).length;
+  const rootBranch =
+    finalSnapshot.branches[finalSnapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount,
+    lastActiveAt: new Date().toISOString(),
+  });
+
   return {
     conversationId,
     snapshot: applied.snapshot,
@@ -304,6 +331,16 @@ export async function createBranchFromSelection(
   if (!branch) {
     throw new Error("Branch creation failed to persist");
   }
+
+  const branchCount = Object.keys(applied.snapshot.branches).length;
+  const rootBranch =
+    applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount,
+    lastActiveAt: new Date().toISOString(),
+  });
 
   return {
     conversationId,
