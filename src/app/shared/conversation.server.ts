@@ -204,6 +204,7 @@ export async function applyConversationUpdates(
   ctx: AppContext,
   conversationId: ConversationModelId,
   updates: ConversationGraphUpdate[],
+  options: { touchDirectory?: boolean } = {},
 ): Promise<ConversationLoadResult> {
   const client = getConversationStoreClient(ctx, conversationId);
   const applied = await client.apply(updates);
@@ -223,14 +224,17 @@ export async function applyConversationUpdates(
     snapshot: applied.snapshot,
   });
 
-  const branchCount = Object.keys(applied.snapshot.branches).length;
-  const rootBranch =
-    applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
-  await touchConversationDirectoryEntry(ctx, {
-    id: conversationId,
-    branchCount,
-    title: rootBranch?.title ?? conversationId,
-  });
+  const shouldTouchDirectory = options.touchDirectory ?? true;
+  if (shouldTouchDirectory) {
+    const branchCount = Object.keys(applied.snapshot.branches).length;
+    const rootBranch =
+      applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
+    await touchConversationDirectoryEntry(ctx, {
+      id: conversationId,
+      branchCount,
+      title: rootBranch?.title ?? conversationId,
+    });
+  }
 
   return {
     conversationId,
