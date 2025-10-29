@@ -109,26 +109,27 @@ export function BranchColumn({
         className,
       )}
     >
-      <header className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex flex-col">
-          <h2 className="text-lg font-semibold text-foreground">
-            {branch.title || "Untitled Branch"}
-          </h2>
-          <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-            {stateLabel} Branch
+      <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3 text-sm">
+        <h2 className="text-base font-semibold text-foreground">
+          {branch.title || "Untitled Branch"}
+        </h2>
+        <span className="hidden h-4 w-px bg-border/70 sm:inline" aria-hidden="true" />
+        <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+          {stateLabel} Branch
+        </span>
+        {referenceText ? (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Reference:</span>
+            <span className="text-foreground/85">“{referenceText}”</span>
           </span>
-        </div>
-        <div className={`rounded-full px-3 py-1 text-xs ${isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
+        ) : null}
+        <span className="grow" aria-hidden="true" />
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
+        >
           {isActive ? "Editing" : "View Only"}
-        </div>
+        </span>
       </header>
-
-      {isActive && referenceText ? (
-        <div className="border-b border-border/60 bg-primary/5 px-5 py-3 text-sm text-primary">
-          <span className="font-semibold">Reference:</span>{" "}
-          <span className="text-foreground/90">“{referenceText}”</span>
-        </div>
-      ) : null}
 
       <div
         ref={scrollContainerRef}
@@ -149,10 +150,10 @@ export function BranchColumn({
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
 
-      <div className="relative border-t border-border/60 bg-background px-5 pb-6 pt-4">
+      <div className="relative  bg-background px-1 pb-1 pt-1">
         <div
           aria-hidden
-          className="pointer-events-none absolute -top-10 left-0 right-0 h-10 bg-gradient-to-t from-background via-background/95 to-transparent"
+          className="pointer-events-none absolute"
         />
         <div className="relative z-10">
           {isActive ? (
@@ -163,7 +164,7 @@ export function BranchColumn({
               className="shadow-lg shadow-black/5"
             />
           ) : (
-            <div className="rounded-lg border border-dashed border-border bg-card/80 px-4 py-3 text-sm text-muted-foreground">
+            <div className="rounded-lg  px-1 py-1 text-sm text-muted-foreground">
               Switch to this branch to continue the conversation.
             </div>
           )}
