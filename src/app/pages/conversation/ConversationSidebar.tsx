@@ -47,9 +47,19 @@ export function ConversationSidebar({
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreating, startCreateTransition] = useTransition();
 
+  const sortedConversations = useMemo(
+    () =>
+      [...conversations].sort(
+        (a, b) =>
+          b.lastActiveAt.localeCompare(a.lastActiveAt) ||
+          a.id.localeCompare(b.id),
+      ),
+    [conversations],
+  );
+
   const activeEntry = useMemo(() => {
     return (
-      conversations.find((entry) => entry.id === conversationId) ?? {
+      sortedConversations.find((entry) => entry.id === conversationId) ?? {
         id: conversationId,
         title: conversation.id,
         createdAt: conversation.createdAt,
@@ -57,11 +67,12 @@ export function ConversationSidebar({
         branchCount: countBranches(tree),
       }
     );
-  }, [conversation, conversationId, conversations, tree]);
+  }, [conversation, conversationId, sortedConversations, tree]);
 
   const otherConversations = useMemo(
-    () => conversations.filter((entry) => entry.id !== conversationId),
-    [conversations, conversationId],
+    () =>
+      sortedConversations.filter((entry) => entry.id !== conversationId),
+    [conversationId, sortedConversations],
   );
 
   const startNewConversation = () => {
@@ -310,11 +321,12 @@ function ConversationSummaryCard({
   return (
     <a
       href={href}
-      className="flex flex-col gap-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition hover:border-primary hover:text-primary"
+      className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground shadow-sm transition hover:border-primary hover:text-primary"
     >
-      <span className="font-medium leading-tight">{title}</span>
-      <span className="text-xs text-muted-foreground">{entry.id}</span>
-      <span className="text-xs font-medium text-muted-foreground">
+      <span className="truncate font-medium" title={title}>
+        {title}
+      </span>
+      <span className="whitespace-nowrap text-xs font-medium text-muted-foreground">
         {entry.branchCount} branch{entry.branchCount === 1 ? "" : "es"}
       </span>
     </a>
