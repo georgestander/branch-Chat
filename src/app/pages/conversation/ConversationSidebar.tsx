@@ -498,7 +498,15 @@ function ConversationCard({
   );
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm">
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-md border px-3 py-2 text-sm shadow-sm transition",
+        isActive
+          ? "border-primary bg-primary/10 text-primary shadow-sm"
+          : "border-border bg-card text-foreground",
+      )}
+      data-active={isActive}
+    >
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
@@ -506,8 +514,12 @@ function ConversationCard({
             onToggle();
           }}
           className={cn(
-            "flex w-full items-center justify-between gap-3 text-left",
-            expanded ? "text-foreground" : "text-foreground/90",
+            "flex w-full items-center justify-between gap-3 text-left transition",
+            isActive
+              ? "text-primary"
+              : expanded
+                ? "text-foreground"
+                : "text-foreground/90",
           )}
           aria-expanded={expanded}
         >
@@ -526,17 +538,15 @@ function ConversationCard({
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          {isActive ? (
-            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary-foreground">
-              Active
-            </span>
-          ) : null}
           <button
             type="button"
             onClick={() => {
               void toggleEditing();
             }}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className={cn(
+              "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              isActive && "text-primary/80 hover:text-primary",
+            )}
             aria-label={isEditing ? "Cancel rename" : "Rename chat"}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
