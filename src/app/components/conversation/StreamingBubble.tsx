@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 
 interface StreamingBubbleProps {
   streamId: string;
@@ -16,6 +17,62 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
     "connecting",
   );
   const sourceRef = useRef<EventSource | null>(null);
+  const [html, setHtml] = useState("");
+
+  function escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function renderMarkdownClient(markdown: string): string {
+    // Basic, safe client-side markdown for streaming: bold, italic, code, links, lists, paragraphs
+    // 1) Escape HTML first
+    let text = escapeHtml(markdown);
+    // 2) Inline code
+    text = text.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // 3) Bold (**text**)
+    text = text.replace(/\*\*([^\*]+)\*\*/g, "<strong>$1</strong>");
+    // 4) Italic (*text*) — avoid conflict with bold already handled
+    text = text.replace(/(^|\W)\*([^\*]+)\*(?=\W|$)/g, "$1<em>$2</em>");
+    // 5) Links [text](url)
+    text = text.replace(/\[([^\]]+)\]\((https?:[^\)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1<\/a>');
+
+    // 6) Lists: convert consecutive lines starting with - or * into <ul><li>
+    const lines = text.split(/\n/);
+    const out: string[] = [];
+    let inList = false;
+    for (const line of lines) {
+      const match = /^\s*[-\*]\s+(.+)$/.exec(line);
+      if (match) {
+        if (!inList) {
+          inList = true;
+          out.push("<ul>");
+        }
+        out.push(`<li>${match[1]}</li>`);
+      } else {
+        if (inList) {
+          inList = false;
+          out.push("</ul>");
+        }
+        // Paragraph handling: blank line => spacer, otherwise keep line
+        if (line.trim() === "") {
+          out.push("<br/>");
+        } else {
+          out.push(line);
+        }
+      }
+    }
+    if (inList) out.push("</ul>");
+
+    // 7) Wrap double-newlines into paragraphs lightly by splitting on <br/><br/>
+    const joined = out.join("\n");
+    const paragraphs = joined.split(/(?:<br\/>\s*){2,}/i).map((p) => `<p>${p}</p>`);
+    return paragraphs.join("\n");
+  }
 
   useEffect(() => {
     if (!streamId) return;
@@ -38,6 +95,7 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
         if (typeof data?.content === "string") {
           setContent(data.content);
           setStatus("streaming");
+          setHtml(renderMarkdownClient(data.content));
         }
       } catch {
         // ignore
@@ -48,6 +106,7 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
         const data = JSON.parse(event.data);
         if (typeof data?.content === "string") {
           setContent(data.content);
+          setHtml(renderMarkdownClient(data.content));
         }
       } catch {}
       setStatus("complete");
@@ -101,7 +160,7 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
         </span>
         <span>{statusLabel}</span>
       </div>
-      <div className="whitespace-pre-wrap text-foreground">{content}</div>
+      <MarkdownContent className="prose prose-sm max-w-none text-foreground" html={html || escapeHtml(content)} />
     </div>
   );
 }

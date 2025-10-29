@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { BranchColumn } from "./BranchColumn";
+import { ToastProvider } from "@/app/components/ui/Toast";
 
 interface ConversationLayoutProps {
   conversation: Conversation;
@@ -189,6 +190,7 @@ export function ConversationLayout({
   );
 
   return (
+    <ToastProvider>
     <div className="flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
       <div
         className={cn(
@@ -338,5 +340,6 @@ export function ConversationLayout({
         </div>
       </div>
     </div>
+    </ToastProvider>
   );
 }

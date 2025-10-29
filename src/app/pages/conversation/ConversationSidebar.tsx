@@ -39,6 +39,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { navigate } from "rwsdk/client";
+import { useToast } from "@/app/components/ui/Toast";
 import {
   emitDirectoryUpdate,
   useDirectoryUpdate,
@@ -87,6 +88,7 @@ export function ConversationSidebar({
   conversations,
   className,
 }: ConversationSidebarProps) {
+  const { notify } = useToast();
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreating, startCreateTransition] = useTransition();
 
@@ -348,6 +350,14 @@ export function ConversationSidebar({
           model: nextModel,
           reasoningEffort: nextEffort,
         });
+        if (!nextModel.includes("chat")) {
+          const effortLabel = nextEffort ?? "low";
+          notify({
+            variant: "warning",
+            title: "Deep reasoning is slower",
+            description: `Responses may take longer (${effortLabel} effort). Switch back to Fast chat for lower latency.`,
+          });
+        }
       } catch (err) {
         console.error("[Sidebar] updateConversationSettings failed", err);
         setSettingsError("Unable to save settings. Try again.");
@@ -355,7 +365,7 @@ export function ConversationSidebar({
         setSavingSettings(false);
       }
     },
-    [conversationId],
+    [conversationId, notify],
   );
 
   const runDeleteConversation = useCallback(

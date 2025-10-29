@@ -530,6 +530,7 @@ export async function sendMessage(
     model: settings.model,
     temperature: settings.temperature,
     messageCount: openaiInput.length,
+    reasoningEffort: settings.reasoningEffort ?? null,
   });
 
   const enableWebSearchTool = selectedToolSet.has("web-search");
