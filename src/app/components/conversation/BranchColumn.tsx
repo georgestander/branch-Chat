@@ -19,8 +19,14 @@ import { cn } from "@/lib/utils";
 import { BranchableMessage } from "./BranchableMessage";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
+import {
+  useOptimisticMessageEvents,
+  type OptimisticMessageDetail,
+  type ClearOptimisticMessageDetail,
+} from "@/app/components/conversation/messageEvents";
 
 const SCROLL_EPSILON_PX = 120;
+const OPTIMISTIC_MATCH_WINDOW_MS = 60_000;
 
 interface BranchColumnProps {
   branch: Branch;
@@ -58,6 +64,36 @@ function AssistantPendingBubble() {
   );
 }
 
+function createOptimisticRenderedMessage(
+  detail: OptimisticMessageDetail,
+): RenderedMessage {
+  return {
+    id: detail.messageId,
+    branchId: detail.branchId,
+    role: "user",
+    content: detail.content,
+    createdAt: detail.createdAt,
+    tokenUsage: null,
+    attachments: [],
+    toolInvocations: null,
+    hasBranchHighlight: false,
+    renderedHtml: formatOptimisticHtml(detail.content),
+  };
+}
+
+function formatOptimisticHtml(content: string): string {
+  return escapeHtml(content).replace(/\n/g, "<br />");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function BranchColumn({
   branch,
   messages,
@@ -71,10 +107,79 @@ export function BranchColumn({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
+  const [optimisticMessages, setOptimisticMessages] = useState<RenderedMessage[]>([]);
+
+  const handleOptimisticAppend = useCallback(
+    (detail: OptimisticMessageDetail) => {
+      setOptimisticMessages((current) => [
+        ...current,
+        createOptimisticRenderedMessage(detail),
+      ]);
+    },
+    [],
+  );
+
+  const handleOptimisticClear = useCallback((detail: ClearOptimisticMessageDetail) => {
+    setOptimisticMessages((current) => {
+      const next = current.filter((message) => message.id !== detail.messageId);
+      return next.length === current.length ? current : next;
+    });
+  }, []);
+
+  useOptimisticMessageEvents({
+    conversationId,
+    branchId: branch.id,
+    onAppend: handleOptimisticAppend,
+    onClear: handleOptimisticClear,
+  });
+
+  useEffect(() => {
+    setOptimisticMessages((current) => {
+      if (current.length === 0) {
+        return current;
+      }
+
+      const next = current.filter((optimistic) => {
+        const optimisticCreatedAt = Date.parse(optimistic.createdAt);
+
+        const hasMatch = messages.some((message) => {
+          if (message.role !== "user") {
+            return false;
+          }
+
+          if (message.content.trim() !== optimistic.content.trim()) {
+            return false;
+          }
+
+          const messageCreatedAt = Date.parse(message.createdAt);
+          if (
+            Number.isNaN(optimisticCreatedAt) ||
+            Number.isNaN(messageCreatedAt)
+          ) {
+            return false;
+          }
+
+          return (
+            Math.abs(messageCreatedAt - optimisticCreatedAt) <=
+            OPTIMISTIC_MATCH_WINDOW_MS
+          );
+        });
+
+        return !hasMatch;
+      });
+
+      return next.length === current.length ? current : next;
+    });
+  }, [messages]);
+
+  const combinedMessages = useMemo(
+    () => [...messages, ...optimisticMessages],
+    [messages, optimisticMessages],
+  );
 
   const visibleMessages = useMemo(
-    () => messages.filter((message) => message.role !== "system"),
-    [messages],
+    () => combinedMessages.filter((message) => message.role !== "system"),
+    [combinedMessages],
   );
 
   const lastMessage =
