@@ -8,7 +8,10 @@ import type {
   ConversationSettings,
   Message,
   MessageId,
+  MessageAttachment,
   TokenUsage,
+  ToolInvocation,
+  ToolInvocationStatus,
 } from "./model";
 
 type RecordLike = Record<string, unknown>;
@@ -51,6 +54,163 @@ function validateTokenUsage(value: unknown): TokenUsage | undefined | null {
   );
   assert(typeof cost === "number", "tokenUsage.cost must be a number");
   return { prompt, completion, cost };
+}
+
+function validateMessageAttachments(
+  value: unknown,
+): MessageAttachment[] | undefined | null {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  assert(Array.isArray(value), "message.attachments must be an array");
+  return value.map((item) => {
+    assert(isObject(item), "attachment must be an object");
+    const record = item as RecordLike;
+    const { id, kind, name, contentType, size, storageKey, openAIFileId, description, uploadedAt } =
+      record;
+    assert(typeof id === "string" && id.length > 0, "attachment.id invalid");
+    assert(kind === "file", "attachment.kind must be \"file\"");
+    assert(typeof name === "string" && name.length > 0, "attachment.name invalid");
+    assert(
+      typeof contentType === "string" && contentType.length > 0,
+      "attachment.contentType invalid",
+    );
+    assert(
+      Number.isInteger(size) && (size as number) >= 0,
+      "attachment.size invalid",
+    );
+    assert(
+      typeof storageKey === "string" && storageKey.length > 0,
+      "attachment.storageKey invalid",
+    );
+    assert(
+      openAIFileId === undefined ||
+        openAIFileId === null ||
+        typeof openAIFileId === "string",
+      "attachment.openAIFileId invalid",
+    );
+    assert(
+      description === undefined ||
+        description === null ||
+        typeof description === "string",
+      "attachment.description invalid",
+    );
+    assert(isIsoDate(uploadedAt), "attachment.uploadedAt invalid");
+
+    return {
+      id: id as string,
+      kind: "file" as const,
+      name: name as string,
+      contentType: contentType as string,
+      size: size as number,
+      storageKey: storageKey as string,
+      openAIFileId: openAIFileId ?? undefined,
+      description: description ?? undefined,
+      uploadedAt: uploadedAt as string,
+    };
+  });
+}
+
+function validateToolInvocationStatus(
+  value: unknown,
+): ToolInvocationStatus {
+  assert(typeof value === "string", "toolInvocation.status must be a string");
+  assert(
+    value === "pending" ||
+      value === "running" ||
+      value === "succeeded" ||
+      value === "failed",
+    "toolInvocation.status invalid",
+  );
+  return value as ToolInvocationStatus;
+}
+
+function validateToolInvocations(
+  value: unknown,
+): ToolInvocation[] | undefined | null {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  assert(Array.isArray(value), "message.toolInvocations must be an array");
+  return value.map((item) => {
+    assert(isObject(item), "toolInvocation must be an object");
+    const record = item as RecordLike;
+    const {
+      id,
+      toolType,
+      toolName,
+      callId,
+      input,
+      output,
+      status,
+      startedAt,
+      completedAt,
+      error,
+    } = record;
+    assert(typeof id === "string" && id.length > 0, "toolInvocation.id invalid");
+    assert(
+      typeof toolType === "string" && toolType.length > 0,
+      "toolInvocation.toolType invalid",
+    );
+    assert(
+      toolName === undefined ||
+        toolName === null ||
+        typeof toolName === "string",
+      "toolInvocation.toolName invalid",
+    );
+    assert(
+      callId === undefined || callId === null || typeof callId === "string",
+      "toolInvocation.callId invalid",
+    );
+    assert(isIsoDate(startedAt), "toolInvocation.startedAt invalid");
+    assert(
+      completedAt === undefined ||
+        completedAt === null ||
+        isIsoDate(completedAt),
+      "toolInvocation.completedAt invalid",
+    );
+    let normalizedError: ToolInvocation["error"] = undefined;
+    if (error !== undefined && error !== null) {
+      assert(isObject(error), "toolInvocation.error must be an object");
+      const errorRecord = error as RecordLike;
+      const { message, code } = errorRecord;
+      assert(
+        typeof message === "string" && message.length > 0,
+        "toolInvocation.error.message invalid",
+      );
+      assert(
+        code === undefined || code === null || typeof code === "string",
+        "toolInvocation.error.code invalid",
+      );
+      normalizedError = {
+        message: message as string,
+        code: code ?? undefined,
+      };
+    }
+
+    return {
+      id: id as string,
+      toolType: toolType as string,
+      toolName: toolName ?? undefined,
+      callId: callId ?? undefined,
+      input,
+      output,
+      status: validateToolInvocationStatus(status),
+      startedAt: startedAt as string,
+      completedAt: completedAt ?? undefined,
+      error: normalizedError,
+    };
+  });
 }
 
 function validateBranchSpan(value: unknown): BranchSpan | undefined {
@@ -172,7 +332,16 @@ function validateBranch(value: unknown): Branch {
 
 function validateMessage(value: unknown): Message {
   assert(isObject(value), "message must be an object");
-  const { id, branchId, role, content, createdAt, tokenUsage } = value;
+  const {
+    id,
+    branchId,
+    role,
+    content,
+    createdAt,
+    tokenUsage,
+    attachments,
+    toolInvocations,
+  } = value;
   assert(typeof id === "string" && id.length > 0, "message.id invalid");
   assert(
     typeof branchId === "string" && branchId.length > 0,
@@ -192,6 +361,8 @@ function validateMessage(value: unknown): Message {
     content,
     createdAt,
     tokenUsage: validateTokenUsage(tokenUsage),
+    attachments: validateMessageAttachments(attachments),
+    toolInvocations: validateToolInvocations(toolInvocations),
   };
 }
 

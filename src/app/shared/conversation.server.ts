@@ -531,6 +531,8 @@ async function initializeConversation(
       "Connexus is ready. Start the conversation or branch from existing messages.",
     createdAt: now,
     tokenUsage: null,
+    attachments: null,
+    toolInvocations: null,
   };
 
   const snapshot = createConversationSnapshot({

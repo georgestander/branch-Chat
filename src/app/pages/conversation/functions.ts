@@ -14,6 +14,7 @@ import {
   sanitizeBranchTitle,
 } from "@/app/shared/conversation.server";
 import { touchConversationDirectoryEntry } from "@/app/shared/conversationDirectory.server";
+import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
 import type {
   Branch,
   BranchId,
@@ -21,7 +22,14 @@ import type {
   ConversationGraphSnapshot,
   ConversationModelId,
   Message,
+  ToolInvocation,
+  ToolInvocationStatus,
 } from "@/lib/conversation";
+import {
+  WEB_SEARCH_TOOL_NAME,
+  type WebSearchInvocationOutput,
+  type WebSearchResultSummary,
+} from "@/lib/conversation/tools";
 import type { AppRequestInfo } from "@/worker";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano"]);
@@ -85,6 +93,117 @@ export interface RenameBranchInput extends ConversationPayload {
 
 export interface RenameBranchResponse extends LoadConversationResponse {
   branch: Branch;
+}
+
+function normalizeWebSearchResults(item: any): WebSearchResultSummary[] {
+  const rawResults = extractResultArray(item);
+
+  if (!rawResults || rawResults.length === 0) {
+    return [];
+  }
+
+  return rawResults.map((entry: any, index: number) => {
+    const url =
+      typeof entry?.url === "string"
+        ? entry.url
+        : typeof entry?.link === "string"
+          ? entry.link
+          : typeof entry?.sourceUrl === "string"
+            ? entry.sourceUrl
+            : typeof entry?.href === "string"
+              ? entry.href
+              : "";
+    const title =
+      typeof entry?.title === "string"
+        ? entry.title
+        : typeof entry?.name === "string"
+          ? entry.name
+          : url || `Result ${index + 1}`;
+    const snippet =
+      typeof entry?.snippet === "string"
+        ? entry.snippet
+        : typeof entry?.content === "string"
+          ? entry.content
+          : typeof entry?.description === "string"
+            ? entry.description
+            : typeof entry?.summary === "string"
+              ? entry.summary
+              : "";
+
+    return {
+      id:
+        typeof entry?.id === "string"
+          ? entry.id
+          : url
+            ? `${item.id}:${url}`
+            : `${item.id}:${index}`,
+      title,
+      url,
+      snippet,
+      siteName:
+        (typeof entry?.site_name === "string" && entry.site_name) ||
+        (typeof entry?.siteName === "string" && entry.siteName) ||
+        (typeof entry?.source === "string" && entry.source) ||
+        (typeof entry?.publisher === "string" && entry.publisher) ||
+        null,
+      publishedAt:
+        (typeof entry?.published_at === "string" && entry.published_at) ||
+        (typeof entry?.published_time === "string" && entry.published_time) ||
+        (typeof entry?.date === "string" && entry.date) ||
+        null,
+    } satisfies WebSearchResultSummary;
+  });
+}
+
+function extractResultArray(root: unknown, seen = new Set<unknown>()): any[] | null {
+  if (root == null) {
+    return null;
+  }
+
+  if (Array.isArray(root)) {
+    return root;
+  }
+
+  if (typeof root === "string") {
+    try {
+      const parsed = JSON.parse(root);
+      return extractResultArray(parsed, seen);
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof root !== "object") {
+    return null;
+  }
+
+  if (seen.has(root)) {
+    return null;
+  }
+  seen.add(root);
+
+  const record = root as Record<string, unknown>;
+  if (Array.isArray(record.results)) {
+    return record.results;
+  }
+  if (Array.isArray((record as any).web_results)) {
+    return (record as any).web_results;
+  }
+  if (Array.isArray((record as any).search_results)) {
+    return (record as any).search_results;
+  }
+  if (Array.isArray((record as any).items)) {
+    return (record as any).items;
+  }
+
+  for (const value of Object.values(record)) {
+    const extracted = extractResultArray(value, seen);
+    if (extracted && extracted.length > 0) {
+      return extracted;
+    }
+  }
+
+  return null;
 }
 
 export async function loadConversation(
@@ -154,6 +273,8 @@ export async function sendMessage(
     content: input.content.trim(),
     createdAt: now,
     tokenUsage: null,
+    attachments: [],
+    toolInvocations: null,
   };
 
   const assistantMessage: Message = {
@@ -163,6 +284,25 @@ export async function sendMessage(
     content: "",
     createdAt: new Date().toISOString(),
     tokenUsage: null,
+    attachments: null,
+    toolInvocations: [],
+  };
+  let assistantState: Message = assistantMessage;
+
+  const toolInvocationMap = new Map<string, ToolInvocation>();
+  const persistAssistantState = async () => {
+    await applyConversationUpdates(
+      ctx,
+      conversationId,
+      [
+        {
+          type: "message:update",
+          conversationId,
+          message: assistantState,
+        },
+      ],
+      { touchDirectory: false },
+    );
   };
 
   const appendedSnapshot = await applyConversationUpdates(ctx, conversationId, [
@@ -198,6 +338,8 @@ export async function sendMessage(
   const stream = await openai.responses.stream({
     ...buildResponseOptions(settings),
     input: openaiInput,
+    tools: getDefaultResponseTools(),
+    include: ["web_search_call.results"],
   });
 
   let buffered = "";
@@ -207,21 +349,82 @@ export async function sendMessage(
   const MIN_PUBLISH_MS = 150;
 
   const publishPartialUpdate = async (content: string) => {
-    await applyConversationUpdates(
-      ctx,
-      conversationId,
-      [
-        {
-          type: "message:update",
-          conversationId,
-          message: {
-            ...assistantMessage,
-            content,
-          },
-        },
-      ],
-      { touchDirectory: false },
-    );
+    assistantState = {
+      ...assistantState,
+      content,
+    };
+    await persistAssistantState();
+  };
+
+  const harmonizeStatus = (status: string): ToolInvocationStatus => {
+    switch (status) {
+      case "completed":
+        return "succeeded";
+      case "failed":
+        return "failed";
+      case "searching":
+      case "in_progress":
+        return "running";
+      default:
+        return "pending";
+    }
+  };
+
+  const updateToolInvocation = async (
+    callId: string,
+    updates: {
+      status?: ToolInvocationStatus;
+      errorMessage?: string;
+      output?: unknown;
+    } = {},
+  ) => {
+    const now = new Date().toISOString();
+    const existing = toolInvocationMap.get(callId);
+    const nextStatus =
+      updates.status ?? existing?.status ?? ("pending" as ToolInvocationStatus);
+
+    const next: ToolInvocation = existing
+      ? { ...existing }
+      : {
+          id: callId,
+          toolType: WEB_SEARCH_TOOL_NAME,
+          toolName: WEB_SEARCH_TOOL_NAME,
+          callId,
+          input: undefined,
+          output: undefined,
+          status: nextStatus,
+          startedAt: now,
+          completedAt:
+            nextStatus === "succeeded" || nextStatus === "failed"
+              ? now
+              : undefined,
+          error: undefined,
+        };
+
+    next.status = nextStatus;
+    if (updates.status) {
+      next.completedAt =
+        updates.status === "succeeded" || updates.status === "failed"
+          ? now
+          : existing?.completedAt;
+    }
+
+    if (updates.errorMessage) {
+      next.error = { message: updates.errorMessage };
+    } else if (updates.status && updates.status !== "failed") {
+      next.error = undefined;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "output")) {
+      next.output = updates.output;
+    }
+
+    toolInvocationMap.set(callId, next);
+    assistantState = {
+      ...assistantState,
+      toolInvocations: Array.from(toolInvocationMap.values()),
+    };
+    await persistAssistantState();
   };
 
   try {
@@ -241,6 +444,21 @@ export async function sendMessage(
           lastPublishTime = nowTs;
           await publishPartialUpdate(buffered);
         }
+        continue;
+      }
+
+      if (event.type === "response.web_search_call.in_progress") {
+        await updateToolInvocation(event.item_id, { status: "running" });
+        continue;
+      }
+
+      if (event.type === "response.web_search_call.searching") {
+        await updateToolInvocation(event.item_id, { status: "running" });
+        continue;
+      }
+
+      if (event.type === "response.web_search_call.completed") {
+        await updateToolInvocation(event.item_id, { status: "succeeded" });
       }
     }
   } catch (error) {
@@ -254,9 +472,10 @@ export async function sendMessage(
   let finalContent = buffered;
   let promptTokens = 0;
   let completionTokens = 0;
+  let finalResponse: any = null;
 
   try {
-    const finalResponse = await stream.finalResponse();
+    finalResponse = await stream.finalResponse();
     finalContent =
       finalResponse.output_text?.trim() ??
       finalResponse.output
@@ -288,15 +507,46 @@ export async function sendMessage(
     }
   }
 
-  const finalAssistantMessage: Message = {
-    ...assistantMessage,
+  if (finalResponse && Array.isArray(finalResponse.output)) {
+    for (const item of finalResponse.output) {
+      if (item.type === "web_search_call") {
+        const status = harmonizeStatus(item.status ?? "completed");
+        const normalized = normalizeWebSearchResults(item);
+        ctx.trace("openai:web-search:results", {
+          conversationId,
+          branchId,
+          toolCallId: item.id,
+          status,
+          resultCount: normalized.length,
+          itemKeys: Object.keys(item ?? {}),
+        });
+        await updateToolInvocation(item.id, {
+          status,
+          output: {
+            type: "web_search",
+            results: normalized,
+          } as WebSearchInvocationOutput,
+          errorMessage:
+            status === "failed" && typeof item?.error === "string"
+              ? item.error
+              : undefined,
+        });
+      }
+    }
+  }
+
+  assistantState = {
+    ...assistantState,
     content: finalContent,
     tokenUsage: {
       prompt: promptTokens,
       completion: completionTokens,
       cost: 0,
     },
+    toolInvocations: Array.from(toolInvocationMap.values()),
   };
+
+  const finalAssistantMessage = assistantState;
 
   const applied = await applyConversationUpdates(ctx, conversationId, [
     {

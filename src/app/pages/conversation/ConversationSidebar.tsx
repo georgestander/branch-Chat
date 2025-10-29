@@ -25,6 +25,8 @@ import type {
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
 import {
+  ChevronDown,
+  ChevronRight,
   MoreHorizontal,
   Plus,
 } from "lucide-react";
@@ -435,21 +437,24 @@ function ConversationCard({
             onToggle();
           }}
           className={cn(
-            "min-w-0 flex-1 text-left",
+            "flex w-full items-center justify-between gap-3 text-left",
             expanded ? "text-foreground" : "text-foreground/90",
           )}
           aria-expanded={expanded}
         >
-          <p className="font-medium" title={entry.title}>
-            {entry.title.trim() || entry.id}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            {expanded ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            )}
+            <span className="truncate font-medium" title={entry.title}>
+              {entry.title.trim() || entry.id}
+            </span>
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
             {branchCount} branch{branchCount === 1 ? "" : "es"}
-            {modelLabel ? ` · ${modelLabel}` : ""}
-            {conversationIdentifier && modelLabel
-              ? ` · ${conversationIdentifier}`
-              : ""}
-          </p>
+          </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
           {isActive ? (

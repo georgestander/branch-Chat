@@ -271,7 +271,7 @@
   }
 
   .markdown-body a {
-    @apply font-medium text-primary underline-offset-4 transition hover:underline;
+    @apply font-medium text-blue-600 underline-offset-4 transition hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2;
   }
 
   .markdown-body table {

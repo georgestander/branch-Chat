@@ -24,6 +24,12 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
         return;
       }
 
+      const anchors = root.querySelectorAll<HTMLAnchorElement>("a[href]");
+      anchors.forEach((anchor) => {
+        anchor.setAttribute("target", "_blank");
+        anchor.setAttribute("rel", "noopener noreferrer");
+      });
+
       const handleCopy = async (event: MouseEvent) => {
         const target = event.target;
         if (!(target instanceof HTMLButtonElement)) {
@@ -57,9 +63,28 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
         }, 2000);
       };
 
+      const handleLinkClick = (event: MouseEvent) => {
+        const target = event.target as HTMLElement | null;
+        const anchor = target?.closest<HTMLAnchorElement>("a[href]");
+        if (!anchor) {
+          return;
+        }
+        const href = anchor.getAttribute("href");
+        if (!href || href.startsWith("#")) {
+          return;
+        }
+        if (anchor.target === "_blank") {
+          return;
+        }
+        event.preventDefault();
+        window.open(anchor.href, "_blank", "noopener,noreferrer");
+      };
+
       root.addEventListener("click", handleCopy);
+      root.addEventListener("click", handleLinkClick);
       return () => {
         root.removeEventListener("click", handleCopy);
+        root.removeEventListener("click", handleLinkClick);
       };
     }, [html]);
 

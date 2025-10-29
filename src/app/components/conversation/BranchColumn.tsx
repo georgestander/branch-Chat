@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 import { BranchableMessage } from "./BranchableMessage";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
+import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
 
 const SCROLL_EPSILON_PX = 120;
 
@@ -217,6 +218,7 @@ function MessageBubble({
           messageId={message.id}
           content={message.content}
           renderedHtml={message.renderedHtml}
+          toolInvocations={message.toolInvocations}
         />
       </div>
     );
@@ -230,6 +232,11 @@ function MessageBubble({
       <MarkdownContent
         className="prose prose-sm mt-3 max-w-none text-foreground"
         html={message.renderedHtml}
+      />
+      <ToolInvocationSummary
+        toolInvocations={message.toolInvocations}
+        fallbackHtml={message.renderedHtml}
+        className="mt-4"
       />
     </div>
   );

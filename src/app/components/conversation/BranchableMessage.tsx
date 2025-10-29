@@ -8,6 +8,8 @@ import {
 } from "@/app/pages/conversation/functions";
 import { navigate } from "rwsdk/client";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
+import type { ToolInvocation } from "@/lib/conversation";
+import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
 
 interface BranchableMessageProps {
   conversationId: string;
@@ -15,6 +17,7 @@ interface BranchableMessageProps {
   messageId: string;
   content: string;
   renderedHtml: string;
+  toolInvocations?: ToolInvocation[] | null;
 }
 
 type SelectionState = {
@@ -30,6 +33,7 @@ export function BranchableMessage({
   messageId,
   content,
   renderedHtml,
+  toolInvocations,
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -109,6 +113,11 @@ export function BranchableMessage({
         onMouseUp={handleSelection}
         className="prose prose-sm mt-3 max-w-none text-foreground"
         html={renderedHtml}
+      />
+
+      <ToolInvocationSummary
+        toolInvocations={toolInvocations}
+        fallbackHtml={renderedHtml}
       />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
