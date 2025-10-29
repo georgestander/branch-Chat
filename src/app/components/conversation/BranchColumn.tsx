@@ -161,7 +161,7 @@ export function BranchColumn({
               branchId={branch.id}
               conversationId={conversationId}
               autoFocus
-              className="shadow-lg shadow-black/5"
+              className=""
             />
           ) : (
             <div className="rounded-lg  px-1 py-1 text-sm text-muted-foreground">

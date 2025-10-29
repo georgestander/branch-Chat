@@ -1,11 +1,9 @@
 "use client";
 
-import {
-  forwardRef,
-  useEffect,
-  useRef,
-} from "react";
+import { forwardRef, useEffect, useRef } from "react";
 import type { ForwardedRef, HTMLAttributes } from "react";
+
+import { cn } from "@/lib/utils";
 
 interface MarkdownContentProps extends HTMLAttributes<HTMLDivElement> {
   html: string;
@@ -68,7 +66,7 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
     return (
       <div
         ref={localRef}
-        className={className}
+        className={cn("markdown-body", className)}
         dangerouslySetInnerHTML={{ __html: html }}
         {...props}
       />

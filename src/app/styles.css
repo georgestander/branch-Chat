@@ -215,4 +215,71 @@
   .markdown-codeblock .hljs-attribute {
     color: hsl(159deg 65% 45%);
   }
+
+  .markdown-body {
+    @apply leading-7 text-foreground;
+  }
+
+  .markdown-body p {
+    @apply mb-4 text-[15px];
+  }
+
+  .markdown-body strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .markdown-body em {
+    @apply italic;
+  }
+
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4,
+  .markdown-body h5,
+  .markdown-body h6 {
+    @apply mt-6 font-semibold text-foreground;
+  }
+
+  .markdown-body h1 {
+    @apply text-2xl;
+  }
+
+  .markdown-body h2 {
+    @apply text-xl;
+  }
+
+  .markdown-body h3 {
+    @apply text-lg;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    @apply mb-4 ml-6 space-y-2 text-[15px];
+  }
+
+  .markdown-body ul {
+    list-style-type: disc;
+  }
+
+  .markdown-body ol {
+    list-style-type: decimal;
+  }
+
+  .markdown-body blockquote {
+    @apply my-4 border-l-4 border-border/70 bg-muted/40 px-4 py-2 text-sm text-muted-foreground;
+  }
+
+  .markdown-body a {
+    @apply font-medium text-primary underline-offset-4 transition hover:underline;
+  }
+
+  .markdown-body table {
+    @apply mb-6 w-full overflow-hidden rounded-lg border border-border text-sm;
+  }
+
+  .markdown-body th,
+  .markdown-body td {
+    @apply border border-border/70 px-3 py-2 text-left;
+  }
 }
