@@ -9,6 +9,10 @@ import {
 } from "@/app/pages/conversation/functions";
 import { cn } from "@/lib/utils";
 import { emitDirectoryUpdate } from "@/app/components/conversation/directoryEvents";
+import {
+  emitOptimisticUserMessage,
+  emitOptimisticMessageClear,
+} from "@/app/components/conversation/messageEvents";
 
 interface ConversationComposerProps {
   branchId: string;
@@ -78,6 +82,19 @@ export function ConversationComposer({
     }
 
     setError(null);
+    const optimisticId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `optimistic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    emitOptimisticUserMessage({
+      conversationId,
+      branchId,
+      messageId: optimisticId,
+      content,
+      createdAt: new Date().toISOString(),
+    });
+
     startTransition(async () => {
       try {
         const result = await sendMessage({
@@ -90,6 +107,16 @@ export function ConversationComposer({
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
           result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+        const persistedUserMessage = result.appendedMessages.find(
+          (message) => message.role === "user" && message.branchId === branchId,
+        );
+        emitOptimisticMessageClear({
+          conversationId,
+          branchId,
+          messageId: optimisticId,
+          reason: "resolved",
+          replacementMessageId: persistedUserMessage?.id ?? null,
+        });
         emitDirectoryUpdate({
           conversationId,
           title: rootBranch?.title ?? conversationId,
@@ -124,6 +151,12 @@ export function ConversationComposer({
           scheduleRefresh(4000);
         }
       } catch (cause) {
+        emitOptimisticMessageClear({
+          conversationId,
+          branchId,
+          messageId: optimisticId,
+          reason: "failed",
+        });
         console.error("[Composer] sendMessage failed", cause);
         setError("We couldn't send that message. Please try again.");
       }

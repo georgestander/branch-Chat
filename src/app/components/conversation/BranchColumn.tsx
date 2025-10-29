@@ -19,8 +19,20 @@ import { cn } from "@/lib/utils";
 import { BranchableMessage } from "./BranchableMessage";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
+import {
+  useOptimisticMessageEvents,
+  type OptimisticMessageDetail,
+  type ClearOptimisticMessageDetail,
+} from "@/app/components/conversation/messageEvents";
 
 const SCROLL_EPSILON_PX = 120;
+type OptimisticMessageStatus = "pending" | "resolved";
+
+interface OptimisticEntry {
+  message: RenderedMessage;
+  status: OptimisticMessageStatus;
+  replacementMessageId?: string | null;
+}
 
 interface BranchColumnProps {
   branch: Branch;
@@ -58,6 +70,36 @@ function AssistantPendingBubble() {
   );
 }
 
+function createOptimisticRenderedMessage(
+  detail: OptimisticMessageDetail,
+): RenderedMessage {
+  return {
+    id: detail.messageId,
+    branchId: detail.branchId,
+    role: "user",
+    content: detail.content,
+    createdAt: detail.createdAt,
+    tokenUsage: null,
+    attachments: [],
+    toolInvocations: null,
+    hasBranchHighlight: false,
+    renderedHtml: formatOptimisticHtml(detail.content),
+  };
+}
+
+function formatOptimisticHtml(content: string): string {
+  return escapeHtml(content).replace(/\n/g, "<br />");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export function BranchColumn({
   branch,
   messages,
@@ -71,10 +113,105 @@ export function BranchColumn({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticEntry[]>([]);
+
+  const handleOptimisticAppend = useCallback(
+    (detail: OptimisticMessageDetail) => {
+      setOptimisticMessages((current) => [
+        ...current,
+        {
+          message: createOptimisticRenderedMessage(detail),
+          status: "pending",
+        },
+      ]);
+    },
+    [],
+  );
+
+  const handleOptimisticClear = useCallback((detail: ClearOptimisticMessageDetail) => {
+    setOptimisticMessages((current) => {
+      if (detail.reason === "failed") {
+        const next = current.filter(
+          (entry) => entry.message.id !== detail.messageId,
+        );
+        return next.length === current.length ? current : next;
+      }
+
+      let didUpdate = false;
+      const next = current.map((entry) => {
+        if (entry.message.id !== detail.messageId) {
+          return entry;
+        }
+
+        if (
+          entry.status === "resolved" &&
+          entry.replacementMessageId === detail.replacementMessageId
+        ) {
+          return entry;
+        }
+
+        didUpdate = true;
+        return {
+          ...entry,
+          status: "resolved" as const,
+          replacementMessageId: detail.replacementMessageId ?? null,
+        };
+      });
+
+      return didUpdate ? next : current;
+    });
+  }, []);
+
+  useOptimisticMessageEvents({
+    conversationId,
+    branchId: branch.id,
+    onAppend: handleOptimisticAppend,
+    onClear: handleOptimisticClear,
+  });
+
+  useEffect(() => {
+    setOptimisticMessages((current) => {
+      if (current.length === 0) {
+        return current;
+      }
+
+      const next = current.filter((entry) => {
+        if (entry.status === "resolved") {
+          if (entry.replacementMessageId) {
+            const replacementExists = messages.some(
+              (message) => message.id === entry.replacementMessageId,
+            );
+            if (replacementExists) {
+              return false;
+            }
+          }
+
+          const hasContentMatch = messages.some(
+            (message) =>
+              message.role === "user" &&
+              message.content.trim() === entry.message.content.trim(),
+          );
+
+          if (hasContentMatch) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      return next.length === current.length ? current : next;
+    });
+  }, [messages]);
+
+  const combinedMessages = useMemo(
+    () => [...messages, ...optimisticMessages.map((entry) => entry.message)],
+    [messages, optimisticMessages],
+  );
 
   const visibleMessages = useMemo(
-    () => messages.filter((message) => message.role !== "system"),
-    [messages],
+    () => combinedMessages.filter((message) => message.role !== "system"),
+    [combinedMessages],
   );
 
   const lastMessage =
