@@ -56,6 +56,15 @@ const UNTITLED_BRANCH = "Untitled Branch";
 const MAX_DISPLAY_TITLE_LENGTH = 32;
 const MAX_BRANCH_TITLE_LENGTH = 60;
 
+// Keeps nested branch indentation compact enough to stay within the sidebar.
+const BRANCH_INDENT_BASE_REM = 0.65;
+const BRANCH_INDENT_STEP_REM = 0.45;
+const BRANCH_INDENT_MAX_REM = 3.75;
+const BRANCH_GUIDE_MARGIN_BASE_REM = 0.55;
+const BRANCH_GUIDE_MARGIN_STEP_REM = 0.35;
+const BRANCH_GUIDE_MARGIN_MAX_REM = 3.2;
+const BRANCH_GUIDE_PADDING_REM = 0.7;
+
 export function ConversationSidebar({
   conversation,
   tree,
@@ -636,25 +645,33 @@ function BranchTree({
   const containsActiveDescendant = tree.children.some((child) =>
     branchContainsActive(child, activeBranchId),
   );
+  const indentRem = Math.min(
+    BRANCH_INDENT_BASE_REM + level * BRANCH_INDENT_STEP_REM,
+    BRANCH_INDENT_MAX_REM,
+  );
+  const guideMarginRem = Math.min(
+    BRANCH_GUIDE_MARGIN_BASE_REM + level * BRANCH_GUIDE_MARGIN_STEP_REM,
+    BRANCH_GUIDE_MARGIN_MAX_REM,
+  );
 
   return (
     <div className="flex flex-col">
       <a
         href={buildBranchHref(conversationId, tree.branch.id)}
         className={cn(
-          "group relative flex items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80",
+          "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80",
           isActive
             ? "bg-primary/10 font-semibold text-primary shadow-sm hover:bg-primary/15"
             : "text-foreground",
         )}
         data-active={isActive}
         aria-current={isActive ? "page" : undefined}
-        style={{ paddingLeft: `${level * 0.75 + 0.75}rem` }}
+        style={{ paddingInlineStart: `${indentRem}rem` }}
       >
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <span
             className={cn(
-              "h-2 w-2 rounded-full border border-border/60 transition",
+              "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
               isActive
                 ? "border-primary bg-primary"
                 : "bg-muted group-hover:border-foreground/40",
@@ -678,11 +695,15 @@ function BranchTree({
       {tree.children.length > 0 ? (
         <div
           className={cn(
-            "ml-2 border-l pl-2",
+            "border-l",
             containsActiveDescendant
               ? "border-primary/40"
               : "border-border/60",
           )}
+          style={{
+            marginLeft: `${guideMarginRem}rem`,
+            paddingLeft: `${BRANCH_GUIDE_PADDING_REM}rem`,
+          }}
         >
           {tree.children.map((child) => (
             <BranchTree

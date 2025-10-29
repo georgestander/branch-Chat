@@ -266,6 +266,17 @@
     list-style-type: decimal;
   }
 
+  /* Emphasize list markers and first line for headings */
+  .markdown-body ul > li::marker,
+  .markdown-body ol > li::marker {
+    @apply font-semibold;
+  }
+
+  /* Bold the leading line/paragraph in list items to act as a heading */
+  .markdown-body li > p:first-child { 
+    @apply font-semibold;
+  }
+
   .markdown-body blockquote {
     @apply my-4 border-l-4 border-border/70 bg-muted/40 px-4 py-2 text-sm text-muted-foreground;
   }

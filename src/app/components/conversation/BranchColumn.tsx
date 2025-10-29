@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { ChevronDown } from "lucide-react";
+
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { Branch, ConversationModelId } from "@/lib/conversation";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
@@ -145,6 +147,23 @@ export function BranchColumn({
 
   const stateLabel = isActive ? "Active" : "Parent";
   const referenceText = branch.createdFrom?.excerpt ?? null;
+  const [referenceExpanded, setReferenceExpanded] = useState(false);
+
+  const truncatedReference = useMemo(() => {
+    if (!referenceText) {
+      return "";
+    }
+
+    if (referenceText.length <= 20) {
+      return referenceText;
+    }
+
+    return `${referenceText.slice(0, 20).trimEnd()}…`;
+  }, [referenceText]);
+
+  useEffect(() => {
+    setReferenceExpanded(false);
+  }, [referenceText]);
 
   return (
     <section
@@ -166,10 +185,25 @@ export function BranchColumn({
           {stateLabel} Branch
         </span>
         {referenceText ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setReferenceExpanded((expanded) => !expanded)}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={referenceExpanded}
+            aria-label={referenceExpanded ? "Hide full reference" : "Show full reference"}
+          >
+            <ChevronDown
+              aria-hidden
+              className={cn(
+                "h-3 w-3 transition-transform",
+                referenceExpanded ? "rotate-180" : "rotate-0",
+              )}
+            />
             <span className="font-semibold text-foreground">Reference:</span>
-            <span className="text-foreground/85">“{referenceText}”</span>
-          </span>
+            <span className="text-foreground/85">
+              “{referenceExpanded ? referenceText : truncatedReference}”
+            </span>
+          </button>
         ) : null}
         <span className="grow" aria-hidden="true" />
         {headerActions ? (
