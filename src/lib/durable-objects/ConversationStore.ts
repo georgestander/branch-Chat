@@ -468,6 +468,19 @@ export class ConversationStoreClient {
       version: data.version ?? 0,
     };
   }
+
+  async reset(): Promise<void> {
+    const response = await this.stub.fetch("https://conversation/snapshot", {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to reset snapshot: ${response.status} ${text}`,
+      );
+    }
+  }
 }
 
 export function conversationIdToDurableId(

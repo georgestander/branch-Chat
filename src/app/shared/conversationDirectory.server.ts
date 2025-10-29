@@ -22,6 +22,7 @@ export async function ensureConversationDirectoryEntry(
     title?: string;
     branchCount?: number;
     lastActiveAt?: string;
+    archivedAt?: string | null;
   },
 ): Promise<ConversationDirectoryEntry> {
   const client = getClient(ctx);
@@ -35,8 +36,33 @@ export async function touchConversationDirectoryEntry(
     title?: string;
     branchCount?: number;
     lastActiveAt?: string;
+    archivedAt?: string | null;
   },
 ): Promise<ConversationDirectoryEntry> {
   const client = getClient(ctx);
   return client.touch(entry);
+}
+
+export async function archiveConversationDirectoryEntry(
+  ctx: AppContext,
+  entry: { id: ConversationDirectoryEntry["id"]; archivedAt?: string },
+): Promise<ConversationDirectoryEntry> {
+  const client = getClient(ctx);
+  return client.archive(entry);
+}
+
+export async function unarchiveConversationDirectoryEntry(
+  ctx: AppContext,
+  entry: { id: ConversationDirectoryEntry["id"] },
+): Promise<ConversationDirectoryEntry> {
+  const client = getClient(ctx);
+  return client.unarchive(entry);
+}
+
+export async function deleteConversationDirectoryEntry(
+  ctx: AppContext,
+  entry: { id: ConversationDirectoryEntry["id"] },
+): Promise<void> {
+  const client = getClient(ctx);
+  await client.delete(entry);
 }

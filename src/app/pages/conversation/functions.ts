@@ -12,8 +12,14 @@ import {
   generateConversationId,
   maybeAutoSummarizeRootBranchTitle,
   sanitizeBranchTitle,
+  invalidateConversationCache,
 } from "@/app/shared/conversation.server";
-import { touchConversationDirectoryEntry } from "@/app/shared/conversationDirectory.server";
+import {
+  touchConversationDirectoryEntry,
+  archiveConversationDirectoryEntry,
+  unarchiveConversationDirectoryEntry,
+  deleteConversationDirectoryEntry,
+} from "@/app/shared/conversationDirectory.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
 import type {
   Branch,
@@ -25,6 +31,7 @@ import type {
   ToolInvocation,
   ToolInvocationStatus,
 } from "@/lib/conversation";
+import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import {
   WEB_SEARCH_TOOL_NAME,
   type WebSearchInvocationOutput,
@@ -100,6 +107,23 @@ export interface ConversationSummary {
   title: string;
   branchCount: number;
   lastActiveAt: string;
+  archivedAt: string | null;
+}
+
+export interface ArchiveConversationInput extends ConversationPayload {}
+
+export interface ArchiveConversationResponse {
+  entry: ConversationDirectoryEntry;
+}
+
+export interface UnarchiveConversationInput extends ConversationPayload {}
+
+export type UnarchiveConversationResponse = ArchiveConversationResponse;
+
+export interface DeleteConversationInput extends ConversationPayload {}
+
+export interface DeleteConversationResponse {
+  conversationId: ConversationModelId;
 }
 
 function normalizeWebSearchResults(item: any): WebSearchResultSummary[] {
@@ -640,6 +664,7 @@ export async function getConversationSummary(
     title: rootBranch?.title?.trim() || conversationId,
     branchCount,
     lastActiveAt: new Date().toISOString(),
+    archivedAt: null,
   };
 }
 
@@ -697,4 +722,65 @@ export async function renameBranch(
     version: applied.version,
     branch,
   };
+}
+
+export async function archiveConversation(
+  input: ArchiveConversationInput = {},
+): Promise<ArchiveConversationResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  const entry = await archiveConversationDirectoryEntry(ctx, {
+    id: conversationId,
+  });
+
+  ctx.trace("conversation:archive", {
+    conversationId,
+    archivedAt: entry.archivedAt,
+  });
+
+  return { entry };
+}
+
+export async function unarchiveConversation(
+  input: UnarchiveConversationInput = {},
+): Promise<UnarchiveConversationResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  const entry = await unarchiveConversationDirectoryEntry(ctx, {
+    id: conversationId,
+  });
+
+  ctx.trace("conversation:unarchive", {
+    conversationId,
+  });
+
+  return { entry };
+}
+
+export async function deleteConversation(
+  input: DeleteConversationInput = {},
+): Promise<DeleteConversationResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  const store = ctx.getConversationStore(conversationId);
+  await store.reset().catch((error) => {
+    ctx.trace("conversation:delete:reset-error", {
+      conversationId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    throw error;
+  });
+
+  invalidateConversationCache(conversationId);
+  await deleteConversationDirectoryEntry(ctx, { id: conversationId });
+
+  ctx.trace("conversation:delete", { conversationId });
+
+  return { conversationId };
 }

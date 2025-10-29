@@ -21,7 +21,7 @@ import { buildAgentInstructions } from "@/lib/openai/agentPrompt";
 const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_TEMPERATURE = 0.1;
 
-export const DEFAULT_BRANCH_TITLE = "Main Branch";
+export const DEFAULT_BRANCH_TITLE = "New Chat";
 export const MAX_BRANCH_TITLE_LENGTH = 60;
 
 export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
@@ -69,6 +69,12 @@ function setCachedSnapshot(
   entry: SnapshotCacheEntry,
 ): void {
   SNAPSHOT_CACHE.set(conversationId, entry);
+}
+
+export function invalidateConversationCache(
+  conversationId: ConversationModelId,
+): void {
+  SNAPSHOT_CACHE.delete(conversationId);
 }
 
 export interface ConversationLoadResult {

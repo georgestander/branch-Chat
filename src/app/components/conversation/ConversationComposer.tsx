@@ -95,6 +95,7 @@ export function ConversationComposer({
           title: rootBranch?.title ?? conversationId,
           branchCount,
           lastActiveAt: new Date().toISOString(),
+          archivedAt: null,
         });
 
         if (typeof window !== "undefined") {

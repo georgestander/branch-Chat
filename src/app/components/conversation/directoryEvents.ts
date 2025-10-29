@@ -9,6 +9,7 @@ export interface DirectoryUpdateDetail {
   title?: string;
   branchCount?: number;
   lastActiveAt?: string;
+  archivedAt?: string | null;
 }
 
 export function emitDirectoryUpdate(detail: DirectoryUpdateDetail) {

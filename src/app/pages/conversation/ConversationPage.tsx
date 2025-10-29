@@ -46,6 +46,7 @@ export async function ConversationPage({
     title: rootBranch?.title ?? result.conversationId,
     branchCount,
     lastActiveAt: nowIso,
+    archivedAt: null,
     createdAt: snapshot.conversation.createdAt,
   });
 
@@ -151,6 +152,7 @@ function mergeDirectoryEntries(
   byId.set(active.id, {
     ...active,
     title: active.title.trim() ? active.title : "Untitled Conversation",
+    archivedAt: active.archivedAt ?? null,
   });
 
   return [...byId.values()].sort((a, b) =>
