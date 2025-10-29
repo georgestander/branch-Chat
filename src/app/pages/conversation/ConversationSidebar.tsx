@@ -28,7 +28,7 @@ import {
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
-  Plus,
+  SquarePen,
 } from "lucide-react";
 import { navigate } from "rwsdk/client";
 import {
@@ -339,22 +339,17 @@ export function ConversationSidebar({
     >
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Conversations
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              {conversations.length} chat{conversations.length === 1 ? "" : "s"}
-            </p>
-          </div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Connect
+          </h2>
           <button
             type="button"
             onClick={startNewConversation}
             disabled={isCreating}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
+            aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            {isCreating ? "Creating…" : "New chat"}
+            <SquarePen className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         {creationError ? (
