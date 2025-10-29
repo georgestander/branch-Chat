@@ -11,6 +11,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
+  ChevronDown,
   Check,
   Globe,
   GraduationCap,
@@ -44,6 +45,7 @@ import {
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
+import { useToast } from "@/app/components/ui/Toast";
 
 type ToolOption = {
   id: ConversationComposerTool;
@@ -91,6 +93,15 @@ interface ConversationComposerProps {
   conversationId: string;
   autoFocus?: boolean;
   className?: string;
+  conversationModel: string;
+  reasoningEffort: "low" | "medium" | "high" | null;
+  onConversationSettingsChange: (
+    model: string,
+    effort: "low" | "medium" | "high" | null,
+  ) => Promise<boolean>;
+  conversationSettingsSaving: boolean;
+  conversationSettingsError: string | null;
+  onClearConversationSettingsError: () => void;
 }
 
 export function ConversationComposer({
@@ -98,6 +109,12 @@ export function ConversationComposer({
   conversationId,
   autoFocus = false,
   className,
+  conversationModel,
+  reasoningEffort,
+  onConversationSettingsChange,
+  conversationSettingsSaving,
+  conversationSettingsError,
+  onClearConversationSettingsError,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -107,12 +124,32 @@ export function ConversationComposer({
     [],
   );
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuId = useId();
+  const modelMenuId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const modelMenuRef = useRef<HTMLDivElement | null>(null);
+  const modelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const { notify } = useToast();
+  const reasoningOptions: Array<"low" | "medium" | "high"> = [
+    "low",
+    "medium",
+    "high",
+  ];
+  const effortLabels: Record<"low" | "medium" | "high", string> = {
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+  };
+  const currentReasoningEffort = (reasoningEffort ?? "low") as "low" | "medium" | "high";
+  const isReasoningModel = !conversationModel.includes("chat");
+  const currentModelLabel = isReasoningModel
+    ? `Reasoning · ${effortLabels[currentReasoningEffort]}`
+    : "Fast chat";
 
   useEffect(() => {
     if (!autoFocus) {
@@ -194,6 +231,54 @@ export function ConversationComposer({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isToolMenuOpen]);
+
+  useEffect(() => {
+    if (!isModelMenuOpen) {
+      return;
+    }
+    if (typeof document === "undefined") {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const menuNode = modelMenuRef.current;
+      const buttonNode = modelButtonRef.current;
+      if (
+        menuNode?.contains(event.target as Node) ||
+        buttonNode?.contains(event.target as Node)
+      ) {
+        return;
+      }
+      setIsModelMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isModelMenuOpen]);
+
+  useEffect(() => {
+    if (!isModelMenuOpen) {
+      return;
+    }
+    if (typeof document === "undefined") {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsModelMenuOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isModelMenuOpen]);
+
+  useEffect(() => {
+    if (isModelMenuOpen) {
+      onClearConversationSettingsError();
+    }
+  }, [isModelMenuOpen, onClearConversationSettingsError]);
 
   useEffect(() => {
     setSelectedTools((previous) => {
@@ -500,6 +585,27 @@ export function ConversationComposer({
     setSelectedTools([]);
     void clearAllAttachments();
   }, [clearAllAttachments]);
+
+  const handleModelSelection = useCallback(
+    async (
+      nextModel: string,
+      nextEffort: "low" | "medium" | "high" | null,
+    ) => {
+      const success = await onConversationSettingsChange(nextModel, nextEffort);
+      if (success) {
+        setIsModelMenuOpen(false);
+        if (!nextModel.includes("chat")) {
+          const effortLabel = effortLabels[(nextEffort ?? "low") as "low" | "medium" | "high"];
+          notify({
+            variant: "warning",
+            title: "Deep reasoning is slower",
+            description: `Responses may take longer (${effortLabel} effort). Switch back to Fast chat for lower latency.`,
+          });
+        }
+      }
+    },
+    [notify, onConversationSettingsChange],
+  );
 
   const activeToolOptions = TOOL_OPTIONS.filter((option) =>
     selectedTools.includes(option.id),
@@ -873,6 +979,96 @@ export function ConversationComposer({
               style={{ maxHeight: 160 }}
             />
           </div>
+        </div>
+
+        <div className="relative flex flex-col items-end gap-1">
+          <button
+            type="button"
+            ref={modelButtonRef}
+            onClick={() => setIsModelMenuOpen((value) => !value)}
+            className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70"
+            aria-haspopup="menu"
+            aria-expanded={isModelMenuOpen}
+            aria-controls={isModelMenuOpen ? modelMenuId : undefined}
+            disabled={conversationSettingsSaving}
+          >
+            <span className="text-xs font-semibold text-foreground">
+              {currentModelLabel}
+            </span>
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 transition-transform text-muted-foreground",
+                isModelMenuOpen ? "rotate-180" : "rotate-0",
+              )}
+              aria-hidden="true"
+            />
+          </button>
+          {conversationSettingsSaving ? (
+            <span className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+              Saving…
+            </span>
+          ) : conversationSettingsError ? (
+            <span className="text-[10px] text-destructive">
+              {conversationSettingsError}
+            </span>
+          ) : null}
+          {isModelMenuOpen ? (
+            <div
+              ref={modelMenuRef}
+              id={modelMenuId}
+              role="menu"
+              className="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-border/70 bg-popover p-2 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={!isReasoningModel}
+                onClick={() => {
+                  void handleModelSelection("gpt-5-chat-latest", null);
+                }}
+                disabled={conversationSettingsSaving}
+                className={cn(
+                  "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  !isReasoningModel ? "bg-primary/10 text-primary" : "hover:bg-muted/60",
+                )}
+              >
+                <span className="font-medium">Fast chat</span>
+                {!isReasoningModel ? (
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                ) : null}
+              </button>
+
+              <div className="my-2 border-t border-border/60" aria-hidden="true" />
+              <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Reasoning models
+              </div>
+
+              {reasoningOptions.map((option) => {
+                const isSelected = isReasoningModel && currentReasoningEffort === option;
+                return (
+                  <button
+                    key={`composer-reasoning-${option}`}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={isSelected}
+                    onClick={() => {
+                      void handleModelSelection("gpt-5-nano", option);
+                    }}
+                    disabled={conversationSettingsSaving}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted/60",
+                    )}
+                  >
+                    <span className="font-medium">{`Reasoning · ${effortLabels[option]}`}</span>
+                    {isSelected ? (
+                      <Check className="h-4 w-4" aria-hidden="true" />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         <button

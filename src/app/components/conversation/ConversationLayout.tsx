@@ -20,6 +20,7 @@ import {
 
 import { BranchColumn } from "./BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
+import { updateConversationSettings } from "@/app/pages/conversation/functions";
 
 interface ConversationLayoutProps {
   conversation: Conversation;
@@ -48,12 +49,23 @@ export function ConversationLayout({
   activeBranchId,
   conversations,
 }: ConversationLayoutProps) {
+  const resolvedInitialModel =
+    conversation.settings.model || "gpt-5-chat-latest";
+  const resolvedInitialEffort = resolvedInitialModel.includes("chat")
+    ? null
+    : ((conversation.settings as any).reasoningEffort ?? "low");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     initialSidebarCollapsed,
   );
   const [isParentCollapsed, setIsParentCollapsed] = useState(
     initialParentCollapsed,
   );
+  const [settingsModel, setSettingsModel] = useState(resolvedInitialModel);
+  const [settingsEffort, setSettingsEffort] = useState<"low" | "medium" | "high" | null>(
+    resolvedInitialEffort,
+  );
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   // Resizable split: store current and last-known parent width ratios
   const [parentWidthRatio, setParentWidthRatio] = useState(0.5);
   const lastParentWidthRatioRef = useRef<number>(0.5);
@@ -84,6 +96,53 @@ export function ConversationLayout({
       }
     }
   }, [activeBranchId, initialParentCollapsed, initialSidebarCollapsed]);
+
+  useEffect(() => {
+    const nextModel = conversation.settings.model || "gpt-5-chat-latest";
+    const nextEffort = nextModel.includes("chat")
+      ? null
+      : ((conversation.settings as any).reasoningEffort ?? "low");
+    setSettingsModel(nextModel);
+    setSettingsEffort(nextEffort);
+  }, [conversation.settings, conversationId]);
+
+  const handleConversationSettingsChange = useCallback(
+    async (
+      nextModel: string,
+      nextEffort: "low" | "medium" | "high" | null,
+    ): Promise<boolean> => {
+      setIsSavingSettings(true);
+      setSettingsError(null);
+      const previousModel = settingsModel;
+      const previousEffort = settingsEffort;
+      setSettingsModel(nextModel);
+      setSettingsEffort(nextEffort);
+      try {
+        await updateConversationSettings({
+          conversationId,
+          model: nextModel,
+          reasoningEffort: nextModel.includes("chat") ? null : nextEffort,
+        });
+        return true;
+      } catch (error) {
+        console.error(
+          "[ConversationLayout] updateConversationSettings failed",
+          error,
+        );
+        setSettingsError("Unable to save settings. Try again.");
+        setSettingsModel(previousModel);
+        setSettingsEffort(previousEffort);
+        return false;
+      } finally {
+        setIsSavingSettings(false);
+      }
+    },
+    [conversationId, settingsEffort, settingsModel],
+  );
+
+  const clearConversationSettingsError = useCallback(() => {
+    setSettingsError(null);
+  }, []);
 
   // When collapsing/expanding the parent column, snapshot/restore the ratio
   useEffect(() => {
@@ -225,6 +284,12 @@ export function ConversationLayout({
               conversationId={conversationId}
               isActive={false}
               className="min-h-0 w-full shrink-0 bg-background"
+              conversationModel={settingsModel}
+              reasoningEffort={settingsEffort}
+              onConversationSettingsChange={handleConversationSettingsChange}
+              conversationSettingsSaving={isSavingSettings}
+              conversationSettingsError={settingsError}
+              onClearConversationSettingsError={clearConversationSettingsError}
               // Apply a fixed flex-basis driven by ratio
               // Keep a reasonable maxWidth via inline style for determinism
               style={{
@@ -280,6 +345,12 @@ export function ConversationLayout({
               "min-h-0 flex-1",
               showParentColumn ? "" : "basis-full border-l-0",
             )}
+            conversationModel={settingsModel}
+            reasoningEffort={settingsEffort}
+            onConversationSettingsChange={handleConversationSettingsChange}
+            conversationSettingsSaving={isSavingSettings}
+            conversationSettingsError={settingsError}
+            onClearConversationSettingsError={clearConversationSettingsError}
             style={
               showParentColumn
                 ? ({
