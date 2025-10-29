@@ -1,10 +1,11 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -84,6 +85,10 @@ export function ConversationSidebar({
   const [directoryOverrides, setDirectoryOverrides] = useState<
     Record<string, DirectoryOverride>
   >({});
+  const listContainerRef = useRef<HTMLElement | null>(null);
+  const [visibleCount, setVisibleCount] = useState(() =>
+    Math.min(12, Math.max(1, conversations.length)),
+  );
   const directoryUpdateHandler = useCallback(
     (detail: DirectoryUpdateDetail) => {
       setDirectoryOverrides((current) => {
@@ -207,6 +212,41 @@ export function ConversationSidebar({
     () => [resolvedActiveEntry, ...resolvedOtherEntries],
     [resolvedActiveEntry, resolvedOtherEntries],
   );
+
+  const activeIndex = useMemo(
+    () => orderedEntries.findIndex((entry) => entry.id === conversationId),
+    [conversationId, orderedEntries],
+  );
+
+  useEffect(() => {
+    setVisibleCount((current) =>
+      Math.min(
+        Math.max(12, activeIndex >= 0 ? activeIndex + 1 : current),
+        orderedEntries.length,
+      ),
+    );
+  }, [activeIndex, orderedEntries.length]);
+
+  useEffect(() => {
+    const container = listContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const handleScroll = () => {
+      const { scrollTop, clientHeight, scrollHeight } = container;
+      if (scrollTop + clientHeight >= scrollHeight - 120) {
+        setVisibleCount((current) =>
+          Math.min(current + 10, orderedEntries.length),
+        );
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [orderedEntries.length]);
 
   const ensureConversationLoaded = useCallback(
     async (targetConversationId: ConversationModelId) => {
@@ -364,9 +404,13 @@ export function ConversationSidebar({
         ) : null}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-3">
+      <nav
+        ref={listContainerRef}
+        className="flex-1 overflow-y-auto px-2 py-3"
+        aria-label="Conversation history"
+      >
         <div className="flex flex-col gap-3">
-          {orderedEntries.map((entry) => {
+          {orderedEntries.slice(0, visibleCount).map((entry) => {
             const loaded = loadedConversations[entry.id];
             const isExpanded = expandedIds.has(entry.id);
             const isLoading = loadingIds.has(entry.id);
@@ -410,6 +454,11 @@ export function ConversationSidebar({
               />
             );
           })}
+          {visibleCount < orderedEntries.length ? (
+            <div className="px-3 py-2 text-center text-xs text-muted-foreground">
+              Scroll to load more conversations…
+            </div>
+          ) : null}
         </div>
       </nav>
     </aside>
@@ -623,6 +672,23 @@ function ConversationCard({
   );
 }
 
+const BRANCH_COLOR_PALETTE = [
+  "#0ea5e9",
+  "#6366f1",
+  "#f97316",
+  "#22c55e",
+  "#ec4899",
+];
+
+function withAlpha(hex: string, alpha: number): string {
+  const normalizedHex = hex.replace("#", "");
+  const bigint = parseInt(normalizedHex, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function BranchTree({
   tree,
   activeBranchId,
@@ -635,37 +701,51 @@ function BranchTree({
   conversationId: ConversationModelId;
 }) {
   const isActive = Boolean(activeBranchId && tree.branch.id === activeBranchId);
-  const containsActiveDescendant = tree.children.some((child) =>
-    branchContainsActive(child, activeBranchId),
-  );
+  const containsActiveDescendant = branchContainsActive(tree, activeBranchId);
+  const accentColor = BRANCH_COLOR_PALETTE[level % BRANCH_COLOR_PALETTE.length];
+  const inactiveAccent = withAlpha(accentColor, containsActiveDescendant ? 0.18 : 0.12);
+  const activeAccent = withAlpha(accentColor, 0.28);
+  const borderAccent = withAlpha(accentColor, containsActiveDescendant ? 0.38 : 0.22);
 
   return (
     <div className="flex flex-col">
       <a
         href={buildBranchHref(conversationId, tree.branch.id)}
         className={cn(
-          "group relative flex items-center justify-between rounded-md border border-transparent px-3 py-2 text-sm transition hover:bg-muted/80",
-          isActive
-            ? "border-primary bg-primary/10 font-semibold text-primary shadow-sm"
-            : "text-foreground",
+          "group relative flex items-center justify-between rounded-md border border-transparent px-3 py-2 text-sm transition",
+          "hover:border-border/80 hover:bg-muted/80",
+          isActive ? "font-semibold shadow-sm" : "text-foreground",
         )}
         data-active={isActive}
         aria-current={isActive ? "page" : undefined}
-        style={{ paddingLeft: `${level * 0.75 + 0.75}rem` }}
+        style={
+          {
+            paddingLeft: `${level * 0.5 + 0.65}rem`,
+            backgroundColor: isActive
+              ? activeAccent
+              : containsActiveDescendant
+                ? inactiveAccent
+                : undefined,
+            borderColor: isActive ? borderAccent : undefined,
+            color: isActive ? accentColor : undefined,
+          } satisfies CSSProperties
+        }
       >
         <span className="flex items-center gap-2">
           <span
-            className={cn(
-              "h-2 w-2 rounded-full border border-border/60 transition",
-              isActive
-                ? "border-primary bg-primary"
-                : "bg-muted group-hover:border-foreground/40",
-            )}
+            className="h-2 w-2 rounded-full border transition"
             aria-hidden
+            style={
+              {
+                backgroundColor: isActive ? accentColor : inactiveAccent,
+                borderColor: isActive ? accentColor : borderAccent,
+              } satisfies CSSProperties
+            }
           />
           <span
             className="truncate"
             title={tree.branch.title?.trim() || UNTITLED_BRANCH}
+            style={{ color: isActive ? accentColor : undefined }}
           >
             {formatBranchTitle(tree.branch.title)}
           </span>
@@ -679,12 +759,14 @@ function BranchTree({
 
       {tree.children.length > 0 ? (
         <div
-          className={cn(
-            "ml-2 border-l pl-2",
-            containsActiveDescendant
-              ? "border-primary/40"
-              : "border-border/60",
-          )}
+          className="border-l"
+          style={
+            {
+              borderColor: borderAccent,
+              marginLeft: `${Math.min(level, 6) * 0.45 + 0.5}rem`,
+              paddingLeft: `${Math.min(level, 6) * 0.45 + 0.65}rem`,
+            } satisfies CSSProperties
+          }
         >
           {tree.children.map((child) => (
             <BranchTree
