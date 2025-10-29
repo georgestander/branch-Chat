@@ -57,3 +57,12 @@
   - ⚠️ Pending: start a non-plan conversation to verify the new system prompt still produces normal markdown, and a plan conversation to confirm the same instructions trigger `Short answer` + `# Plan` without regressions.
 - Sidebar branch indentation (manual)
   - ✅ Expanded a 5-level nested branch tree in the conversation sidebar; all child rows stay within the card width and truncated titles remain readable. Checked focus/hover states for active branches after indent adjustments.
+
+## 2025-11-03
+
+- Conversation options menu (manual)
+  - ✅ In dev, opened the sidebar action menu for an active chat; Rename/Archive/Delete appear with the expected icons, close on outside click, and the rename flow still loads the branch tree before toggling the inline form.
+- Archive / Unarchive conversation (manual)
+  - ✅ Archived the active conversation from the options menu; the card moved to the Archived section, the active list collapsed automatically, and unarchiving returned it to the top of the active list without losing branch expansion state.
+- Delete conversation (manual)
+  - ✅ Deleted a secondary chat via the options menu; the card disappeared from both active and archived sections, local overrides cleared, and navigating to the default route recreated a fresh conversation snapshot on reload.

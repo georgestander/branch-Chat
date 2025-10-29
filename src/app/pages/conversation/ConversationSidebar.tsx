@@ -5,15 +5,19 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
 
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import {
+  archiveConversation,
   createConversation,
+  deleteConversation,
   loadConversation,
   renameBranch,
+  unarchiveConversation,
 } from "@/app/pages/conversation/functions";
 import type {
   Branch,
@@ -24,7 +28,15 @@ import type {
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronRight, MoreVertical, SquarePen } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronRight,
+  MoreVertical,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 import { navigate } from "rwsdk/client";
 import {
   emitDirectoryUpdate,
@@ -49,9 +61,10 @@ interface LoadedConversationData {
 interface DirectoryOverride {
   title?: string;
   branchCount?: number;
+  archivedAt?: string | null;
 }
 
-const DEFAULT_BRANCH_TITLE = "Main Branch";
+const DEFAULT_BRANCH_TITLE = "New Chat";
 const UNTITLED_BRANCH = "Untitled Branch";
 const MAX_DISPLAY_TITLE_LENGTH = 32;
 const MAX_BRANCH_TITLE_LENGTH = 60;
@@ -88,6 +101,9 @@ export function ConversationSidebar({
   const [directoryOverrides, setDirectoryOverrides] = useState<
     Record<string, DirectoryOverride>
   >({});
+  const [archivingIds, setArchivingIds] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [showArchived, setShowArchived] = useState(false);
   const directoryUpdateHandler = useCallback(
     (detail: DirectoryUpdateDetail) => {
       setDirectoryOverrides((current) => {
@@ -99,10 +115,14 @@ export function ConversationSidebar({
         if (detail.branchCount !== undefined) {
           nextOverride.branchCount = detail.branchCount;
         }
+        if (detail.archivedAt !== undefined) {
+          nextOverride.archivedAt = detail.archivedAt;
+        }
 
         const hasChanges =
           nextOverride.title !== existing.title ||
-          nextOverride.branchCount !== existing.branchCount;
+          nextOverride.branchCount !== existing.branchCount ||
+          nextOverride.archivedAt !== existing.archivedAt;
 
         if (!hasChanges) {
           return current;
@@ -147,6 +167,193 @@ export function ConversationSidebar({
 
   useDirectoryUpdate(directoryUpdateHandler);
 
+  const toggleArchivingState = useCallback(
+    (conversationId: ConversationModelId, enable: boolean) => {
+      setArchivingIds((current) => {
+        const next = new Set(current);
+        if (enable) {
+          next.add(conversationId);
+        } else {
+          next.delete(conversationId);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleDeletingState = useCallback(
+    (conversationId: ConversationModelId, enable: boolean) => {
+      setDeletingIds((current) => {
+        const next = new Set(current);
+        if (enable) {
+          next.add(conversationId);
+        } else {
+          next.delete(conversationId);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const applyDirectoryEntry = useCallback(
+    (entry: ConversationDirectoryEntry) => {
+      setDirectoryOverrides((current) => ({
+        ...current,
+        [entry.id]: {
+          ...current[entry.id],
+          title: entry.title,
+          branchCount: entry.branchCount,
+          archivedAt: entry.archivedAt,
+        },
+      }));
+
+      emitDirectoryUpdate({
+        conversationId: entry.id,
+        title: entry.title,
+        branchCount: entry.branchCount,
+        lastActiveAt: entry.lastActiveAt,
+        archivedAt: entry.archivedAt,
+      });
+    },
+    [],
+  );
+
+  const removeConversationLocally = useCallback((targetConversationId: ConversationModelId) => {
+    setDirectoryOverrides((current) => {
+      if (!current[targetConversationId]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[targetConversationId];
+      return next;
+    });
+
+    setLoadedConversations((current) => {
+      if (!current[targetConversationId]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[targetConversationId];
+      return next;
+    });
+
+    setExpandedIds((current) => {
+      if (!current.has(targetConversationId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(targetConversationId);
+      return next;
+    });
+
+    setLoadingErrors((current) => {
+      if (!current[targetConversationId]) {
+        return current;
+      }
+      const { [targetConversationId]: _removed, ...rest } = current;
+      return rest;
+    });
+
+    setArchivingIds((current) => {
+      if (!current.has(targetConversationId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(targetConversationId);
+      return next;
+    });
+
+    setDeletingIds((current) => {
+      if (!current.has(targetConversationId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(targetConversationId);
+      return next;
+    });
+  }, []);
+
+  const runArchiveConversation = useCallback(
+    async (targetConversationId: ConversationModelId) => {
+      toggleArchivingState(targetConversationId, true);
+      setLoadingErrors((current) => {
+        const { [targetConversationId]: _removed, ...rest } = current;
+        return rest;
+      });
+
+      try {
+        const result = await archiveConversation({
+          conversationId: targetConversationId,
+        });
+        applyDirectoryEntry(result.entry);
+      } catch (error) {
+        console.error("[Sidebar] archiveConversation failed", error);
+        setLoadingErrors((current) => ({
+          ...current,
+          [targetConversationId]: "Unable to archive this chat. Please try again.",
+        }));
+      } finally {
+        toggleArchivingState(targetConversationId, false);
+      }
+    },
+    [applyDirectoryEntry, toggleArchivingState],
+  );
+
+  const runUnarchiveConversation = useCallback(
+    async (targetConversationId: ConversationModelId) => {
+      toggleArchivingState(targetConversationId, true);
+      setLoadingErrors((current) => {
+        const { [targetConversationId]: _removed, ...rest } = current;
+        return rest;
+      });
+
+      try {
+        const result = await unarchiveConversation({
+          conversationId: targetConversationId,
+        });
+        applyDirectoryEntry(result.entry);
+      } catch (error) {
+        console.error("[Sidebar] unarchiveConversation failed", error);
+        setLoadingErrors((current) => ({
+          ...current,
+          [targetConversationId]: "Unable to unarchive this chat. Please try again.",
+        }));
+      } finally {
+        toggleArchivingState(targetConversationId, false);
+      }
+    },
+    [applyDirectoryEntry, toggleArchivingState],
+  );
+
+  const runDeleteConversation = useCallback(
+    async (targetConversationId: ConversationModelId) => {
+      toggleDeletingState(targetConversationId, true);
+      setLoadingErrors((current) => {
+        const { [targetConversationId]: _removed, ...rest } = current;
+        return rest;
+      });
+
+      try {
+        await deleteConversation({ conversationId: targetConversationId });
+        removeConversationLocally(targetConversationId);
+        if (targetConversationId === conversationId) {
+          navigate("/");
+        }
+      } catch (error) {
+        console.error("[Sidebar] deleteConversation failed", error);
+        setLoadingErrors((current) => ({
+          ...current,
+          [targetConversationId]: "Unable to delete this chat. Please try again.",
+        }));
+      } finally {
+        toggleDeletingState(targetConversationId, false);
+      }
+    },
+    [conversationId, removeConversationLocally, toggleDeletingState],
+  );
+
   useEffect(() => {
     setLoadedConversations((current) => ({
       ...current,
@@ -184,11 +391,13 @@ export function ConversationSidebar({
         createdAt: conversation.createdAt,
         lastActiveAt: conversation.createdAt,
         branchCount: countBranches(tree),
+        archivedAt: null,
       };
 
     return {
       ...baseEntry,
       ...override,
+      archivedAt: override?.archivedAt ?? baseEntry.archivedAt ?? null,
     } satisfies ConversationDirectoryEntry;
   }, [
     conversation,
@@ -204,13 +413,31 @@ export function ConversationSidebar({
       .map((entry) => ({
         ...entry,
         ...directoryOverrides[entry.id],
+        archivedAt:
+          directoryOverrides[entry.id]?.archivedAt ?? entry.archivedAt ?? null,
       }));
   }, [conversationId, directoryOverrides, sortedConversations]);
 
-  const orderedEntries = useMemo(
+  const allEntries = useMemo(
     () => [resolvedActiveEntry, ...resolvedOtherEntries],
     [resolvedActiveEntry, resolvedOtherEntries],
   );
+
+  const activeEntries = useMemo(
+    () => allEntries.filter((entry) => !entry.archivedAt),
+    [allEntries],
+  );
+
+  const archivedEntries = useMemo(
+    () => allEntries.filter((entry) => entry.archivedAt),
+    [allEntries],
+  );
+
+  useEffect(() => {
+    if (archivedEntries.length === 0 && showArchived) {
+      setShowArchived(false);
+    }
+  }, [archivedEntries.length, showArchived]);
 
   const ensureConversationLoaded = useCallback(
     async (targetConversationId: ConversationModelId) => {
@@ -251,6 +478,7 @@ export function ConversationSidebar({
         setDirectoryOverrides((current) => ({
           ...current,
           [targetConversationId]: {
+            ...current[targetConversationId],
             title: normalizedTitle,
             branchCount: normalizedBranchCount,
           },
@@ -259,6 +487,8 @@ export function ConversationSidebar({
           conversationId: targetConversationId,
           title: normalizedTitle,
           branchCount: normalizedBranchCount,
+          archivedAt:
+            directoryOverrides[targetConversationId]?.archivedAt ?? null,
         });
         return {
           tree: branchTree,
@@ -306,6 +536,7 @@ export function ConversationSidebar({
       setDirectoryOverrides((current) => ({
         ...current,
         [targetConversationId]: {
+          ...current[targetConversationId],
           title:
             branchTree.branch.title?.trim() ||
             loadedConversation.id,
@@ -365,7 +596,7 @@ export function ConversationSidebar({
 
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         <div className="flex flex-col gap-3">
-          {orderedEntries.map((entry) => {
+          {activeEntries.map((entry) => {
             const loaded = loadedConversations[entry.id];
             const isExpanded = expandedIds.has(entry.id);
             const isLoading = loadingIds.has(entry.id);
@@ -375,8 +606,11 @@ export function ConversationSidebar({
                 key={entry.id}
                 entry={entry}
                 isActive={entry.id === conversationId}
+                isArchived={false}
                 expanded={isExpanded}
                 loading={isLoading}
+                archiving={archivingIds.has(entry.id)}
+                deleting={deletingIds.has(entry.id)}
                 error={errorMessage}
                 loadedConversation={loaded}
                 activeBranchId={
@@ -406,10 +640,91 @@ export function ConversationSidebar({
                   }
                   await handleRename(entry.id, ensured.tree.branch.id, nextTitle);
                 }}
+                onArchive={() => runArchiveConversation(entry.id)}
+                onUnarchive={() => runUnarchiveConversation(entry.id)}
+                onDelete={() => runDeleteConversation(entry.id)}
               />
             );
           })}
         </div>
+
+        {archivedEntries.length > 0 ? (
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => setShowArchived((value) => !value)}
+              className="flex w-full items-center justify-between rounded-md border border-border/60 bg-muted/50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground transition hover:bg-muted"
+              aria-expanded={showArchived}
+            >
+              <span className="flex items-center gap-2">
+                <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                Archived ({archivedEntries.length})
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform",
+                  showArchived ? "rotate-180" : "rotate-0",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+
+            {showArchived ? (
+              <div className="mt-3 flex flex-col gap-3">
+                {archivedEntries.map((entry) => {
+                  const loaded = loadedConversations[entry.id];
+                  const isExpanded = expandedIds.has(entry.id);
+                  const isLoading = loadingIds.has(entry.id);
+                  const errorMessage = loadingErrors[entry.id] ?? null;
+                  return (
+                    <ConversationCard
+                      key={entry.id}
+                      entry={entry}
+                      isActive={entry.id === conversationId}
+                      isArchived
+                      expanded={isExpanded}
+                      loading={isLoading}
+                      archiving={archivingIds.has(entry.id)}
+                      deleting={deletingIds.has(entry.id)}
+                      error={errorMessage}
+                      loadedConversation={loaded}
+                      activeBranchId={
+                        entry.id === conversationId ? activeBranchId : undefined
+                      }
+                      onToggle={() => {
+                        setExpandedIds((current) => {
+                          const next = new Set(current);
+                          if (next.has(entry.id)) {
+                            next.delete(entry.id);
+                          } else {
+                            next.add(entry.id);
+                          }
+                          return next;
+                        });
+                        if (!isExpanded) {
+                          void ensureConversationLoaded(entry.id);
+                        }
+                      }}
+                      onLoad={() => ensureConversationLoaded(entry.id)}
+                      onRename={async (nextTitle) => {
+                        const ensured =
+                          loadedConversations[entry.id] ??
+                          (await ensureConversationLoaded(entry.id));
+                        if (!ensured) {
+                          throw new Error("Conversation data unavailable");
+                        }
+                        await handleRename(entry.id, ensured.tree.branch.id, nextTitle);
+                      }}
+                      onArchive={() => runArchiveConversation(entry.id)}
+                      onUnarchive={() => runUnarchiveConversation(entry.id)}
+                      onDelete={() => runDeleteConversation(entry.id)}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </nav>
     </aside>
   );
@@ -418,35 +733,54 @@ export function ConversationSidebar({
 interface ConversationCardProps {
   entry: ConversationDirectoryEntry;
   isActive: boolean;
+  isArchived: boolean;
   expanded: boolean;
   loading: boolean;
+  archiving: boolean;
+  deleting: boolean;
   error: string | null;
   loadedConversation?: LoadedConversationData;
   activeBranchId?: string;
   onToggle: () => void;
   onLoad: () => Promise<LoadedConversationData | undefined>;
   onRename: (title: string) => Promise<void>;
+  onArchive: () => Promise<void> | void;
+  onUnarchive: () => Promise<void> | void;
+  onDelete: () => Promise<void> | void;
 }
 
 function ConversationCard({
   entry,
   isActive,
+  isArchived,
   expanded,
   loading,
+  archiving,
+  deleting,
   error,
   loadedConversation,
   activeBranchId,
   onToggle,
   onLoad,
   onRename,
+  onArchive,
+  onUnarchive,
+  onDelete,
 }: ConversationCardProps) {
   const branchCount = entry.branchCount ?? 0;
-  const modelLabel = loadedConversation?.conversation.settings.model;
-  const conversationIdentifier = loadedConversation?.conversation.id ?? entry.id;
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(entry.title.trim() || entry.id);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRenaming, startRenameTransition] = useTransition();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const statusLabel = isArchived ? "Archived" : isActive ? "Active" : "Idle";
+  const statusBadgeClass = isArchived
+    ? "bg-muted text-muted-foreground"
+    : isActive
+      ? "bg-primary/15 text-primary"
+      : "bg-muted text-muted-foreground";
 
   useEffect(() => {
     if (!isEditing) {
@@ -454,7 +788,59 @@ function ConversationCard({
     }
   }, [entry.id, entry.title, isEditing]);
 
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    const handlePointer = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (
+        menuRef.current?.contains(target) ||
+        menuButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setIsMenuOpen(false);
+    };
+
+    window.addEventListener("mousedown", handlePointer);
+    return () => {
+      window.removeEventListener("mousedown", handlePointer);
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+    if (archiving || deleting) {
+      setIsMenuOpen(false);
+    }
+  }, [archiving, deleting, isMenuOpen]);
+
   const toggleEditing = useCallback(async () => {
+    if (archiving || deleting) {
+      return;
+    }
+    setIsMenuOpen(false);
     if (!isEditing) {
       const ensured = loadedConversation ?? (await onLoad());
       if (!ensured) {
@@ -467,12 +853,17 @@ function ConversationCard({
     }
     setIsEditing((current) => !current);
     setErrorMessage(null);
-  }, [isEditing, loadedConversation, onLoad]);
+  }, [archiving, deleting, isEditing, loadedConversation, onLoad]);
 
   const submitRename = useCallback(
     (event?: FormEvent<HTMLFormElement>) => {
       event?.preventDefault();
       if (isRenaming) {
+        return;
+      }
+
+      if (archiving || deleting) {
+        setErrorMessage("Finish the pending action before renaming.");
         return;
       }
 
@@ -493,8 +884,36 @@ function ConversationCard({
         }
       });
     },
-    [isRenaming, onRename, value],
+    [archiving, deleting, isRenaming, onRename, value],
   );
+
+  const handleMenuRename = useCallback(() => {
+    setIsMenuOpen(false);
+    void toggleEditing();
+  }, [toggleEditing]);
+
+  const handleMenuArchiveToggle = useCallback(() => {
+    setIsMenuOpen(false);
+    if (isArchived) {
+      void onUnarchive();
+    } else {
+      void onArchive();
+    }
+  }, [isArchived, onArchive, onUnarchive]);
+
+  const handleMenuDelete = useCallback(() => {
+    if (deleting) {
+      return;
+    }
+    const confirmed = window.confirm(
+      "Delete this chat? This action cannot be undone.",
+    );
+    if (!confirmed) {
+      return;
+    }
+    setIsMenuOpen(false);
+    void onDelete();
+  }, [deleting, onDelete]);
 
   return (
     <div
@@ -535,19 +954,74 @@ function ConversationCard({
           <span className="shrink-0 text-xs text-muted-foreground">
             {branchCount} branch{branchCount === 1 ? "" : "es"}
           </span>
-          <button
-            type="button"
-            onClick={() => {
-              void toggleEditing();
-            }}
+          <span
             className={cn(
-              "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              isActive && "text-primary/80 hover:text-primary",
+              "inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]",
+              statusBadgeClass,
             )}
-            aria-label={isEditing ? "Cancel rename" : "Rename chat"}
           >
-            <MoreVertical className="h-4 w-4" aria-hidden="true" />
-          </button>
+            {statusLabel}
+          </span>
+          <div className="relative">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              onClick={() => setIsMenuOpen((value) => !value)}
+              className={cn(
+                "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                isActive && "text-primary/80 hover:text-primary",
+                (archiving || deleting) && "cursor-wait",
+              )}
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
+              disabled={archiving || deleting}
+            >
+              <MoreVertical className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">Conversation options</span>
+            </button>
+            {isMenuOpen ? (
+              <div
+                ref={menuRef}
+                role="menu"
+                className="absolute right-0 top-full z-50 mt-2 w-48 rounded-md border border-border bg-popover p-2 text-foreground shadow-xl"
+              >
+                <button
+                  type="button"
+                  onClick={handleMenuRename}
+                  disabled={loading || archiving || deleting}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  role="menuitem"
+                >
+                  <SquarePen className="h-4 w-4" aria-hidden="true" />
+                  Rename chat
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMenuArchiveToggle}
+                  disabled={archiving || deleting}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  role="menuitem"
+                >
+                  {isArchived ? (
+                    <ArchiveRestore className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Archive className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isArchived ? "Unarchive chat" : "Archive chat"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMenuDelete}
+                  disabled={deleting || archiving}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  role="menuitem"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Delete chat
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -561,7 +1035,7 @@ function ConversationCard({
               onChange={(event) => setValue(event.target.value)}
               className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70"
               placeholder="Enter a short title"
-              disabled={isRenaming}
+              disabled={isRenaming || archiving || deleting}
             />
           </label>
           {errorMessage ? (
@@ -583,16 +1057,27 @@ function ConversationCard({
             </button>
             <button
               type="submit"
-              disabled={isRenaming}
+              disabled={isRenaming || archiving || deleting}
               className="inline-flex items-center rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isRenaming ? "Saving…" : "Save"}
             </button>
           </div>
-          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            {value.length}/{MAX_BRANCH_TITLE_LENGTH} characters
-          </p>
-        </form>
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        {value.length}/{MAX_BRANCH_TITLE_LENGTH} characters
+      </p>
+    </form>
+  ) : null}
+
+      {archiving ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Archiving chat…
+        </p>
+      ) : null}
+      {deleting ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Deleting chat…
+        </p>
       ) : null}
 
       {expanded ? (

@@ -6,6 +6,7 @@ export interface ConversationDirectoryEntry {
   createdAt: string;
   lastActiveAt: string;
   branchCount: number;
+  archivedAt: string | null;
 }
 
 interface DirectoryState {
@@ -30,6 +31,38 @@ function sortEntries(entries: ConversationDirectoryEntry[]): ConversationDirecto
   );
 }
 
+function normalizeEntry(entry: ConversationDirectoryEntry): ConversationDirectoryEntry {
+  return {
+    ...entry,
+    archivedAt: entry.archivedAt ?? null,
+  };
+}
+
+function normalizeState(stored: DirectoryState | null): {
+  state: DirectoryState;
+  dirty: boolean;
+} {
+  if (!stored) {
+    return { state: { conversations: {} }, dirty: false };
+  }
+
+  let dirty = false;
+  const normalizedEntries = Object.fromEntries(
+    Object.entries(stored.conversations).map(([id, entry]) => {
+      const normalized = normalizeEntry(entry);
+      if (normalized.archivedAt !== entry.archivedAt) {
+        dirty = true;
+      }
+      return [id, normalized] as const;
+    }),
+  );
+
+  return {
+    state: { conversations: normalizedEntries },
+    dirty,
+  };
+}
+
 export class ConversationDirectoryDO implements DurableObject {
   private readonly state: DurableObjectState;
   private cache: DirectoryState | null = null;
@@ -39,8 +72,11 @@ export class ConversationDirectoryDO implements DurableObject {
     this.state = state;
     this.ready = this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<DirectoryState>(STORAGE_KEY);
-      this.cache =
-        stored ?? ({ conversations: {} } satisfies DirectoryState);
+      const { state: normalized, dirty } = normalizeState(stored ?? null);
+      this.cache = normalized;
+      if (dirty) {
+        await this.state.storage.put(STORAGE_KEY, normalized);
+      }
     });
   }
 
@@ -62,6 +98,21 @@ export class ConversationDirectoryDO implements DurableObject {
       return this.handleTouch(payload);
     }
 
+    if (request.method === "POST" && url.pathname === "/entries/archive") {
+      const payload = await request.json().catch(() => null);
+      return this.handleArchive(payload);
+    }
+
+    if (request.method === "POST" && url.pathname === "/entries/unarchive") {
+      const payload = await request.json().catch(() => null);
+      return this.handleUnarchive(payload);
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/entries") {
+      const payload = await request.json().catch(() => null);
+      return this.handleDelete(payload);
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -72,8 +123,11 @@ export class ConversationDirectoryDO implements DurableObject {
 
     const stored =
       (await this.state.storage.get<DirectoryState>(STORAGE_KEY)) ?? null;
-    this.cache =
-      stored ?? ({ conversations: {} } satisfies DirectoryState);
+    const { state: normalized, dirty } = normalizeState(stored);
+    this.cache = normalized;
+    if (dirty) {
+      await this.state.storage.put(STORAGE_KEY, normalized);
+    }
     return this.cache;
   }
 
@@ -128,6 +182,7 @@ export class ConversationDirectoryDO implements DurableObject {
           createdAt: existing?.createdAt ?? createdAt,
           lastActiveAt: timestamp,
           branchCount: normalizedBranchCount,
+          archivedAt: existing?.archivedAt ?? null,
         };
         return {
           conversations: {
@@ -189,6 +244,7 @@ export class ConversationDirectoryDO implements DurableObject {
               createdAt: timestamp,
               lastActiveAt: timestamp,
               branchCount: normalizedBranchCount ?? 0,
+              archivedAt: null,
             };
 
         return {
@@ -206,6 +262,134 @@ export class ConversationDirectoryDO implements DurableObject {
       console.error("[ERROR] directory:touch failed", error);
       return jsonResponse(
         { error: "Invalid directory touch payload" },
+        { status: 400 },
+      );
+    }
+  }
+
+  private async handleArchive(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+
+      const { id, archivedAt } = payload as Record<string, unknown>;
+
+      if (!id || typeof id !== "string") {
+        throw new TypeError("Conversation id is required");
+      }
+
+      const timestamp =
+        typeof archivedAt === "string" && archivedAt.trim().length > 0
+          ? archivedAt
+          : new Date().toISOString();
+
+      const nextState = await this.updateState((state) => {
+        const existing = state.conversations[id as ConversationModelId];
+        if (!existing) {
+          throw new Error(`Conversation ${id as string} not found`);
+        }
+
+        const entry: ConversationDirectoryEntry = {
+          ...existing,
+          archivedAt: timestamp,
+        };
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [entry.id]: entry,
+          },
+        };
+      });
+
+      return jsonResponse({
+        entry: nextState.conversations[id as ConversationModelId],
+      });
+    } catch (error) {
+      console.error("[ERROR] directory:archive failed", error);
+      return jsonResponse(
+        { error: "Invalid directory archive payload" },
+        { status: 400 },
+      );
+    }
+  }
+
+  private async handleUnarchive(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+
+      const { id } = payload as Record<string, unknown>;
+
+      if (!id || typeof id !== "string") {
+        throw new TypeError("Conversation id is required");
+      }
+
+      const nextState = await this.updateState((state) => {
+        const existing = state.conversations[id as ConversationModelId];
+        if (!existing) {
+          throw new Error(`Conversation ${id as string} not found`);
+        }
+
+        const entry: ConversationDirectoryEntry = {
+          ...existing,
+          archivedAt: null,
+        };
+
+        return {
+          conversations: {
+            ...state.conversations,
+            [entry.id]: entry,
+          },
+        };
+      });
+
+      return jsonResponse({
+        entry: nextState.conversations[id as ConversationModelId],
+      });
+    } catch (error) {
+      console.error("[ERROR] directory:unarchive failed", error);
+      return jsonResponse(
+        { error: "Invalid directory unarchive payload" },
+        { status: 400 },
+      );
+    }
+  }
+
+  private async handleDelete(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+
+      const { id } = payload as Record<string, unknown>;
+
+      if (!id || typeof id !== "string") {
+        throw new TypeError("Conversation id is required");
+      }
+
+      const nextState = await this.updateState((state) => {
+        if (!state.conversations[id as ConversationModelId]) {
+          return state;
+        }
+
+        const next = { ...state.conversations };
+        delete next[id as ConversationModelId];
+        return {
+          conversations: next,
+        } satisfies DirectoryState;
+      });
+
+      return jsonResponse({
+        ok: true,
+        count: Object.keys(nextState.conversations).length,
+      });
+    } catch (error) {
+      console.error("[ERROR] directory:delete failed", error);
+      return jsonResponse(
+        { error: "Invalid directory delete payload" },
         { status: 400 },
       );
     }
@@ -260,6 +444,49 @@ export class ConversationDirectoryClient {
     }
     const data = (await response.json()) as { entry: ConversationDirectoryEntry };
     return data.entry;
+  }
+
+  async archive(entry: {
+    id: ConversationModelId;
+    archivedAt?: string;
+  }): Promise<ConversationDirectoryEntry> {
+    const response = await this.stub.fetch("https://conversation-directory/entries/archive", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Failed to archive conversation entry: ${response.status} ${text}`);
+    }
+    const data = (await response.json()) as { entry: ConversationDirectoryEntry };
+    return data.entry;
+  }
+
+  async unarchive(entry: { id: ConversationModelId }): Promise<ConversationDirectoryEntry> {
+    const response = await this.stub.fetch("https://conversation-directory/entries/unarchive", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Failed to unarchive conversation entry: ${response.status} ${text}`);
+    }
+    const data = (await response.json()) as { entry: ConversationDirectoryEntry };
+    return data.entry;
+  }
+
+  async delete(entry: { id: ConversationModelId }): Promise<void> {
+    const response = await this.stub.fetch("https://conversation-directory/entries", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Failed to delete conversation entry: ${response.status} ${text}`);
+    }
   }
 }
 
