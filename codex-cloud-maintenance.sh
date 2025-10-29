@@ -21,6 +21,12 @@ cd "${PROJECT_ROOT}"
 log "Refreshing Codex container in ${PROJECT_ROOT}"
 log "Git HEAD: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 
+export http_proxy=
+export https_proxy=
+export HTTP_PROXY=
+export HTTPS_PROXY=
+export NO_PROXY=127.0.0.1,localhost,::1
+
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 if command -v corepack >/dev/null 2>&1; then
   corepack enable >/dev/null 2>&1 || true
