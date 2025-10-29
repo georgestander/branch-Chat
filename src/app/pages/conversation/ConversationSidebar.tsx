@@ -425,18 +425,18 @@ function ConversationCard({
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm">
-      <button
-        type="button"
-        onClick={() => {
-          onToggle();
-        }}
-        className={cn(
-          "flex items-start justify-between gap-2 text-left",
-          expanded ? "text-foreground" : "text-foreground/90",
-        )}
-        aria-expanded={expanded}
-      >
-        <div className="min-w-0 flex-1">
+      <div className="flex items-start justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            onToggle();
+          }}
+          className={cn(
+            "min-w-0 flex-1 text-left",
+            expanded ? "text-foreground" : "text-foreground/90",
+          )}
+          aria-expanded={expanded}
+        >
           <p className="font-medium" title={entry.title}>
             {entry.title.trim() || entry.id}
           </p>
@@ -447,7 +447,7 @@ function ConversationCard({
               ? ` · ${conversationIdentifier}`
               : ""}
           </p>
-        </div>
+        </button>
         <div className="flex shrink-0 items-center gap-2">
           {isActive ? (
             <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary-foreground">
@@ -456,8 +456,7 @@ function ConversationCard({
           ) : null}
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
+            onClick={() => {
               void toggleEditing();
             }}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -466,7 +465,7 @@ function ConversationCard({
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-      </button>
+      </div>
 
       {isEditing ? (
         <form onSubmit={submitRename} className="flex flex-col gap-2">
