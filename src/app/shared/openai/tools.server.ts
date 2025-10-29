@@ -45,13 +45,18 @@ export interface ToolExecutionResult {
 }
 
 export interface ResponseToolsOptions {
+  enableWebSearchTool?: boolean;
   enableFileUploadTool?: boolean;
 }
 
 export function getDefaultResponseTools(
   options: ResponseToolsOptions = {},
 ): ResponseToolDefinition[] {
-  const tools: ResponseToolDefinition[] = [{ type: "web_search" }];
+  const tools: ResponseToolDefinition[] = [];
+
+  if (options.enableWebSearchTool ?? true) {
+    tools.push({ type: "web_search" });
+  }
 
   if (options.enableFileUploadTool) {
     tools.push({

@@ -24,6 +24,9 @@ import {
   type OptimisticMessageDetail,
   type ClearOptimisticMessageDetail,
 } from "@/app/components/conversation/messageEvents";
+import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
+import { START_STREAMING_EVENT, COMPLETE_STREAMING_EVENT, type StartStreamingDetail } from "@/app/components/conversation/streamingEvents";
+import { navigate } from "rwsdk/client";
 
 const SCROLL_EPSILON_PX = 120;
 type OptimisticMessageStatus = "pending" | "resolved";
@@ -116,6 +119,7 @@ export function BranchColumn({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticEntry[]>([]);
+  const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
 
   const handleOptimisticAppend = useCallback(
     (detail: OptimisticMessageDetail) => {
@@ -170,6 +174,42 @@ export function BranchColumn({
     onAppend: handleOptimisticAppend,
     onClear: handleOptimisticClear,
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<StartStreamingDetail>;
+      const detail = custom.detail;
+      if (!detail) return;
+      if (detail.conversationId !== conversationId || detail.branchId !== branch.id) return;
+      setActiveStreamId(detail.streamId);
+    };
+    window.addEventListener(START_STREAMING_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(START_STREAMING_EVENT, handler as EventListener);
+    };
+  }, [branch.id, conversationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleComplete = (event: Event) => {
+      const custom = event as CustomEvent<{ conversationId: string; branchId: string; streamId: string }>;
+      const detail = custom.detail;
+      if (!detail) return;
+      if (detail.conversationId !== conversationId || detail.branchId !== branch.id) return;
+      setActiveStreamId(null);
+      // Soft refresh to get server-rendered, sanitized markdown for the final message
+      try {
+        navigate(window.location.href);
+      } catch {
+        window.location.reload();
+      }
+    };
+    window.addEventListener(COMPLETE_STREAMING_EVENT, handleComplete as EventListener);
+    return () => {
+      window.removeEventListener(COMPLETE_STREAMING_EVENT, handleComplete as EventListener);
+    };
+  }, [branch.id, conversationId]);
 
   useEffect(() => {
     setOptimisticMessages((current) => {
@@ -379,7 +419,11 @@ export function BranchColumn({
           ))}
           {awaitingAssistant ? (
             <li className="flex w-full justify-start">
-              <AssistantPendingBubble />
+              {activeStreamId ? (
+                <StreamingBubble streamId={activeStreamId} conversationId={conversationId} branchId={branch.id} />
+              ) : (
+                <AssistantPendingBubble />
+              )}
             </li>
           ) : null}
         </ol>

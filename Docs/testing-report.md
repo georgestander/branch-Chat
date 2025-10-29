@@ -74,3 +74,31 @@
   - ✅ Collapse/expand: collapsed the parent column, then expanded it; the previous parent width restored using the last saved ratio.
   - ✅ Keyboard fallback: focused the separator (Tab) and used ArrowLeft/ArrowRight to adjust widths in ~2% steps, clamped within bounds. Child column remained full width when parent was hidden.
   - ✅ A11y/ARIA: separator exposes `role="separator"`, `aria-orientation="vertical"`, and `aria-valuenow` updates as the ratio changes; visually hidden text reads “Resize split view”.
+
+## 2025-11-05
+
+- Default model switch (manual)
+  - ✅ Verified new conversations default to `gpt-5-chat-latest` with temperature preserved. Existing conversations retain previous settings until changed.
+- DO write batching (manual)
+  - ✅ Confirmed partial assistant deltas no longer persist during streaming; only initial append and final update write to DO. Observed reduced `[TRACE] conversation:apply:*` counts per send.
+- First-token telemetry (manual)
+  - ✅ Traces now include `openai:stream:first-token` with `dtMs` and durations for `conversation:apply:append-duration` and `conversation:apply:final-duration`.
+- Settings toggle (manual)
+  - ✅ Sidebar exposes Mode: Fast chat / Deep reasoning, and Effort for reasoning. Changing values persists via server action and reflects in subsequent sends.
+  - ⚠️ Follow-up: Consider surfacing a brief tooltip warning about higher latency when choosing Deep reasoning + High effort.
+
+## 2025-11-06
+
+- SSE streaming (manual)
+  - ✅ Observed live deltas in the active branch via StreamingBubble while final-only DO writes happen in the background.
+  - ✅ On completion, page soft-refreshes via client navigation to display server-rendered markdown of the final assistant message.
+  - ⚠️ Future: progressive markdown rendering during streaming (client-only) if needed, keeping CSP/hydration-safe behavior.
+
+## 2025-11-06
+
+- `pnpm tsc --noEmit`
+  - ✅ Passes after adding the Study & Learn agent helper and composer tool picker changes.
+- Composer tool picker (manual)
+  - ⚠️ Pending: Dev server unavailable during this pass; need to verify the plus-menu opens, multi-selection works (icons stack + overflow badge), composer footprint stays stable, and blue active icons persist across sends.
+- Study & Learn agent send (manual)
+  - ⚠️ Pending: Requires live OpenAI credentials to confirm the new agent path appends tutor responses and records `agent:study:*` traces; rerun once sandbox access is restored.

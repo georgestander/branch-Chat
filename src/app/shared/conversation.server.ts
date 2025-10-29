@@ -18,7 +18,7 @@ import {
 } from "./conversationDirectory.server";
 import { buildAgentInstructions } from "@/lib/openai/agentPrompt";
 
-const DEFAULT_MODEL = "gpt-5-nano";
+const DEFAULT_MODEL = "gpt-5-chat-latest";
 const DEFAULT_TEMPERATURE = 0.1;
 
 export const DEFAULT_BRANCH_TITLE = "New Chat";
@@ -654,6 +654,7 @@ function getDefaultConversationSettings(): ConversationSettings {
   return {
     model: DEFAULT_MODEL,
     temperature: DEFAULT_TEMPERATURE,
+    reasoningEffort: "low",
     systemPrompt:
       "You are Connexus, a branching conversation assistant. Provide concise, structured replies to help users explore alternatives.",
   };

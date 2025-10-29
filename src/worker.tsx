@@ -7,6 +7,7 @@ import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
+import { createSSEStream } from "@/app/shared/streaming.server";
 import {
   ConversationDirectoryClient,
   getConversationDirectoryStub,
@@ -89,7 +90,17 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
 const app = defineApp<AppRequestInfo>([
   provideAppContext(),
   setCommonHeaders(),
-  render(Document, [route("/", Home)]),
+  render(Document, [
+    route("/", Home),
+    route("/events", async ({ request }) => {
+      const url = new URL(request.url);
+      const streamId = url.searchParams.get("streamId");
+      if (!streamId) {
+        return new Response("Missing streamId", { status: 400 });
+      }
+      return createSSEStream(streamId);
+    }),
+  ]),
 ]);
 
 export default {

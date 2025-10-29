@@ -10,6 +10,8 @@ export interface ConversationSettings {
   model: string;
   temperature: number;
   systemPrompt?: string | null;
+  // Optional: applies only to reasoning models; ignored for chat-tuned models
+  reasoningEffort?: "low" | "medium" | "high" | null;
 }
 
 export interface Conversation {

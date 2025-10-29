@@ -18,6 +18,7 @@ import {
   loadConversation,
   renameBranch,
   unarchiveConversation,
+  updateConversationSettings,
 } from "@/app/pages/conversation/functions";
 import type {
   Branch,
@@ -104,6 +105,14 @@ export function ConversationSidebar({
   const [archivingIds, setArchivingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [showArchived, setShowArchived] = useState(false);
+  const [settingsModel, setSettingsModel] = useState(
+    conversation.settings.model || "gpt-5-chat-latest",
+  );
+  const [settingsEffort, setSettingsEffort] = useState<"low" | "medium" | "high" | null>(
+    (conversation.settings as any).reasoningEffort ?? "low",
+  );
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const directoryUpdateHandler = useCallback(
     (detail: DirectoryUpdateDetail) => {
       setDirectoryOverrides((current) => {
@@ -325,6 +334,28 @@ export function ConversationSidebar({
       }
     },
     [applyDirectoryEntry, toggleArchivingState],
+  );
+
+  const handleSettingsChange = useCallback(
+    async (nextModel: string, nextEffort: "low" | "medium" | "high" | null) => {
+      setSavingSettings(true);
+      setSettingsError(null);
+      try {
+        setSettingsModel(nextModel);
+        setSettingsEffort(nextEffort);
+        await updateConversationSettings({
+          conversationId,
+          model: nextModel,
+          reasoningEffort: nextEffort,
+        });
+      } catch (err) {
+        console.error("[Sidebar] updateConversationSettings failed", err);
+        setSettingsError("Unable to save settings. Try again.");
+      } finally {
+        setSavingSettings(false);
+      }
+    },
+    [conversationId],
   );
 
   const runDeleteConversation = useCallback(
@@ -591,6 +622,47 @@ export function ConversationSidebar({
           <p className="mt-2 text-xs text-destructive" role="status">
             {creationError}
           </p>
+        ) : null}
+      </div>
+
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-muted-foreground">Mode</label>
+          <select
+            className="rounded border border-border bg-card px-2 py-1 text-xs"
+            value={settingsModel}
+            onChange={(e) => {
+              const next = e.target.value;
+              const effort = next.includes("chat") ? null : settingsEffort ?? "low";
+              void handleSettingsChange(next, effort);
+            }}
+          >
+            <option value="gpt-5-chat-latest">Fast chat</option>
+            <option value="gpt-5-nano">Deep reasoning</option>
+          </select>
+          {!settingsModel.includes("chat") ? (
+            <>
+              <span className="text-xs text-muted-foreground">Effort</span>
+              <select
+                className="rounded border border-border bg-card px-2 py-1 text-xs"
+                value={settingsEffort ?? "low"}
+                onChange={(e) => {
+                  const next = e.target.value as "low" | "medium" | "high";
+                  void handleSettingsChange(settingsModel, next);
+                }}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </>
+          ) : null}
+          {savingSettings ? (
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Saving…</span>
+          ) : null}
+        </div>
+        {settingsError ? (
+          <p className="mt-1 text-xs text-destructive">{settingsError}</p>
         ) : null}
       </div>
 

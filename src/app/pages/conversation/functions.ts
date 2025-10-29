@@ -21,6 +21,7 @@ import {
   deleteConversationDirectoryEntry,
 } from "@/app/shared/conversationDirectory.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
+import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import type {
   Branch,
   BranchId,
@@ -34,6 +35,7 @@ import type {
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import {
   WEB_SEARCH_TOOL_NAME,
+  type ConversationComposerTool,
   type WebSearchInvocationOutput,
   type WebSearchResultSummary,
 } from "@/lib/conversation/tools";
@@ -41,16 +43,34 @@ import type { AppRequestInfo } from "@/worker";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano"]);
 
+function isReasoningModel(model: string): boolean {
+  // Heuristics: treat non-chat variants of gpt-5 as reasoning models
+  return model.startsWith("gpt-5-") && !model.includes("chat");
+}
+
 function buildResponseOptions(settings: {
   model: string;
   temperature: number;
-}): { model: string; temperature?: number } {
-  const request: { model: string; temperature?: number } = {
+  reasoningEffort?: "low" | "medium" | "high" | null;
+}): {
+  model: string;
+  temperature?: number;
+  reasoning?: { effort?: "low" | "medium" | "high" };
+} {
+  const request: {
+    model: string;
+    temperature?: number;
+    reasoning?: { effort?: "low" | "medium" | "high" };
+  } = {
     model: settings.model,
   };
 
   if (!TEMPERATURE_UNSUPPORTED_MODELS.has(settings.model)) {
     request.temperature = settings.temperature;
+  }
+
+  if (isReasoningModel(settings.model) && settings.reasoningEffort) {
+    request.reasoning = { effort: settings.reasoningEffort };
   }
 
   return request;
@@ -69,6 +89,8 @@ export interface LoadConversationResponse {
 export interface SendMessageInput extends ConversationPayload {
   branchId?: BranchId;
   content: string;
+  streamId?: string;
+  tools?: ConversationComposerTool[];
 }
 
 export interface SendMessageResponse extends LoadConversationResponse {
@@ -124,6 +146,51 @@ export interface DeleteConversationInput extends ConversationPayload {}
 
 export interface DeleteConversationResponse {
   conversationId: ConversationModelId;
+}
+
+export interface UpdateConversationSettingsInput extends ConversationPayload {
+  model?: string;
+  temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high" | null;
+}
+
+export type UpdateConversationSettingsResponse = LoadConversationResponse;
+
+export async function updateConversationSettings(
+  input: UpdateConversationSettingsInput,
+): Promise<UpdateConversationSettingsResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const current = ensured.snapshot.conversation;
+  const nextSettings = {
+    ...current.settings,
+    ...(input.model ? { model: input.model } : {}),
+    ...(typeof input.temperature === "number"
+      ? { temperature: input.temperature }
+      : {}),
+    ...(input.reasoningEffort !== undefined
+      ? { reasoningEffort: input.reasoningEffort }
+      : {}),
+  };
+
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "conversation:update",
+      conversation: {
+        ...current,
+        settings: nextSettings,
+      },
+    },
+  ]);
+
+  return {
+    conversationId,
+    snapshot: applied.snapshot,
+    version: applied.version,
+  };
 }
 
 function normalizeWebSearchResults(item: any): WebSearchResultSummary[] {
@@ -296,6 +363,24 @@ export async function sendMessage(
     throw new Error(`Branch ${branchId} not found for conversation`);
   }
 
+  const selectedTools = Array.isArray(input.tools)
+    ? input.tools.filter((tool): tool is ConversationComposerTool => {
+        return (
+          tool === "study-and-learn" ||
+          tool === "web-search" ||
+          tool === "file-upload"
+        );
+      })
+    : [];
+  const selectedToolSet = new Set(selectedTools);
+  if (selectedTools.length > 0) {
+    ctx.trace("composer:tools:selected", {
+      conversationId,
+      branchId,
+      tools: selectedTools,
+    });
+  }
+
   const now = new Date().toISOString();
   const userMessage: Message = {
     id: crypto.randomUUID(),
@@ -321,21 +406,11 @@ export async function sendMessage(
   let assistantState: Message = assistantMessage;
 
   const toolInvocationMap = new Map<string, ToolInvocation>();
-  const persistAssistantState = async () => {
-    await applyConversationUpdates(
-      ctx,
-      conversationId,
-      [
-        {
-          type: "message:update",
-          conversationId,
-          message: assistantState,
-        },
-      ],
-      { touchDirectory: false },
-    );
-  };
+  // NOTE: We intentionally avoid partial Durable Object writes during streaming.
+  // We'll persist once at the end to minimize sequential write overhead.
+  const persistAssistantState = async () => Promise.resolve();
 
+  const appendStart = Date.now();
   const appendedSnapshot = await applyConversationUpdates(ctx, conversationId, [
     {
       type: "message:append",
@@ -348,6 +423,95 @@ export async function sendMessage(
       message: assistantMessage,
     },
   ]);
+  ctx.trace("conversation:apply:append-duration", {
+    conversationId,
+    branchId,
+    ms: Date.now() - appendStart,
+  });
+
+  if (selectedToolSet.has("study-and-learn")) {
+    const agentStart = Date.now();
+    ctx.trace("agent:study:start", {
+      conversationId,
+      branchId,
+      assistantMessageId: assistantMessage.id,
+    });
+
+    let agentOutput = "";
+
+    try {
+      const result = await runStudyAndLearnAgent({
+        prompt: userMessage.content,
+        traceMetadata: {
+          conversationId,
+          branchId,
+          assistantMessageId: assistantMessage.id,
+        },
+      });
+      agentOutput = result.outputText.trim();
+      ctx.trace("agent:study:success", {
+        conversationId,
+        branchId,
+        assistantMessageId: assistantMessage.id,
+        ms: Date.now() - agentStart,
+        characters: agentOutput.length,
+      });
+    } catch (error) {
+      ctx.trace("agent:study:error", {
+        conversationId,
+        branchId,
+        assistantMessageId: assistantMessage.id,
+        ms: Date.now() - agentStart,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+      agentOutput =
+        "We couldn't reach the Study & Learn tutor. Please try again.";
+    }
+
+    if (!agentOutput) {
+      agentOutput = "The Study & Learn tutor did not return a response.";
+    }
+
+    const finalAssistantMessage: Message = {
+      ...assistantMessage,
+      content: agentOutput,
+      toolInvocations: [],
+    };
+
+    const finalPersistStart = Date.now();
+    const applied = await applyConversationUpdates(ctx, conversationId, [
+      {
+        type: "message:update",
+        conversationId,
+        message: finalAssistantMessage,
+      },
+    ]);
+    ctx.trace("conversation:apply:final-duration", {
+      conversationId,
+      branchId,
+      ms: Date.now() - finalPersistStart,
+    });
+
+    void maybeAutoSummarizeRootBranchTitle({
+      ctx,
+      conversationId,
+      snapshot: applied.snapshot,
+      branchId,
+    }).catch((error) => {
+      ctx.trace("conversation:auto-title:deferred-error", {
+        conversationId,
+        branchId,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    });
+
+    return {
+      conversationId,
+      snapshot: applied.snapshot,
+      version: applied.version,
+      appendedMessages: [userMessage, finalAssistantMessage],
+    };
+  }
 
   const openaiInput = buildResponseInputFromBranch({
     snapshot: appendedSnapshot.snapshot,
@@ -358,6 +522,8 @@ export async function sendMessage(
   const settings = ensured.snapshot.conversation.settings;
   const openai = ctx.getOpenAIClient();
 
+  const streamStart = Date.now();
+  let firstDeltaAt: number | null = null;
   ctx.trace("openai:stream:start", {
     conversationId,
     branchId,
@@ -366,18 +532,28 @@ export async function sendMessage(
     messageCount: openaiInput.length,
   });
 
+  const enableWebSearchTool = selectedToolSet.has("web-search");
+  const responseTools = getDefaultResponseTools({
+    enableWebSearchTool,
+    enableFileUploadTool: selectedToolSet.has("file-upload"),
+  });
+  const streamInclude: string[] = [];
+  if (enableWebSearchTool) {
+    streamInclude.push("web_search_call.results");
+  }
+
   const stream = await openai.responses.stream({
     ...buildResponseOptions(settings),
     input: openaiInput,
-    tools: getDefaultResponseTools(),
-    include: ["web_search_call.results"],
+    ...(responseTools.length > 0 ? { tools: responseTools } : {}),
+    ...(streamInclude.length > 0 ? { include: streamInclude } : {}),
   });
 
   let buffered = "";
   let lastPublishedLength = 0;
   let lastPublishTime = Date.now();
-  const MIN_PUBLISH_CHARS = 24;
-  const MIN_PUBLISH_MS = 150;
+  const MIN_PUBLISH_CHARS = 64;
+  const MIN_PUBLISH_MS = 500;
 
   const publishPartialUpdate = async (content: string) => {
     assistantState = {
@@ -385,6 +561,10 @@ export async function sendMessage(
       content,
     };
     await persistAssistantState();
+    if (input.streamId) {
+      const { sendSSE } = await import("@/app/shared/streaming.server");
+      sendSSE(input.streamId, "delta", { content });
+    }
   };
 
   const harmonizeStatus = (status: string): ToolInvocationStatus => {
@@ -466,15 +646,36 @@ export async function sendMessage(
           continue;
         }
         buffered += delta;
+        if (!firstDeltaAt) {
+          firstDeltaAt = Date.now();
+          ctx.trace("openai:stream:first-token", {
+            conversationId,
+            branchId,
+            dtMs: firstDeltaAt - streamStart,
+          });
+          if (input.streamId) {
+            const { sendSSE } = await import("@/app/shared/streaming.server");
+            sendSSE(input.streamId, "start", { startedAt: firstDeltaAt });
+          }
+        }
         const nowTs = Date.now();
         if (
           buffered.length - lastPublishedLength >= MIN_PUBLISH_CHARS ||
           nowTs - lastPublishTime >= MIN_PUBLISH_MS
         ) {
+          // We no longer persist partial content to the DO to avoid throttling.
+          // Hook for future SSE streaming could emit here instead.
           lastPublishedLength = buffered.length;
           lastPublishTime = nowTs;
-          await publishPartialUpdate(buffered);
+          if (input.streamId) {
+            const { sendSSE } = await import("@/app/shared/streaming.server");
+            sendSSE(input.streamId, "delta", { content: buffered });
+          }
         }
+        continue;
+      }
+
+      if (!enableWebSearchTool) {
         continue;
       }
 
@@ -498,6 +699,13 @@ export async function sendMessage(
       branchId,
       error: error instanceof Error ? error.message : "unknown",
     });
+    if (input.streamId) {
+      const { sendSSE, closeSSE } = await import("@/app/shared/streaming.server");
+      sendSSE(input.streamId, "error", {
+        message: error instanceof Error ? error.message : "unknown",
+      });
+      closeSSE(input.streamId);
+    }
   }
 
   let finalContent = buffered;
@@ -538,7 +746,7 @@ export async function sendMessage(
     }
   }
 
-  if (finalResponse && Array.isArray(finalResponse.output)) {
+  if (enableWebSearchTool && finalResponse && Array.isArray(finalResponse.output)) {
     for (const item of finalResponse.output) {
       if (item.type === "web_search_call") {
         const status = harmonizeStatus(item.status ?? "completed");
@@ -579,6 +787,7 @@ export async function sendMessage(
 
   const finalAssistantMessage = assistantState;
 
+  const finalPersistStart = Date.now();
   const applied = await applyConversationUpdates(ctx, conversationId, [
     {
       type: "message:update",
@@ -586,6 +795,20 @@ export async function sendMessage(
       message: finalAssistantMessage,
     },
   ]);
+  if (input.streamId) {
+    const { sendSSE, closeSSE } = await import("@/app/shared/streaming.server");
+    sendSSE(input.streamId, "complete", {
+      content: finalContent,
+      promptTokens,
+      completionTokens,
+    });
+    closeSSE(input.streamId);
+  }
+  ctx.trace("conversation:apply:final-duration", {
+    conversationId,
+    branchId,
+    ms: Date.now() - finalPersistStart,
+  });
 
   void maybeAutoSummarizeRootBranchTitle({
     ctx,

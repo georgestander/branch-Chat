@@ -48,3 +48,8 @@ export function extractWebSearchResults(
   }
   return results;
 }
+
+export type ConversationComposerTool =
+  | "study-and-learn"
+  | "web-search"
+  | "file-upload";

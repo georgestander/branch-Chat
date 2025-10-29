@@ -244,10 +244,26 @@ function validateConversationSettings(
       typeof systemPrompt === "string",
     "settings.systemPrompt invalid",
   );
+  // Optional reasoning effort for reasoning models only
+  const effort = (value as any).reasoningEffort;
+  let reasoningEffort: ConversationSettings["reasoningEffort"] = undefined;
+  if (
+    effort === undefined ||
+    effort === null ||
+    effort === "low" ||
+    effort === "medium" ||
+    effort === "high"
+  ) {
+    reasoningEffort = effort ?? undefined;
+  } else {
+    throw new Error("settings.reasoningEffort invalid");
+  }
+
   return {
     model,
     temperature,
     systemPrompt: systemPrompt ?? undefined,
+    reasoningEffort,
   };
 }
 
