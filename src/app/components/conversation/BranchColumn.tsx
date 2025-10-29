@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { Branch, ConversationModelId } from "@/lib/conversation";
@@ -249,21 +256,59 @@ function MessageBubble({
   );
 }
 
+const COLLAPSED_USER_MESSAGE_HEIGHT_PX = 208;
+
 function UserMessageBubble({
   message,
 }: {
   message: RenderedMessage;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const previewText = useMemo(() => {
-    const normalized = message.content.replace(/\s+/g, " ").trim();
-    if (!normalized) {
-      return "User prompt";
+  const [isCollapsible, setIsCollapsible] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  const updateCollapsibleState = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
     }
-    return normalized.length > 96
-      ? `${normalized.slice(0, 93)}…`
-      : normalized;
-  }, [message.content]);
+    const requiresExpansion =
+      element.scrollHeight > COLLAPSED_USER_MESSAGE_HEIGHT_PX + 4;
+    setIsCollapsible(requiresExpansion);
+  }, []);
+
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [message.id]);
+
+  useEffect(() => {
+    updateCollapsibleState();
+  }, [
+    updateCollapsibleState,
+    message.renderedHtml,
+    message.toolInvocations,
+  ]);
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      updateCollapsibleState();
+    });
+    resizeObserver.observe(element);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateCollapsibleState]);
+
+  const handleToggle = () => {
+    if (!isCollapsible) {
+      return;
+    }
+    setIsExpanded((value) => !value);
+  };
 
   return (
     <div
@@ -273,31 +318,46 @@ function UserMessageBubble({
         message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
       )}
     >
-      <button
-        type="button"
-        onClick={() => setIsExpanded((value) => !value)}
-        className="flex w-full items-start justify-between gap-3 text-left"
-        aria-expanded={isExpanded}
-      >
-        <span className="font-medium leading-relaxed">
-          “{previewText}”
-        </span>
-        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
-          {isExpanded ? "Hide" : "Show"}
-        </span>
-      </button>
+      {isCollapsible ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleToggle}
+            className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70 transition hover:text-primary"
+            aria-expanded={isExpanded}
+          >
+            {isExpanded ? "Hide" : "Show"}
+          </button>
+        </div>
+      ) : null}
 
-      <div
-        className={cn(
-          "overflow-hidden pt-3 text-primary transition-all duration-300 ease-out",
-          isExpanded ? "max-h-[100rem] opacity-100" : "max-h-0 opacity-0",
-          "[&_.prose]:text-primary [&_.prose strong]:text-primary",
-        )}
-      >
-        <MarkdownContent
-          className="prose prose-sm max-w-none text-primary"
-          html={message.renderedHtml}
-        />
+      <div className={cn("relative", isCollapsible ? "pt-3" : undefined)}>
+        <div
+          ref={contentRef}
+          className={cn(
+            "overflow-hidden text-primary transition-all duration-300 ease-out",
+            isExpanded || !isCollapsible
+              ? "max-h-[100rem] opacity-100"
+              : "max-h-[13rem] opacity-100",
+            "[&_.prose]:text-primary [&_.prose strong]:text-primary",
+          )}
+        >
+          <MarkdownContent
+            className="prose prose-sm max-w-none text-primary"
+            html={message.renderedHtml}
+          />
+          <ToolInvocationSummary
+            toolInvocations={message.toolInvocations}
+            fallbackHtml={message.renderedHtml}
+            className="mt-3"
+          />
+        </div>
+        {isCollapsible && !isExpanded ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/10 to-transparent"
+          />
+        ) : null}
       </div>
     </div>
   );
