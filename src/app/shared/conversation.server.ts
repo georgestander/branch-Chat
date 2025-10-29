@@ -575,19 +575,6 @@ async function initializeConversation(
 ): Promise<ConversationLoadResult> {
   const now = new Date().toISOString();
   const rootBranchId: BranchId = `${conversationId}:root`;
-  const systemMessageId = `${rootBranchId}:system`;
-
-  const systemMessage: Message = {
-    id: systemMessageId,
-    branchId: rootBranchId,
-    role: "system",
-    content:
-      "Connexus is ready. Start the conversation or branch from existing messages.",
-    createdAt: now,
-    tokenUsage: null,
-    attachments: null,
-    toolInvocations: null,
-  };
 
   const snapshot = createConversationSnapshot({
     id: conversationId,
@@ -596,10 +583,9 @@ async function initializeConversation(
     rootBranch: {
       id: rootBranchId,
       title: DEFAULT_BRANCH_TITLE,
-      createdFrom: { messageId: systemMessageId },
+      createdFrom: null,
       createdAt: now,
     },
-    initialMessages: [systemMessage],
   });
 
   const replaced = await client.replace(snapshot);

@@ -34,7 +34,7 @@ export interface Branch {
   id: BranchId;
   parentId?: BranchId | null;
   title: string;
-  createdFrom: BranchCreationSource;
+  createdFrom: BranchCreationSource | null;
   messageIds: MessageId[];
   createdAt: ISODateTimeString;
   archivedAt?: ISODateTimeString | null;
@@ -139,7 +139,7 @@ export function createConversationSnapshot(input: {
     id: input.rootBranch.id,
     parentId: null,
     title: input.rootBranch.title,
-    createdFrom: input.rootBranch.createdFrom,
+    createdFrom: input.rootBranch.createdFrom ?? null,
     createdAt: input.rootBranch.createdAt,
     messageIds: [],
     archivedAt: undefined,

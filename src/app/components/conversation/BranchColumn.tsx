@@ -196,22 +196,49 @@ function MessageBubble({
   conversationId: ConversationModelId;
   branch: Branch;
 }) {
+  const highlightClass = message.hasBranchHighlight
+    ? "ring-1 ring-primary/40"
+    : "";
 
-  const commonHeader = (
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-        {message.role}
-      </span>
-      <span className="text-xs text-muted-foreground">
-        {formatTimestamp(message.createdAt)}
-      </span>
-    </div>
-  );
+  if (message.role === "user") {
+    const normalized = message.content.replace(/\s+/g, " ").trim();
+    const preview = normalized.length > 140
+      ? `${normalized.slice(0, 140).trimEnd()}…`
+      : normalized || "View prompt";
+
+    return (
+      <details
+        className={cn(
+          "group rounded-2xl bg-primary/15 p-4 text-sm shadow-sm transition",
+          highlightClass,
+        )}
+      >
+        <summary className="flex cursor-pointer list-none items-center gap-3 text-sm font-medium text-primary">
+          <span className="flex-1 truncate text-left" title={normalized}>
+            {preview}
+          </span>
+          <span className="text-xs text-primary/80 transition-transform group-open:rotate-180">
+            ▾
+          </span>
+        </summary>
+        <div className="mt-3 text-sm text-foreground/85">
+          <MarkdownContent
+            className="prose prose-sm max-w-none text-foreground"
+            html={message.renderedHtml}
+          />
+        </div>
+      </details>
+    );
+  }
 
   if (isActive && message.role === "assistant") {
     return (
-      <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
-        {commonHeader}
+      <div
+        className={cn(
+          "rounded-2xl bg-card px-4 py-4 shadow-sm",
+          highlightClass,
+        )}
+      >
         <BranchableMessage
           branchId={branch.id}
           conversationId={conversationId}
@@ -224,13 +251,15 @@ function MessageBubble({
     );
   }
 
+  const bubbleClassName = cn(
+    "rounded-2xl bg-card px-4 py-4 shadow-sm",
+    highlightClass,
+  );
+
   return (
-    <div
-      className={`rounded-lg border border-border px-4 py-3 shadow-sm ${message.hasBranchHighlight ? "bg-primary/5" : "bg-card"}`}
-    >
-      {commonHeader}
+    <div className={bubbleClassName}>
       <MarkdownContent
-        className="prose prose-sm mt-3 max-w-none text-foreground"
+        className="prose prose-sm max-w-none text-foreground"
         html={message.renderedHtml}
       />
       <ToolInvocationSummary
@@ -240,15 +269,4 @@ function MessageBubble({
       />
     </div>
   );
-}
-
-function formatTimestamp(isoString: string): string {
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) {
-    return isoString;
-  }
-  const iso = date.toISOString();
-  const [dayPart, timePart] = iso.split("T");
-  const time = timePart?.slice(0, 8) ?? "00:00:00";
-  return `${dayPart}, ${time} UTC`;
 }

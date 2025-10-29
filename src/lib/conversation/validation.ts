@@ -288,18 +288,26 @@ function validateBranch(value: unknown): Branch {
     "branch.parentId invalid",
   );
   assert(typeof title === "string", "branch.title invalid");
-  assert(isObject(createdFrom), "branch.createdFrom invalid");
-  const { messageId, span } = createdFrom as RecordLike;
-  assert(
-    typeof messageId === "string" && messageId.length > 0,
-    "branch.createdFrom.messageId invalid",
-  );
-  const { excerpt } = createdFrom as RecordLike;
-  assert(
-    excerpt === undefined || excerpt === null || typeof excerpt === "string",
-    "branch.createdFrom.excerpt invalid",
-  );
-  const validatedSpan = validateBranchSpan(span);
+  let validatedCreatedFrom: Branch["createdFrom"] = null;
+  if (createdFrom !== undefined && createdFrom !== null) {
+    assert(isObject(createdFrom), "branch.createdFrom invalid");
+    const { messageId, span } = createdFrom as RecordLike;
+    assert(
+      typeof messageId === "string" && messageId.length > 0,
+      "branch.createdFrom.messageId invalid",
+    );
+    const { excerpt } = createdFrom as RecordLike;
+    assert(
+      excerpt === undefined || excerpt === null || typeof excerpt === "string",
+      "branch.createdFrom.excerpt invalid",
+    );
+    const validatedSpan = validateBranchSpan(span);
+    validatedCreatedFrom = {
+      messageId: messageId as MessageId,
+      span: validatedSpan,
+      excerpt: excerpt ?? undefined,
+    };
+  }
 
   assert(Array.isArray(messageIds), "branch.messageIds invalid");
   const validatedMessageIds = messageIds.map((id) => {
@@ -319,11 +327,7 @@ function validateBranch(value: unknown): Branch {
     id: id as BranchId,
     parentId: parentId ?? undefined,
     title,
-    createdFrom: {
-      messageId: messageId as MessageId,
-      span: validatedSpan,
-      excerpt: excerpt ?? undefined,
-    },
+    createdFrom: validatedCreatedFrom,
     messageIds: validatedMessageIds,
     createdAt,
     archivedAt: archivedAt ?? undefined,
