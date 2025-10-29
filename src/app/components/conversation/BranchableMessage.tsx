@@ -7,12 +7,14 @@ import {
   type CreateBranchInput,
 } from "@/app/pages/conversation/functions";
 import { navigate } from "rwsdk/client";
+import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 
 interface BranchableMessageProps {
   conversationId: string;
   branchId: string;
   messageId: string;
   content: string;
+  renderedHtml: string;
 }
 
 type SelectionState = {
@@ -27,6 +29,7 @@ export function BranchableMessage({
   branchId,
   messageId,
   content,
+  renderedHtml,
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -101,13 +104,12 @@ export function BranchableMessage({
 
   return (
     <div className="relative">
-      <div
+      <MarkdownContent
         ref={containerRef}
         onMouseUp={handleSelection}
-        className="prose prose-sm mt-3 max-w-none whitespace-pre-wrap text-foreground"
-      >
-        {content}
-      </div>
+        className="prose prose-sm mt-3 max-w-none text-foreground"
+        html={renderedHtml}
+      />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         {error ? (

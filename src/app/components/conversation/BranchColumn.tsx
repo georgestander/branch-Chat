@@ -3,27 +3,20 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
-import type {
-  Branch,
-  BranchSpan,
-  ConversationModelId,
-  Message,
-} from "@/lib/conversation";
+import type { Branch, ConversationModelId } from "@/lib/conversation";
+import type { RenderedMessage } from "@/lib/conversation/rendered";
 import { cn } from "@/lib/utils";
 
 import { BranchableMessage } from "./BranchableMessage";
+import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 
 const SCROLL_EPSILON_PX = 120;
 
 interface BranchColumnProps {
   branch: Branch;
-  messages: Message[];
+  messages: RenderedMessage[];
   conversationId: ConversationModelId;
   isActive: boolean;
-  highlight?: {
-    messageId: string;
-    span?: BranchSpan | null;
-  };
   className?: string;
   withLeftBorder?: boolean;
 }
@@ -33,7 +26,6 @@ export function BranchColumn({
   messages,
   conversationId,
   isActive,
-  highlight,
   className,
   withLeftBorder = true,
 }: BranchColumnProps) {
@@ -148,11 +140,6 @@ export function BranchColumn({
               <MessageBubble
                 message={message}
                 isActive={isActive}
-                highlight={
-                  highlight?.messageId === message.id
-                    ? highlight?.span ?? null
-                    : null
-                }
                 conversationId={conversationId}
                 branch={branch}
               />
@@ -188,20 +175,15 @@ export function BranchColumn({
 
 function MessageBubble({
   message,
-  highlight,
   isActive,
   conversationId,
   branch,
 }: {
-  message: Message;
-  highlight: BranchSpan | null;
+  message: RenderedMessage;
   isActive: boolean;
   conversationId: ConversationModelId;
   branch: Branch;
 }) {
-  const highlightContent = highlight
-    ? renderHighlightedContent(message.content, highlight)
-    : message.content;
 
   const commonHeader = (
     <div className="flex items-center justify-between">
@@ -223,6 +205,7 @@ function MessageBubble({
           conversationId={conversationId}
           messageId={message.id}
           content={message.content}
+          renderedHtml={message.renderedHtml}
         />
       </div>
     );
@@ -230,12 +213,13 @@ function MessageBubble({
 
   return (
     <div
-      className={`rounded-lg border border-border px-4 py-3 shadow-sm ${highlight ? "bg-primary/5" : "bg-card"}`}
+      className={`rounded-lg border border-border px-4 py-3 shadow-sm ${message.hasBranchHighlight ? "bg-primary/5" : "bg-card"}`}
     >
       {commonHeader}
-      <div className="prose prose-sm mt-3 max-w-none whitespace-pre-wrap text-foreground">
-        {highlight ? highlightContent : message.content}
-      </div>
+      <MarkdownContent
+        className="prose prose-sm mt-3 max-w-none text-foreground"
+        html={message.renderedHtml}
+      />
     </div>
   );
 }
@@ -249,23 +233,4 @@ function formatTimestamp(isoString: string): string {
   const [dayPart, timePart] = iso.split("T");
   const time = timePart?.slice(0, 8) ?? "00:00:00";
   return `${dayPart}, ${time} UTC`;
-}
-
-function renderHighlightedContent(content: string, span: BranchSpan) {
-  const start = Math.max(0, Math.min(span.start, content.length));
-  const end = Math.max(start, Math.min(span.end, content.length));
-
-  const before = content.slice(0, start);
-  const highlight = content.slice(start, end);
-  const after = content.slice(end);
-
-  return (
-    <span className="whitespace-pre-wrap">
-      {before}
-      <mark className="rounded bg-primary/20 px-0.5 text-primary">
-        {highlight}
-      </mark>
-      {after}
-    </span>
-  );
 }

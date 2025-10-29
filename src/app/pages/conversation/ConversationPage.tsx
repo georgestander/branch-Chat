@@ -4,9 +4,10 @@ import {
   ensureConversationSnapshot,
   getBranchMessages,
 } from "@/app/shared/conversation.server";
+import { enrichMessagesWithHtml } from "@/app/shared/markdown.server";
 import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
 import type { AppRequestInfo } from "@/worker";
-import type { Branch, ConversationGraphSnapshot } from "@/lib/conversation";
+import type { Branch, ConversationGraphSnapshot, Message } from "@/lib/conversation";
 import {
   listConversationDirectoryEntries,
   touchConversationDirectoryEntry,
@@ -58,6 +59,28 @@ export async function ConversationPage({
     ? getBranchMessages(snapshot, parentBranch.id)
     : [];
 
+  const activeRenderedMessages = await enrichMessagesWithHtmlForBranch(
+    activeMessages,
+    {
+      isActiveBranch: true,
+    },
+  );
+
+  const parentHighlight = activeBranch.createdFrom?.messageId
+    ? {
+        messageId: activeBranch.createdFrom.messageId,
+        range: activeBranch.createdFrom.span ?? null,
+      }
+    : null;
+
+  const parentRenderedMessages = await enrichMessagesWithHtmlForBranch(
+    parentMessages,
+    {
+      isActiveBranch: false,
+      highlight: parentHighlight,
+    },
+  );
+
   const tree = buildBranchTree(snapshot);
   const shouldAutoCollapse = requestUrl.searchParams.get("focus") === "child";
 
@@ -66,9 +89,9 @@ export async function ConversationPage({
       conversation={snapshot.conversation}
       tree={tree}
       activeBranch={activeBranch}
-      activeMessages={activeMessages}
+      activeMessages={activeRenderedMessages}
       parentBranch={parentBranch}
-      parentMessages={parentMessages}
+      parentMessages={parentRenderedMessages}
       conversationId={result.conversationId}
       initialSidebarCollapsed={shouldAutoCollapse}
       initialParentCollapsed={shouldAutoCollapse}
@@ -76,6 +99,32 @@ export async function ConversationPage({
       conversations={summaries}
     />
   );
+}
+
+async function enrichMessagesWithHtmlForBranch(
+  messages: Message[],
+  options: {
+    isActiveBranch: boolean;
+    highlight?: { messageId: string; range: { start: number; end: number } | null } | null;
+  },
+) {
+  const streamingAssistant = options.isActiveBranch
+    ? determineStreamingAssistantMessageId(messages)
+    : null;
+
+  return enrichMessagesWithHtml(messages, {
+    highlight: options.highlight ?? null,
+    streamingMessageId: streamingAssistant,
+  });
+}
+
+function determineStreamingAssistantMessageId(messages: Message[]) {
+  if (messages.length === 0) return null;
+  const last = messages[messages.length - 1];
+  if (last.role === "assistant" && !last.tokenUsage) {
+    return last.id;
+  }
+  return null;
 }
 
 function determineActiveBranch(

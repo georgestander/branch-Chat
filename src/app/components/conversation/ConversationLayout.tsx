@@ -8,8 +8,8 @@ import type {
   Branch,
   Conversation,
   ConversationModelId,
-  Message,
 } from "@/lib/conversation";
+import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
 import {
@@ -24,9 +24,9 @@ interface ConversationLayoutProps {
   conversation: Conversation;
   tree: BranchTreeNode;
   activeBranch: Branch;
-  activeMessages: Message[];
+  activeMessages: RenderedMessage[];
   parentBranch: Branch | null;
-  parentMessages: Message[];
+  parentMessages: RenderedMessage[];
   conversationId: ConversationModelId;
   initialSidebarCollapsed?: boolean;
   initialParentCollapsed?: boolean;
@@ -158,15 +158,7 @@ export function ConversationLayout({
               messages={parentMessages}
               conversationId={conversationId}
               isActive={false}
-              className="w-full max-w-xl shrink-0 basis-[32%] bg-background min-h-0"
-              highlight={
-                activeBranch.createdFrom?.messageId
-                  ? {
-                      messageId: activeBranch.createdFrom.messageId,
-                      span: activeBranch.createdFrom.span ?? null,
-                    }
-                  : undefined
-              }
+              className="min-h-0 w-full max-w-xl shrink-0 basis-[32%] bg-background"
             />
           ) : null}
 

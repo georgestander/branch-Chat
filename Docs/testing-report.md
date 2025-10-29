@@ -28,3 +28,16 @@
   - ⚠️ Pending verification: once browser automation is available again, confirm gpt-5-nano replies stream successfully now that temperature is omitted for unsupported models.
 - Branch navigation (manual)
   - ⚠️ Pending: need to re-check that branching on a secondary conversation stays within that conversation after including the `conversationId` param in navigation.
+
+## 2025-02-19
+
+- `pnpm check`
+  - ✅ Passes.
+- Markdown pipeline smoke test (manual)
+  - ⚠️ Pending: load a conversation with code blocks, tables, and KaTeX to verify the server-rendered highlight.js output matches ChatGPT styling (Shiki blocked in workerd runtime).
+- Branch selection offsets (manual)
+  - ⚠️ Pending: confirm selecting formatted assistant text still stores accurate spans for branch highlighting post-render.
+- Code block copy UX (manual)
+  - ⚠️ Pending: verify the copy button copies highlighted code to the clipboard and resets state after success/error.
+- Trace volume (manual)
+  - ⚠️ Pending: review recent `conversation:apply`/OpenAI traces and decide on sampling before enabling in production logs.

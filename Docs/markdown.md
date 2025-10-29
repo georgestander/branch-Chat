@@ -6,6 +6,16 @@ Code blocks with syntax highlighting (ideally with automatic language detection 
 Math/LaTeX rendering (optional, using KaTeX or similar).
 Custom component rendering for specific elements (e.g. custom link or blockquote components for styling/behavior).
 Tailwind + shadcn/ui compatibility (ability to style via Tailwind classes or use shadcn components).
+
+### Connexus Implementation Notes (2025-02-19)
+
+- We render markdown on the server (RSC) using the unified pipeline (`remark-*` + `remark-rehype` + `rehype-highlight`) so the client receives ready-to-paint HTML. Streaming assistant responses still downgrade to plain `<pre><code>` until the final delta arrives to keep parses light.
+- Shiki (`rehype-pretty-code`) was prototyped, but Cloudflare workerd rejects its WASM engine (`WebAssembly.instantiate(): Wasm code generation disallowed by embedder`). Until we have a Worker-compatible bundling strategy, we fall back to highlight.js. The highlighter hook lives in `renderMarkdownToHtml`, so swapping back in later is one import change plus CSS tweaks.
+- Code fences are wrapped in a server-generated header that surfaces the language label and a copy button; the client adds clipboard wiring inside `BranchableMessage`. Styling lives beside the prose overrides in `src/app/styles.css`.
+- Branch excerpts now highlight spans inside the sanitized HTML that is streamed from the server. This keeps the parent column snippet in sync with what users see in the active branch.
+- **Rollback plan:** if highlight.js becomes too heavy, disable syntax highlighting via the `enableSyntaxHighlighting` flag (or wire in a Worker-safe tokenizer) without touching the client components.
+- Manual validation matrix (tables, inline/block code, KaTeX) is tracked in `docs/testing-report.md`; re-run the 5-case checklist after any pipeline change.
+
 Below are the top open-source libraries (and combinations) that closely match ChatGPT’s markdown and code rendering fidelity, with reasoning and setup examples for each.
 1. React Markdown + Remark/Rehype Plugins (Unified Ecosystem)
 Using React Markdown (from the remark unified ecosystem) is a popular and safe choice. It converts markdown strings to React elements, and supports plugins for GFM, math, and syntax highlighting
