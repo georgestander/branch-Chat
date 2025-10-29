@@ -26,7 +26,13 @@ import {
 } from "@/app/components/conversation/messageEvents";
 
 const SCROLL_EPSILON_PX = 120;
-const OPTIMISTIC_MATCH_WINDOW_MS = 60_000;
+type OptimisticMessageStatus = "pending" | "resolved";
+
+interface OptimisticEntry {
+  message: RenderedMessage;
+  status: OptimisticMessageStatus;
+  replacementMessageId?: string | null;
+}
 
 interface BranchColumnProps {
   branch: Branch;
@@ -107,13 +113,16 @@ export function BranchColumn({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
-  const [optimisticMessages, setOptimisticMessages] = useState<RenderedMessage[]>([]);
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticEntry[]>([]);
 
   const handleOptimisticAppend = useCallback(
     (detail: OptimisticMessageDetail) => {
       setOptimisticMessages((current) => [
         ...current,
-        createOptimisticRenderedMessage(detail),
+        {
+          message: createOptimisticRenderedMessage(detail),
+          status: "pending",
+        },
       ]);
     },
     [],
@@ -121,8 +130,35 @@ export function BranchColumn({
 
   const handleOptimisticClear = useCallback((detail: ClearOptimisticMessageDetail) => {
     setOptimisticMessages((current) => {
-      const next = current.filter((message) => message.id !== detail.messageId);
-      return next.length === current.length ? current : next;
+      if (detail.reason === "failed") {
+        const next = current.filter(
+          (entry) => entry.message.id !== detail.messageId,
+        );
+        return next.length === current.length ? current : next;
+      }
+
+      let didUpdate = false;
+      const next = current.map((entry) => {
+        if (entry.message.id !== detail.messageId) {
+          return entry;
+        }
+
+        if (
+          entry.status === "resolved" &&
+          entry.replacementMessageId === detail.replacementMessageId
+        ) {
+          return entry;
+        }
+
+        didUpdate = true;
+        return {
+          ...entry,
+          status: "resolved" as const,
+          replacementMessageId: detail.replacementMessageId ?? null,
+        };
+      });
+
+      return didUpdate ? next : current;
     });
   }, []);
 
@@ -139,33 +175,29 @@ export function BranchColumn({
         return current;
       }
 
-      const next = current.filter((optimistic) => {
-        const optimisticCreatedAt = Date.parse(optimistic.createdAt);
-
-        const hasMatch = messages.some((message) => {
-          if (message.role !== "user") {
-            return false;
+      const next = current.filter((entry) => {
+        if (entry.status === "resolved") {
+          if (entry.replacementMessageId) {
+            const replacementExists = messages.some(
+              (message) => message.id === entry.replacementMessageId,
+            );
+            if (replacementExists) {
+              return false;
+            }
           }
 
-          if (message.content.trim() !== optimistic.content.trim()) {
-            return false;
-          }
-
-          const messageCreatedAt = Date.parse(message.createdAt);
-          if (
-            Number.isNaN(optimisticCreatedAt) ||
-            Number.isNaN(messageCreatedAt)
-          ) {
-            return false;
-          }
-
-          return (
-            Math.abs(messageCreatedAt - optimisticCreatedAt) <=
-            OPTIMISTIC_MATCH_WINDOW_MS
+          const hasContentMatch = messages.some(
+            (message) =>
+              message.role === "user" &&
+              message.content.trim() === entry.message.content.trim(),
           );
-        });
 
-        return !hasMatch;
+          if (hasContentMatch) {
+            return false;
+          }
+        }
+
+        return true;
       });
 
       return next.length === current.length ? current : next;
@@ -173,7 +205,7 @@ export function BranchColumn({
   }, [messages]);
 
   const combinedMessages = useMemo(
-    () => [...messages, ...optimisticMessages],
+    () => [...messages, ...optimisticMessages.map((entry) => entry.message)],
     [messages, optimisticMessages],
   );
 

@@ -19,6 +19,7 @@ export interface ClearOptimisticMessageDetail {
   branchId: string;
   messageId: string;
   reason: "resolved" | "failed";
+  replacementMessageId?: string | null;
 }
 
 export function emitOptimisticUserMessage(detail: OptimisticMessageDetail) {

@@ -107,6 +107,16 @@ export function ConversationComposer({
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
           result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+        const persistedUserMessage = result.appendedMessages.find(
+          (message) => message.role === "user" && message.branchId === branchId,
+        );
+        emitOptimisticMessageClear({
+          conversationId,
+          branchId,
+          messageId: optimisticId,
+          reason: "resolved",
+          replacementMessageId: persistedUserMessage?.id ?? null,
+        });
         emitDirectoryUpdate({
           conversationId,
           title: rootBranch?.title ?? conversationId,
