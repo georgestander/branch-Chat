@@ -19,7 +19,10 @@ import type {
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import { MoreHorizontal, Plus } from "lucide-react";
+import {
+  MoreHorizontal,
+  Plus,
+} from "lucide-react";
 import { navigate } from "rwsdk/client";
 
 interface ConversationSidebarProps {

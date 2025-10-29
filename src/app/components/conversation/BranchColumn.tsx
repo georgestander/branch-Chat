@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { Branch, ConversationModelId } from "@/lib/conversation";
@@ -19,6 +19,8 @@ interface BranchColumnProps {
   isActive: boolean;
   className?: string;
   withLeftBorder?: boolean;
+  headerActions?: ReactNode;
+  leadingActions?: ReactNode;
 }
 
 export function BranchColumn({
@@ -28,6 +30,8 @@ export function BranchColumn({
   isActive,
   className,
   withLeftBorder = true,
+  headerActions,
+  leadingActions,
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -110,6 +114,9 @@ export function BranchColumn({
       )}
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3 text-sm">
+        {leadingActions ? (
+          <div className="flex items-center gap-2">{leadingActions}</div>
+        ) : null}
         <h2 className="text-base font-semibold text-foreground">
           {branch.title || "Untitled Branch"}
         </h2>
@@ -124,6 +131,9 @@ export function BranchColumn({
           </span>
         ) : null}
         <span className="grow" aria-hidden="true" />
+        {headerActions ? (
+          <div className="flex items-center gap-2">{headerActions}</div>
+        ) : null}
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
         >
