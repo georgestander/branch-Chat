@@ -24,12 +24,7 @@ import type {
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import {
-  ChevronDown,
-  ChevronRight,
-  MoreHorizontal,
-  SquarePen,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, MoreVertical, SquarePen } from "lucide-react";
 import { navigate } from "rwsdk/client";
 import {
   emitDirectoryUpdate,
@@ -340,7 +335,7 @@ export function ConversationSidebar({
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Connect
+            Connexus
           </h2>
           <button
             type="button"
@@ -495,21 +490,21 @@ function ConversationCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-md border px-3 py-2 text-sm shadow-sm transition",
+        "flex flex-col gap-2 rounded-md px-3 py-2 text-sm shadow-sm transition",
         isActive
-          ? "border-primary bg-primary/10 text-primary shadow-sm"
-          : "border-border bg-card text-foreground",
+          ? "bg-primary/10 text-primary shadow-sm hover:bg-primary/15"
+          : "bg-card text-foreground hover:bg-muted/70",
       )}
       data-active={isActive}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="grid grid-cols-[1fr_auto] items-center gap-2">
         <button
           type="button"
           onClick={() => {
             onToggle();
           }}
           className={cn(
-            "flex w-full items-center justify-between gap-3 text-left transition",
+            "flex min-w-0 items-center gap-2 text-left transition",
             isActive
               ? "text-primary"
               : expanded
@@ -518,21 +513,19 @@ function ConversationCard({
           )}
           aria-expanded={expanded}
         >
-          <span className="flex min-w-0 flex-1 items-center gap-2">
-            {expanded ? (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            )}
-            <span className="truncate font-medium" title={entry.title}>
-              {entry.title.trim() || entry.id}
-            </span>
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {branchCount} branch{branchCount === 1 ? "" : "es"}
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
+          <span className="min-w-0 truncate font-medium" title={entry.title}>
+            {entry.title.trim() || entry.id}
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {branchCount} branch{branchCount === 1 ? "" : "es"}
+          </span>
           <button
             type="button"
             onClick={() => {
@@ -544,7 +537,7 @@ function ConversationCard({
             )}
             aria-label={isEditing ? "Cancel rename" : "Rename chat"}
           >
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            <MoreVertical className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -649,9 +642,9 @@ function BranchTree({
       <a
         href={buildBranchHref(conversationId, tree.branch.id)}
         className={cn(
-          "group relative flex items-center justify-between rounded-md border border-transparent px-3 py-2 text-sm transition hover:bg-muted/80",
+          "group relative flex items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80",
           isActive
-            ? "border-primary bg-primary/10 font-semibold text-primary shadow-sm"
+            ? "bg-primary/10 font-semibold text-primary shadow-sm hover:bg-primary/15"
             : "text-foreground",
         )}
         data-active={isActive}
