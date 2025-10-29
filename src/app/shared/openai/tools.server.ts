@@ -44,10 +44,17 @@ export interface ToolExecutionResult {
   };
 }
 
-export function getDefaultResponseTools(): ResponseToolDefinition[] {
-  return [
-    { type: "web_search" },
-    {
+export interface ResponseToolsOptions {
+  enableFileUploadTool?: boolean;
+}
+
+export function getDefaultResponseTools(
+  options: ResponseToolsOptions = {},
+): ResponseToolDefinition[] {
+  const tools: ResponseToolDefinition[] = [{ type: "web_search" }];
+
+  if (options.enableFileUploadTool) {
+    tools.push({
       type: "function",
       name: FILE_UPLOAD_TOOL_NAME,
       description:
@@ -65,8 +72,10 @@ export function getDefaultResponseTools(): ResponseToolDefinition[] {
         additionalProperties: false,
       },
       strict: true,
-    },
-  ];
+    });
+  }
+
+  return tools;
 }
 
 export function createToolInvocationRecord(options: {
