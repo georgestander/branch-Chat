@@ -775,12 +775,7 @@ function ConversationCard({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const statusLabel = isArchived ? "Archived" : isActive ? "Active" : "Idle";
-  const statusBadgeClass = isArchived
-    ? "bg-muted text-muted-foreground"
-    : isActive
-      ? "bg-primary/15 text-primary"
-      : "bg-muted text-muted-foreground";
+  // Removed status pills (Idle/Active) from sidebar per request.
 
   useEffect(() => {
     if (!isEditing) {
@@ -954,14 +949,7 @@ function ConversationCard({
           <span className="shrink-0 text-xs text-muted-foreground">
             {branchCount} branch{branchCount === 1 ? "" : "es"}
           </span>
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]",
-              statusBadgeClass,
-            )}
-          >
-            {statusLabel}
-          </span>
+          {/* Status pill removed */}
           <div className="relative">
             <button
               ref={menuButtonRef}
