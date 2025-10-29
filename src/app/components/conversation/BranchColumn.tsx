@@ -43,6 +43,7 @@ interface BranchColumnProps {
   withLeftBorder?: boolean;
   headerActions?: ReactNode;
   leadingActions?: ReactNode;
+  style?: React.CSSProperties;
 }
 
 function AssistantPendingBubble() {
@@ -109,6 +110,7 @@ export function BranchColumn({
   withLeftBorder = true,
   headerActions,
   leadingActions,
+  style,
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -309,6 +311,7 @@ export function BranchColumn({
         withLeftBorder ? "border-l border-border" : "",
         className,
       )}
+      style={style}
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3 text-sm">
         {leadingActions ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 
 import { ConversationSidebar } from "@/app/pages/conversation/ConversationSidebar";
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
@@ -53,6 +53,16 @@ export function ConversationLayout({
   const [isParentCollapsed, setIsParentCollapsed] = useState(
     initialParentCollapsed,
   );
+  // Resizable split: store current and last-known parent width ratios
+  const [parentWidthRatio, setParentWidthRatio] = useState(0.5);
+  const lastParentWidthRatioRef = useRef<number>(0.5);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartRatioRef = useRef(0.5);
+  const containerLeftRef = useRef(0);
+  const containerWidthRef = useRef(0);
+  const hasLoggedFirstDragRef = useRef(false);
   const showParentColumn = Boolean(parentBranch) && !isParentCollapsed;
   const toggleButtonClass =
     "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
@@ -73,6 +83,110 @@ export function ConversationLayout({
       }
     }
   }, [activeBranchId, initialParentCollapsed, initialSidebarCollapsed]);
+
+  // When collapsing/expanding the parent column, snapshot/restore the ratio
+  useEffect(() => {
+    if (!showParentColumn) {
+      // Snapshot the current ratio for future restore
+      lastParentWidthRatioRef.current = parentWidthRatio;
+    } else {
+      // Restore the last ratio when becoming visible
+      setParentWidthRatio((r) => r ?? lastParentWidthRatioRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showParentColumn]);
+
+  const clampRatioWithinBounds = useCallback((ratio: number) => {
+    const container = containerRef.current;
+    if (!container) return Math.min(0.75, Math.max(0.25, ratio));
+    const width = container.clientWidth;
+    const parentMin = 280; // px
+    const childMin = 360; // px
+    const minRatio = Math.max(parentMin / Math.max(width, 1), 0);
+    const maxRatio = Math.min(1 - childMin / Math.max(width, 1), 1);
+    // Ensure sensible defaults when extremely small widths
+    const boundedMin = Math.min(minRatio, 0.75);
+    const boundedMax = Math.max(maxRatio, 0.25);
+    return Math.min(boundedMax, Math.max(boundedMin, ratio));
+  }, []);
+
+  const handlePointerMove = useCallback((ev: PointerEvent) => {
+    if (!isDraggingRef.current) return;
+    const left = containerLeftRef.current;
+    const width = containerWidthRef.current;
+    if (width <= 0) return;
+    const relativeX = ev.clientX - left;
+    const rawRatio = relativeX / width;
+    const nextRatio = clampRatioWithinBounds(rawRatio);
+    setParentWidthRatio(nextRatio);
+  }, [clampRatioWithinBounds]);
+
+  const endDrag = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    window.removeEventListener("pointermove", handlePointerMove as any);
+    window.removeEventListener("pointerup", endDrag as any);
+    window.removeEventListener("pointercancel", endDrag as any);
+    window.removeEventListener("pointerleave", endDrag as any);
+    window.removeEventListener("blur", endDrag as any);
+
+    if (!hasLoggedFirstDragRef.current) {
+      hasLoggedFirstDragRef.current = true;
+      try {
+        const container = containerRef.current;
+        const width = container?.clientWidth ?? 0;
+        const parentWidth = Math.round(parentWidthRatio * width);
+        // Observability trace (first drag only per mount)
+        console.debug(
+          `[TRACE] resize.complete parentWidth=${parentWidth} containerWidth=${width} ratio=${parentWidthRatio.toFixed(
+            3,
+          )}`,
+        );
+      } catch {
+        // no-op
+      }
+    }
+  }, [handlePointerMove, parentWidthRatio]);
+
+  const onSeparatorPointerDown = useCallback(
+    (ev: React.PointerEvent<HTMLDivElement>) => {
+      if (!showParentColumn) return;
+      const container = containerRef.current;
+      if (!container) return;
+      ev.currentTarget.setPointerCapture?.(ev.pointerId);
+      isDraggingRef.current = true;
+      // Snapshot container rect for absolute calculations
+      const rect = container.getBoundingClientRect();
+      containerLeftRef.current = rect.left;
+      containerWidthRef.current = rect.width;
+      dragStartXRef.current = ev.clientX;
+      dragStartRatioRef.current = parentWidthRatio;
+      window.addEventListener("pointermove", handlePointerMove as any, {
+        passive: true,
+      });
+      window.addEventListener("pointerup", endDrag as any);
+      window.addEventListener("pointercancel", endDrag as any);
+      window.addEventListener("pointerleave", endDrag as any);
+      window.addEventListener("blur", endDrag as any);
+    },
+    [endDrag, handlePointerMove, parentWidthRatio, showParentColumn],
+  );
+
+  // Keyboard fallback for the separator
+  const onSeparatorKeyDown = useCallback(
+    (ev: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!showParentColumn) return;
+      const step = 0.02; // ~2 percentage points
+      if (ev.key === "ArrowLeft") {
+        ev.preventDefault();
+        setParentWidthRatio((r) => clampRatioWithinBounds(r - step));
+      } else if (ev.key === "ArrowRight") {
+        ev.preventDefault();
+        setParentWidthRatio((r) => clampRatioWithinBounds(r + step));
+      }
+    },
+    [clampRatioWithinBounds, showParentColumn],
+  );
 
   return (
     <div className="flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
@@ -100,7 +214,7 @@ export function ConversationLayout({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
           {showParentColumn && parentBranch ? (
             <BranchColumn
               key={parentBranch.id}
@@ -108,7 +222,14 @@ export function ConversationLayout({
               messages={parentMessages}
               conversationId={conversationId}
               isActive={false}
-              className="min-h-0 w-full max-w-xl shrink-0 basis-[32%] bg-background"
+              className="min-h-0 w-full shrink-0 bg-background"
+              // Apply a fixed flex-basis driven by ratio
+              // Keep a reasonable maxWidth via inline style for determinism
+              style={{
+                flexBasis: `${Math.round(parentWidthRatio * 1000) / 10}%`,
+                minWidth: 280,
+                maxWidth: "75%",
+              } as CSSProperties}
               leadingActions={
                 <button
                   type="button"
@@ -125,6 +246,28 @@ export function ConversationLayout({
             />
           ) : null}
 
+          {showParentColumn ? (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(parentWidthRatio * 100)}
+              tabIndex={0}
+              title="Resize panels"
+              onPointerDown={onSeparatorPointerDown}
+              onKeyDown={onSeparatorKeyDown}
+              className="relative z-10 -mx-0.5 w-1 cursor-col-resize select-none border-l border-border bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+              style={{
+                // Visually hide if collapsed (but this element isn't rendered when collapsed already)
+                // Use deterministic styles only
+                touchAction: "none",
+              } as CSSProperties}
+            >
+              <span className="sr-only">Resize split view</span>
+            </div>
+          ) : null}
+
           <BranchColumn
             key={activeBranch.id}
             branch={activeBranch}
@@ -133,8 +276,17 @@ export function ConversationLayout({
             isActive
             className={cn(
               "min-h-0 flex-1",
-              showParentColumn ? "md:basis-[68%]" : "basis-full border-l-0",
+              showParentColumn ? "" : "basis-full border-l-0",
             )}
+            style={
+              showParentColumn
+                ? ({
+                    // Let it grow to take remaining space, but enforce a min width
+                    minWidth: 360,
+                    flexBasis: `calc(100% - ${Math.round(parentWidthRatio * 1000) / 10}%)`,
+                  } as CSSProperties)
+                : undefined
+            }
             withLeftBorder={showParentColumn}
             leadingActions={
               <>
@@ -162,7 +314,13 @@ export function ConversationLayout({
                 {parentBranch && isParentCollapsed ? (
                   <button
                     type="button"
-                    onClick={() => setIsParentCollapsed(false)}
+                    onClick={() => {
+                      setIsParentCollapsed(false);
+                      // Restore previous width ratio when uncollapsing
+                      setParentWidthRatio(
+                        lastParentWidthRatioRef.current ?? 0.35,
+                      );
+                    }}
                     className={toggleButtonClass}
                     aria-pressed={false}
                     aria-expanded={false}

@@ -66,3 +66,11 @@
   - ✅ Archived the active conversation from the options menu; the card moved to the Archived section, the active list collapsed automatically, and unarchiving returned it to the top of the active list without losing branch expansion state.
 - Delete conversation (manual)
   - ✅ Deleted a secondary chat via the options menu; the card disappeared from both active and archived sections, local overrides cleared, and navigating to the default route recreated a fresh conversation snapshot on reload.
+
+## 2025-11-04
+
+- Split view resizing (manual)
+  - ✅ Mouse drag: grabbed the vertical separator between parent and active branch columns; dragging left/right resized smoothly and respected min widths (parent ≥280px, child ≥360px). On release, a one-time debug trace logged `[TRACE] resize.complete …` with widths/ratio.
+  - ✅ Collapse/expand: collapsed the parent column, then expanded it; the previous parent width restored using the last saved ratio.
+  - ✅ Keyboard fallback: focused the separator (Tab) and used ArrowLeft/ArrowRight to adjust widths in ~2% steps, clamped within bounds. Child column remained full width when parent was hidden.
+  - ✅ A11y/ARIA: separator exposes `role="separator"`, `aria-orientation="vertical"`, and `aria-valuenow` updates as the ratio changes; visually hidden text reads “Resize split view”.
