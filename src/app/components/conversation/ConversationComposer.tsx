@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Loader2, Plus, SendHorizontal } from "lucide-react";
 
-import { sendMessage } from "@/app/pages/conversation/functions";
+import {
+  getConversationSummary,
+  sendMessage,
+} from "@/app/pages/conversation/functions";
 import { cn } from "@/lib/utils";
+import { emitDirectoryUpdate } from "@/app/components/conversation/directoryEvents";
 
 interface ConversationComposerProps {
   branchId: string;
@@ -23,6 +27,7 @@ export function ConversationComposer({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingRefreshTimers = useRef<number[]>([]);
 
   useEffect(() => {
     if (!autoFocus) {
@@ -50,6 +55,17 @@ export function ConversationComposer({
     node.style.height = `${next}px`;
   }, [value]);
 
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined") {
+        pendingRefreshTimers.current.forEach((timer) => {
+          window.clearTimeout(timer);
+        });
+      }
+      pendingRefreshTimers.current = [];
+    };
+  }, []);
+
   const submitMessage = () => {
     if (isPending) {
       return;
@@ -64,12 +80,48 @@ export function ConversationComposer({
     setError(null);
     startTransition(async () => {
       try {
-        await sendMessage({
+        const result = await sendMessage({
           conversationId,
           branchId,
           content,
         });
         setValue("");
+
+        const branchCount = Object.keys(result.snapshot.branches).length;
+        const rootBranch =
+          result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+        emitDirectoryUpdate({
+          conversationId,
+          title: rootBranch?.title ?? conversationId,
+          branchCount,
+          lastActiveAt: new Date().toISOString(),
+        });
+
+        if (typeof window !== "undefined") {
+          const scheduleRefresh = (delay: number) => {
+            const timer = window.setTimeout(async () => {
+              try {
+                const summary = await getConversationSummary({
+                  conversationId,
+                });
+                emitDirectoryUpdate(summary);
+              } catch (refreshError) {
+                console.error(
+                  "[Composer] refresh conversation summary failed",
+                  refreshError,
+                );
+              } finally {
+                pendingRefreshTimers.current = pendingRefreshTimers.current.filter(
+                  (value) => value !== timer,
+                );
+              }
+            }, delay);
+            pendingRefreshTimers.current.push(timer);
+          };
+
+          scheduleRefresh(1500);
+          scheduleRefresh(4000);
+        }
       } catch (cause) {
         console.error("[Composer] sendMessage failed", cause);
         setError("We couldn't send that message. Please try again.");

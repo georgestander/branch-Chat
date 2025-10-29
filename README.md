@@ -18,6 +18,8 @@ npm run dev
 
 Point your browser to the URL displayed in the terminal (e.g. `http://localhost:5173/`). You should see a "Hello World" message in your browser.
 
+Codex Cloud automatically runs `npm run dev`, which already bypasses the sandbox proxy so live previews work without extra steps.
+
 ## Further Reading
 
 - [RedwoodSDK Documentation](https://docs.rwsdk.com/)

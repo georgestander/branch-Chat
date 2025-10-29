@@ -95,6 +95,13 @@ export interface RenameBranchResponse extends LoadConversationResponse {
   branch: Branch;
 }
 
+export interface ConversationSummary {
+  conversationId: ConversationModelId;
+  title: string;
+  branchCount: number;
+  lastActiveAt: string;
+}
+
 function normalizeWebSearchResults(item: any): WebSearchResultSummary[] {
   const rawResults = extractResultArray(item);
 
@@ -612,6 +619,27 @@ export async function createBranchFromSelection(
     snapshot: applied.snapshot,
     version: applied.version,
     branch,
+  };
+}
+
+export async function getConversationSummary(
+  input: ConversationPayload = {},
+): Promise<ConversationSummary> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const snapshot = ensured.snapshot;
+  const branchCount = Object.keys(snapshot.branches).length;
+  const rootBranch =
+    snapshot.branches[snapshot.conversation.rootBranchId];
+
+  return {
+    conversationId,
+    title: rootBranch?.title?.trim() || conversationId,
+    branchCount,
+    lastActiveAt: new Date().toISOString(),
   };
 }
 

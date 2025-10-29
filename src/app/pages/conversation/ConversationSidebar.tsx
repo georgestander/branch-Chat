@@ -31,6 +31,11 @@ import {
   Plus,
 } from "lucide-react";
 import { navigate } from "rwsdk/client";
+import {
+  emitDirectoryUpdate,
+  useDirectoryUpdate,
+  type DirectoryUpdateDetail,
+} from "@/app/components/conversation/directoryEvents";
 
 interface ConversationSidebarProps {
   conversation: Conversation;
@@ -79,6 +84,64 @@ export function ConversationSidebar({
   const [directoryOverrides, setDirectoryOverrides] = useState<
     Record<string, DirectoryOverride>
   >({});
+  const directoryUpdateHandler = useCallback(
+    (detail: DirectoryUpdateDetail) => {
+      setDirectoryOverrides((current) => {
+        const existing = current[detail.conversationId] ?? {};
+        const nextOverride: DirectoryOverride = { ...existing };
+        if (detail.title !== undefined) {
+          nextOverride.title = detail.title;
+        }
+        if (detail.branchCount !== undefined) {
+          nextOverride.branchCount = detail.branchCount;
+        }
+
+        const hasChanges =
+          nextOverride.title !== existing.title ||
+          nextOverride.branchCount !== existing.branchCount;
+
+        if (!hasChanges) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [detail.conversationId]: nextOverride,
+        };
+      });
+
+      const nextTitle = detail.title;
+      if (nextTitle === undefined) {
+        return;
+      }
+
+      setLoadedConversations((current) => {
+        const loaded = current[detail.conversationId];
+        if (!loaded) {
+          return current;
+        }
+        if (loaded.tree.branch.title === nextTitle) {
+          return current;
+        }
+        return {
+          ...current,
+          [detail.conversationId]: {
+            ...loaded,
+            tree: {
+              ...loaded.tree,
+              branch: {
+                ...loaded.tree.branch,
+                title: nextTitle,
+              },
+            },
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  useDirectoryUpdate(directoryUpdateHandler);
 
   useEffect(() => {
     setLoadedConversations((current) => ({
@@ -178,15 +241,21 @@ export function ConversationSidebar({
             conversation: loadedConversation,
           },
         }));
+        const normalizedTitle =
+          branchTree.branch.title?.trim() || loadedConversation.id;
+        const normalizedBranchCount = Object.keys(result.snapshot.branches).length;
         setDirectoryOverrides((current) => ({
           ...current,
           [targetConversationId]: {
-            title:
-              branchTree.branch.title?.trim() ||
-              loadedConversation.id,
-            branchCount: Object.keys(result.snapshot.branches).length,
+            title: normalizedTitle,
+            branchCount: normalizedBranchCount,
           },
         }));
+        emitDirectoryUpdate({
+          conversationId: targetConversationId,
+          title: normalizedTitle,
+          branchCount: normalizedBranchCount,
+        });
         return {
           tree: branchTree,
           conversation: loadedConversation,
