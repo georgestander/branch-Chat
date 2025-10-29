@@ -16,6 +16,7 @@ import {
   ensureConversationDirectoryEntry,
   touchConversationDirectoryEntry,
 } from "./conversationDirectory.server";
+import { buildAgentInstructions } from "@/lib/openai/agentPrompt";
 
 const DEFAULT_MODEL = "gpt-5-nano";
 const DEFAULT_TEMPERATURE = 0.1;
@@ -44,17 +45,6 @@ const PLAN_SECONDARY_PATTERNS: Array<(value: string) => boolean> = [
   (value) => value.includes("give me") && value.includes("steps"),
   (value) => value.includes("what is the approach"),
 ];
-
-const PLAN_FORMATTING_PROMPT = [
-  "Because the user is asking for a plan, format the reply with this exact contract:",
-  "1. Begin with a single sentence line that starts with `Short answer:` summarizing the recommendation.",
-  "2. Add a blank line followed by `# Plan`.",
-  "3. Under `# Plan`, emit an ordered list. Each list item should lead with a short, Title Case label (bold is encouraged) and include compact sub-bullets describing the actions, decision points, or caveats for that step.",
-  "4. When actionable execution details are available, include a `## Step-by-step build (copy/paste)` section containing numbered instructions the user can follow directly.",
-  "5. When the work involves constraints, risks, or prerequisites, include a `## Key constraints to remember` section with bullet points.",
-  "6. Cite supporting material inline with bracket references such as `([Source][1])` and finish with a `References` section that lists `[n]: URL \"Title\"` entries (reuse web-search sources when present, omit the section only if there are truly no sources).",
-  "7. Keep the Markdown tidy, avoid redundant prose, and do not add explanations outside these sections.",
-].join("\n");
 
 export function generateConversationId(): ConversationModelId {
   const random = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
@@ -471,24 +461,28 @@ export function buildResponseInputFromBranch(options: {
     );
   }
 
-  const inputs: Array<{
-    role: "system" | "user" | "assistant";
-    content: string;
-  }> = [];
+  const inputs: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
 
   const systemPrompt = snapshot.conversation.settings.systemPrompt;
+  const planFormattingEnabled = shouldApplyPlanFormatting(nextUserContent);
+  inputs.push({
+    role: "system",
+    content: buildAgentInstructions({
+      conversationId: snapshot.conversation.id,
+      branchId,
+      needsPlan: planFormattingEnabled,
+      allowWebSearch: true,
+      allowFileTools: true,
+      userLocale: undefined,
+      costSummary: undefined,
+      safetyMode: "default",
+    }),
+  });
+
   if (systemPrompt?.trim()) {
     inputs.push({
       role: "system",
       content: systemPrompt,
-    });
-  }
-
-  const planFormattingEnabled = shouldApplyPlanFormatting(nextUserContent);
-  if (planFormattingEnabled) {
-    inputs.push({
-      role: "system",
-      content: PLAN_FORMATTING_PROMPT,
     });
   }
 

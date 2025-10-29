@@ -34,6 +34,12 @@ Implementation highlights:
 - Web-search tool invocations keep emitting badges and also provide suitable references for the `References` block when present.
 - Test checklist update: after each markdown pipeline change, run a “plan” prompt to verify summary, nesting, citations, and link styling (document the run in `docs/testing-report.md`).
 
+### Agent Prompt Source (2025-10-29)
+
+- The canonical system instructions live in `src/lib/openai/agentPrompt.ts` (`buildAgentInstructions`).
+- `buildResponseInputFromBranch` calls that builder for every OpenAI request, passing contextual flags (plan detection, tool availability, etc.). Custom conversation prompts are appended afterwards so admins can extend behavior per chat.
+- Any changes to persona, decision flow, or formatting rules should be made in that module and validated with a regression conversation (plan run, non-plan run, forced tool call). Record outcomes in `docs/testing-report.md`.
+
 Below are the top open-source libraries (and combinations) that closely match ChatGPT’s markdown and code rendering fidelity, with reasoning and setup examples for each.
 1. React Markdown + Remark/Rehype Plugins (Unified Ecosystem)
 Using React Markdown (from the remark unified ecosystem) is a popular and safe choice. It converts markdown strings to React elements, and supports plugins for GFM, math, and syntax highlighting
