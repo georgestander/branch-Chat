@@ -47,6 +47,15 @@ interface BranchColumnProps {
   headerActions?: ReactNode;
   leadingActions?: ReactNode;
   style?: React.CSSProperties;
+  conversationModel: string;
+  reasoningEffort: "low" | "medium" | "high" | null;
+  onConversationSettingsChange: (
+    model: string,
+    effort: "low" | "medium" | "high" | null,
+  ) => Promise<boolean>;
+  conversationSettingsSaving: boolean;
+  conversationSettingsError: string | null;
+  onClearConversationSettingsError: () => void;
 }
 
 function AssistantPendingBubble() {
@@ -114,6 +123,12 @@ export function BranchColumn({
   headerActions,
   leadingActions,
   style,
+  conversationModel,
+  reasoningEffort,
+  onConversationSettingsChange,
+  conversationSettingsSaving,
+  conversationSettingsError,
+  onClearConversationSettingsError,
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -442,6 +457,12 @@ export function BranchColumn({
               conversationId={conversationId}
               autoFocus
               className=""
+              conversationModel={conversationModel}
+              reasoningEffort={reasoningEffort}
+              onConversationSettingsChange={onConversationSettingsChange}
+              conversationSettingsSaving={conversationSettingsSaving}
+              conversationSettingsError={conversationSettingsError}
+              onClearConversationSettingsError={onClearConversationSettingsError}
             />
           ) : (
             <div className="rounded-lg  px-1 py-1 text-sm text-muted-foreground">
