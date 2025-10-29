@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -116,5 +117,169 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .prose {
+    --tw-prose-body: var(--foreground);
+    --tw-prose-headings: var(--foreground);
+    --tw-prose-links: var(--primary);
+    --tw-prose-bold: var(--foreground);
+    --tw-prose-quotes: var(--foreground);
+    --tw-prose-code: var(--primary);
+  }
+
+  .prose pre {
+    background: transparent;
+  }
+
+  .prose pre code {
+    background: transparent !important;
+    padding: 0 !important;
+    font-size: 0.85rem;
+    line-height: 1.7;
+  }
+
+  .prose code:not(pre code) {
+    @apply rounded bg-muted px-1 py-0.5 text-xs font-medium text-foreground;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-border/70 bg-muted/40 px-4 py-2 text-muted-foreground;
+  }
+
+  .prose ul > li::marker {
+    color: var(--primary);
+  }
+
+  .branch-highlight {
+    @apply rounded bg-primary/15 px-0.5 text-primary;
+  }
+
+  .markdown-codeblock {
+    @apply relative overflow-hidden rounded-xl border border-border bg-card/95 text-sm shadow-sm;
+  }
+
+  .markdown-codeblock__header {
+    @apply flex items-center justify-between border-b border-border/70 bg-muted/30 px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted-foreground;
+  }
+
+  .markdown-codeblock__language {
+    @apply font-medium lowercase text-muted-foreground;
+  }
+
+  .markdown-codeblock__copy {
+    @apply inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-semibold text-foreground transition hover:bg-foreground/5;
+  }
+
+  .markdown-codeblock__copy[data-copy-state="copied"] {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  .markdown-codeblock__copy[data-copy-state="error"] {
+    @apply bg-destructive text-background;
+  }
+
+  .markdown-codeblock pre {
+    @apply m-0 overflow-x-auto px-4 py-4;
+  }
+
+  .markdown-codeblock .hljs {
+    background: transparent;
+    color: var(--foreground);
+  }
+
+  .markdown-codeblock pre code {
+    font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco,
+      Consolas, "Liberation Mono", "Courier New", monospace;
+    white-space: pre;
+  }
+
+  .markdown-codeblock .hljs-comment,
+  .markdown-codeblock .hljs-quote {
+    color: hsl(220deg 9% 63%);
+    font-style: italic;
+  }
+
+  .markdown-codeblock .hljs-keyword,
+  .markdown-codeblock .hljs-selector-tag,
+  .markdown-codeblock .hljs-subst {
+    color: hsl(271deg 76% 53%);
+  }
+
+  .markdown-codeblock .hljs-string,
+  .markdown-codeblock .hljs-title,
+  .markdown-codeblock .hljs-name,
+  .markdown-codeblock .hljs-type,
+  .markdown-codeblock .hljs-attribute {
+    color: hsl(159deg 65% 45%);
+  }
+
+  .markdown-body {
+    @apply leading-7 text-foreground;
+  }
+
+  .markdown-body p {
+    @apply mb-4 text-[15px];
+  }
+
+  .markdown-body strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .markdown-body em {
+    @apply italic;
+  }
+
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4,
+  .markdown-body h5,
+  .markdown-body h6 {
+    @apply mt-6 font-semibold text-foreground;
+  }
+
+  .markdown-body h1 {
+    @apply text-2xl;
+  }
+
+  .markdown-body h2 {
+    @apply text-xl;
+  }
+
+  .markdown-body h3 {
+    @apply text-lg;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    @apply mb-4 ml-6 space-y-2 text-[15px];
+  }
+
+  .markdown-body ul {
+    list-style-type: disc;
+  }
+
+  .markdown-body ol {
+    list-style-type: decimal;
+  }
+
+  .markdown-body blockquote {
+    @apply my-4 border-l-4 border-border/70 bg-muted/40 px-4 py-2 text-sm text-muted-foreground;
+  }
+
+  .markdown-body a {
+    @apply font-medium text-primary underline-offset-4 transition hover:underline;
+  }
+
+  .markdown-body table {
+    @apply mb-6 w-full overflow-hidden rounded-lg border border-border text-sm;
+  }
+
+  .markdown-body th,
+  .markdown-body td {
+    @apply border border-border/70 px-3 py-2 text-left;
   }
 }
