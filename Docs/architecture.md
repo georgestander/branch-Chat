@@ -37,7 +37,7 @@
 ## OpenAI Tooling Roadmap (Web Search & File Upload)
 
 - **Shared server utilities**
-  - `src/app/shared/openai/tools.server.ts` defines the tool registry (`web_search` built-in + `connexus_upload_file` function descriptor) alongside helpers to create `ToolInvocation` records and trace executions. The default executor currently returns a structured “not implemented” error so callers can surface graceful fallbacks until the real handlers land.
+  - `src/app/shared/openai/tools.server.ts` defines the tool registry (`web_search` built-in + a gated `connexus_upload_file` function descriptor) alongside helpers to create `ToolInvocation` records and trace executions. The upload tool stays disabled by default until the asynchronous execution loop is wired up end-to-end.
   - Tool metadata persists on `Message.toolInvocations`, allowing Durable Objects to record status transitions (`pending → running → succeeded/failed`) per assistant turn.
 - **Conversation flow integration**
   - `sendMessage` will pass `getDefaultResponseTools()` into `openai.responses.stream` once the execution loop is ready. Streaming handlers will watch for `response.tool_call.*` events, call `executeToolCall`, append invocation entries to the assistant message, and submit outputs back through `responses.submit_tool_outputs`.

@@ -314,6 +314,62 @@ export function sanitizeBranchTitle(
   return collapsed.slice(0, MAX_BRANCH_TITLE_LENGTH).trimEnd();
 }
 
+function deriveRootBranchFallbackTitle(options: {
+  userContent: string;
+  assistantContent?: string;
+}): string | null {
+  const { userContent, assistantContent } = options;
+
+  const userCandidate = pickTitleCandidateFromContent(userContent);
+  if (userCandidate) {
+    const sanitized = sanitizeBranchTitle(userCandidate);
+    if (sanitized && sanitized !== DEFAULT_BRANCH_TITLE) {
+      return sanitized;
+    }
+  }
+
+  if (assistantContent) {
+    const assistantCandidate = pickTitleCandidateFromContent(assistantContent);
+    if (assistantCandidate) {
+      const sanitized = sanitizeBranchTitle(assistantCandidate);
+      if (sanitized && sanitized !== DEFAULT_BRANCH_TITLE) {
+        return sanitized;
+      }
+    }
+  }
+
+  return null;
+}
+
+function pickTitleCandidateFromContent(content: string | undefined): string | null {
+  if (!content) {
+    return null;
+  }
+
+  const normalized = content.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const sentenceMatch = normalized.match(/^(.+?)(?:[.!?](?:\s|$)|$)/);
+  const base = (sentenceMatch?.[1] ?? normalized).trim();
+  if (!base) {
+    return null;
+  }
+
+  if (base.length <= MAX_BRANCH_TITLE_LENGTH) {
+    return base;
+  }
+
+  const sliceLength = Math.max(1, MAX_BRANCH_TITLE_LENGTH - 1);
+  const truncated = base.slice(0, sliceLength).trimEnd();
+  if (!truncated) {
+    return base.slice(0, MAX_BRANCH_TITLE_LENGTH).trim();
+  }
+
+  return `${truncated}…`;
+}
+
 export async function maybeAutoSummarizeRootBranchTitle(options: {
   ctx: AppContext;
   conversationId: ConversationModelId;
@@ -355,6 +411,9 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
   const promptUser = truncateForPrompt(firstUserMessage.content);
   const promptAssistant = truncateForPrompt(firstAssistantMessage.content);
 
+  let candidateTitle: string | null = null;
+  let candidateSource: "model" | "fallback" | null = null;
+
   try {
     ctx.trace("conversation:auto-title:start", {
       conversationId,
@@ -388,39 +447,71 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
       : "";
     const sanitized = sanitizeBranchTitle(cleaned, DEFAULT_BRANCH_TITLE);
 
-    if (!sanitized || sanitized === branch.title) {
-      ctx.trace("conversation:auto-title:skip", {
-        conversationId,
-        branchId,
-        reason: "empty-or-unchanged",
-      });
-      return null;
+    if (sanitized && sanitized !== DEFAULT_BRANCH_TITLE) {
+      candidateTitle = sanitized;
+      candidateSource = "model";
     }
-
-    ctx.trace("conversation:auto-title:applied", {
-      conversationId,
-      branchId,
-      title: sanitized,
-    });
-
-    return applyConversationUpdates(ctx, conversationId, [
-      {
-        type: "branch:update",
-        conversationId,
-        branch: {
-          ...branch,
-          title: sanitized,
-        },
-      },
-    ]);
   } catch (error) {
     ctx.trace("conversation:auto-title:error", {
       conversationId,
       branchId,
       error: error instanceof Error ? error.message : "unknown",
     });
+  }
+
+  if (!candidateTitle) {
+    const fallbackTitle = deriveRootBranchFallbackTitle({
+      userContent: firstUserMessage.content,
+      assistantContent: firstAssistantMessage.content,
+    });
+
+    if (fallbackTitle) {
+      candidateTitle = fallbackTitle;
+      candidateSource = "fallback";
+      ctx.trace("conversation:auto-title:fallback", {
+        conversationId,
+        branchId,
+        title: fallbackTitle,
+      });
+    }
+  }
+
+  if (!candidateTitle) {
+    ctx.trace("conversation:auto-title:skip", {
+      conversationId,
+      branchId,
+      reason: "no-candidate",
+    });
     return null;
   }
+
+  if (candidateTitle === branch.title) {
+    ctx.trace("conversation:auto-title:skip", {
+      conversationId,
+      branchId,
+      reason: "unchanged",
+      source: candidateSource ?? "unknown",
+    });
+    return null;
+  }
+
+  ctx.trace("conversation:auto-title:applied", {
+    conversationId,
+    branchId,
+    title: candidateTitle,
+    source: candidateSource ?? "unknown",
+  });
+
+  return applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "branch:update",
+      conversationId,
+      branch: {
+        ...branch,
+        title: candidateTitle,
+      },
+    },
+  ]);
 }
 
 export function buildResponseInputFromBranch(options: {
