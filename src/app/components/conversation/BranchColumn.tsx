@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+import { ChevronDown } from "lucide-react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { Branch, ConversationModelId } from "@/lib/conversation";
@@ -9,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 import { BranchableMessage } from "./BranchableMessage";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
+import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
 
 const SCROLL_EPSILON_PX = 120;
 
@@ -21,6 +31,31 @@ interface BranchColumnProps {
   withLeftBorder?: boolean;
   headerActions?: ReactNode;
   leadingActions?: ReactNode;
+}
+
+function AssistantPendingBubble() {
+  return (
+    <div
+      className="w-full rounded-2xl bg-muted/30 px-4 py-4 shadow-sm ring-1 ring-border/30"
+      aria-live="polite"
+    >
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:120ms]" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+          </span>
+          <span>Connexus is preparing a response…</span>
+        </div>
+        <div className="mt-2 flex flex-col gap-3">
+          <span className="h-3 w-4/5 rounded-full bg-muted-foreground/15 animate-pulse" />
+          <span className="h-3 w-3/4 rounded-full bg-muted-foreground/10 animate-pulse" />
+          <span className="h-3 w-1/2 rounded-full bg-muted-foreground/10 animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function BranchColumn({
@@ -37,21 +72,29 @@ export function BranchColumn({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
 
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => message.role !== "system"),
+    [messages],
+  );
+
   const lastMessage =
-    messages.length > 0 ? messages[messages.length - 1] : undefined;
+    visibleMessages.length > 0
+      ? visibleMessages[visibleMessages.length - 1]
+      : undefined;
   const isStreamingAssistant =
     isActive &&
     !!lastMessage &&
     lastMessage.role === "assistant" &&
     !lastMessage.tokenUsage;
+  const awaitingAssistant = isActive && lastMessage?.role === "user";
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
-      return `empty-${messages.length}`;
+      return `empty-${visibleMessages.length}`;
     }
     const suffix = lastMessage.tokenUsage ? "final" : "delta";
-    return `${messages.length}-${lastMessage.id}-${lastMessage.content.length}-${suffix}`;
-  }, [lastMessage, messages.length]);
+    return `${visibleMessages.length}-${lastMessage.id}-${lastMessage.content.length}-${suffix}`;
+  }, [lastMessage, visibleMessages.length]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -104,6 +147,23 @@ export function BranchColumn({
 
   const stateLabel = isActive ? "Active" : "Parent";
   const referenceText = branch.createdFrom?.excerpt ?? null;
+  const [referenceExpanded, setReferenceExpanded] = useState(false);
+
+  const truncatedReference = useMemo(() => {
+    if (!referenceText) {
+      return "";
+    }
+
+    if (referenceText.length <= 20) {
+      return referenceText;
+    }
+
+    return `${referenceText.slice(0, 20).trimEnd()}…`;
+  }, [referenceText]);
+
+  useEffect(() => {
+    setReferenceExpanded(false);
+  }, [referenceText]);
 
   return (
     <section
@@ -125,10 +185,25 @@ export function BranchColumn({
           {stateLabel} Branch
         </span>
         {referenceText ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setReferenceExpanded((expanded) => !expanded)}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={referenceExpanded}
+            aria-label={referenceExpanded ? "Hide full reference" : "Show full reference"}
+          >
+            <ChevronDown
+              aria-hidden
+              className={cn(
+                "h-3 w-3 transition-transform",
+                referenceExpanded ? "rotate-180" : "rotate-0",
+              )}
+            />
             <span className="font-semibold text-foreground">Reference:</span>
-            <span className="text-foreground/85">“{referenceText}”</span>
-          </span>
+            <span className="text-foreground/85">
+              “{referenceExpanded ? referenceText : truncatedReference}”
+            </span>
+          </button>
         ) : null}
         <span className="grow" aria-hidden="true" />
         {headerActions ? (
@@ -145,9 +220,15 @@ export function BranchColumn({
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-5 py-6 pb-24"
       >
-        <ol className="flex flex-col gap-4">
-          {messages.map((message) => (
-            <li key={message.id}>
+        <ol className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+          {visibleMessages.map((message) => (
+            <li
+              key={message.id}
+              className={cn(
+                "flex w-full",
+                message.role === "user" ? "justify-end" : "justify-start",
+              )}
+            >
               <MessageBubble
                 message={message}
                 isActive={isActive}
@@ -156,6 +237,11 @@ export function BranchColumn({
               />
             </li>
           ))}
+          {awaitingAssistant ? (
+            <li className="flex w-full justify-start">
+              <AssistantPendingBubble />
+            </li>
+          ) : null}
         </ol>
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
@@ -195,53 +281,162 @@ function MessageBubble({
   conversationId: ConversationModelId;
   branch: Branch;
 }) {
+  if (message.role === "user") {
+    return <UserMessageBubble message={message} />;
+  }
 
-  const commonHeader = (
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-        {message.role}
-      </span>
-      <span className="text-xs text-muted-foreground">
-        {formatTimestamp(message.createdAt)}
-      </span>
-    </div>
-  );
+  const highlightClass = message.hasBranchHighlight
+    ? "ring-2 ring-primary/40"
+    : "";
 
   if (isActive && message.role === "assistant") {
+    const isStreaming = !message.tokenUsage;
     return (
-      <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
-        {commonHeader}
+      <div
+        className={cn(
+          "w-full rounded-2xl bg-card px-4 py-4 shadow-sm transition",
+          highlightClass,
+          "[&_.prose]:mt-0",
+        )}
+      >
         <BranchableMessage
           branchId={branch.id}
           conversationId={conversationId}
           messageId={message.id}
           content={message.content}
           renderedHtml={message.renderedHtml}
+          toolInvocations={message.toolInvocations}
         />
+        {isStreaming ? (
+          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:120ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+            </span>
+            <span>Streaming response…</span>
+          </div>
+        ) : null}
       </div>
     );
   }
 
   return (
     <div
-      className={`rounded-lg border border-border px-4 py-3 shadow-sm ${message.hasBranchHighlight ? "bg-primary/5" : "bg-card"}`}
+      className={cn(
+        "w-full rounded-2xl bg-muted/40 px-4 py-4 text-sm shadow-sm transition",
+        highlightClass,
+        "[&_.prose]:mt-0",
+      )}
     >
-      {commonHeader}
       <MarkdownContent
-        className="prose prose-sm mt-3 max-w-none text-foreground"
+        className="prose prose-sm max-w-none text-foreground"
         html={message.renderedHtml}
+      />
+      <ToolInvocationSummary
+        toolInvocations={message.toolInvocations}
+        fallbackHtml={message.renderedHtml}
+        className="mt-3"
       />
     </div>
   );
 }
 
-function formatTimestamp(isoString: string): string {
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) {
-    return isoString;
-  }
-  const iso = date.toISOString();
-  const [dayPart, timePart] = iso.split("T");
-  const time = timePart?.slice(0, 8) ?? "00:00:00";
-  return `${dayPart}, ${time} UTC`;
+const COLLAPSED_USER_MESSAGE_HEIGHT_PX = 208;
+
+function UserMessageBubble({ message }: { message: RenderedMessage }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isCollapsible, setIsCollapsible] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  const updateCollapsibleState = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+    const requiresExpansion =
+      element.scrollHeight > COLLAPSED_USER_MESSAGE_HEIGHT_PX + 4;
+    setIsCollapsible(requiresExpansion);
+  }, []);
+
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [message.id]);
+
+  useEffect(() => {
+    updateCollapsibleState();
+  }, [updateCollapsibleState, message.renderedHtml, message.toolInvocations]);
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      updateCollapsibleState();
+    });
+    resizeObserver.observe(element);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateCollapsibleState]);
+
+  const handleToggle = () => {
+    if (!isCollapsible) {
+      return;
+    }
+    setIsExpanded((value) => !value);
+  };
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
+        "text-primary",
+        message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
+      )}
+    >
+      {isCollapsible ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleToggle}
+            className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70 transition hover:text-primary"
+            aria-expanded={isExpanded}
+          >
+            {isExpanded ? "Hide" : "Show"}
+          </button>
+        </div>
+      ) : null}
+
+      <div className={cn("relative", isCollapsible ? "pt-3" : undefined)}>
+        <div
+          ref={contentRef}
+          className={cn(
+            "overflow-hidden text-primary transition-all duration-300 ease-out",
+            isExpanded || !isCollapsible
+              ? "max-h-[100rem] opacity-100"
+              : "max-h-[13rem] opacity-100",
+            "[&_.prose]:text-primary [&_.prose strong]:text-primary",
+          )}
+        >
+          <MarkdownContent
+            className="prose prose-sm max-w-none text-primary"
+            html={message.renderedHtml}
+          />
+          <ToolInvocationSummary
+            toolInvocations={message.toolInvocations}
+            fallbackHtml={message.renderedHtml}
+            className="mt-3"
+          />
+        </div>
+        {isCollapsible && !isExpanded ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/10 to-transparent"
+          />
+        ) : null}
+      </div>
+    </div>
+  );
 }

@@ -46,6 +46,42 @@ export interface TokenUsage {
   cost: number;
 }
 
+export interface MessageAttachment {
+  id: string;
+  kind: "file";
+  name: string;
+  contentType: string;
+  size: number;
+  storageKey: string;
+  openAIFileId?: string | null;
+  description?: string | null;
+  uploadedAt: ISODateTimeString;
+}
+
+export type ToolInvocationStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export interface ToolInvocationError {
+  message: string;
+  code?: string;
+}
+
+export interface ToolInvocation {
+  id: string;
+  toolType: string;
+  toolName?: string | null;
+  callId?: string | null;
+  input?: unknown;
+  output?: unknown;
+  status: ToolInvocationStatus;
+  startedAt: ISODateTimeString;
+  completedAt?: ISODateTimeString | null;
+  error?: ToolInvocationError | null;
+}
+
 export interface Message {
   id: MessageId;
   branchId: BranchId;
@@ -53,6 +89,8 @@ export interface Message {
   content: string;
   createdAt: ISODateTimeString;
   tokenUsage?: TokenUsage | null;
+  attachments?: MessageAttachment[] | null;
+  toolInvocations?: ToolInvocation[] | null;
 }
 
 export interface ConversationGraphSnapshot {
@@ -134,6 +172,16 @@ export function createConversationSnapshot(input: {
 export function cloneConversationSnapshot(
   snapshot: ConversationGraphSnapshot,
 ): ConversationGraphSnapshot {
+  const cloneUnknown = <T>(value: T): T => {
+    if (value === undefined || value === null) {
+      return value;
+    }
+    if (typeof globalThis.structuredClone === "function") {
+      return globalThis.structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value)) as T;
+  };
+
   return {
     conversation: { ...snapshot.conversation },
     branches: Object.fromEntries(
@@ -145,6 +193,8 @@ export function cloneConversationSnapshot(
     messages: Object.fromEntries(
       Object.entries(snapshot.messages).map(([id, message]) => {
         const usage = message.tokenUsage;
+        const attachments = message.attachments;
+        const toolInvocations = message.toolInvocations;
         return [
           id,
           {
@@ -153,6 +203,23 @@ export function cloneConversationSnapshot(
               usage && typeof usage === "object"
                 ? { ...usage }
                 : usage === null
+                  ? null
+                  : undefined,
+            attachments:
+              attachments && Array.isArray(attachments)
+                ? attachments.map((attachment) => ({ ...attachment }))
+                : attachments === null
+                  ? null
+                  : undefined,
+            toolInvocations:
+              toolInvocations && Array.isArray(toolInvocations)
+                ? toolInvocations.map((invocation) => ({
+                    ...invocation,
+                    input: cloneUnknown(invocation.input),
+                    output: cloneUnknown(invocation.output),
+                    error: invocation.error ? { ...invocation.error } : invocation.error,
+                  }))
+                : toolInvocations === null
                   ? null
                   : undefined,
           },

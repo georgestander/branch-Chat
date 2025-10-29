@@ -34,7 +34,8 @@ export async function renderMarkdownToHtml(
     .use(remarkMath)
     .use(remarkRehype, { allowDangerousHtml: false })
     .use(rehypeKatex)
-    .use(rehypeEnhanceCodeBlocks);
+    .use(rehypeEnhanceCodeBlocks)
+    .use(rehypeBoldListHeadings, { mode: "heuristic" });
 
   if (options.enableSyntaxHighlighting !== false) {
     processor.use(rehypeHighlight);
@@ -111,9 +112,13 @@ function createSanitizeSchema(): typeof defaultSchema {
   extend("code", ["className", "data-language"]);
   extend("pre", ["className", "data-theme"]);
   extend("button", ["className", "type", "data-copy-code", "data-copy-state"]);
+  extend("section", ["className", "aria-labelledby", "aria-label"]);
+  extend("sup", ["className"]);
 
   schema.attributes = attributes;
-  schema.tagNames = Array.from(new Set([...(schema.tagNames ?? []), "mark", "span", "button", "div"]));
+  schema.tagNames = Array.from(
+    new Set([...(schema.tagNames ?? []), "mark", "span", "button", "div", "section", "sup"]),
+  );
 
   return schema as typeof defaultSchema;
 }
@@ -157,6 +162,99 @@ function rehypeEnhanceCodeBlocks() {
 
       const parentChildren = parent.children as Array<HastElement | HastText>;
       parentChildren.splice(index, 1, wrapper);
+    });
+  };
+}
+
+/**
+ * Makes the first phrase of each list item act as a heading by wrapping it in <strong>…</strong>.
+ * Heuristic mode bolds up to the first colon, em dash/dash, or sentence-ending punctuation.
+ * If no boundary is found, it falls back to bolding the first paragraph.
+ */
+function rehypeBoldListHeadings(options: { mode?: "conservative" | "heuristic" } = {}) {
+  const mode = options.mode ?? "heuristic";
+  return (tree: HastRoot) => {
+    visit(tree, "element", (node: HastElement) => {
+      if (node.tagName !== "li" || !Array.isArray(node.children) || node.children.length === 0) {
+        return;
+      }
+
+      // Operate on first paragraph within the list item when present; otherwise on the li itself.
+      const firstChild = node.children[0] as HastElement | HastText;
+      const container: HastElement =
+        firstChild && (firstChild as HastElement).type === "element" && (firstChild as HastElement).tagName === "p"
+          ? (firstChild as HastElement)
+          : (node as unknown as HastElement);
+
+      const children = (container.children ?? []) as Array<HastElement | HastText>;
+      if (children.length === 0) return;
+
+      // Find first non-empty child
+      let idx = 0;
+      while (idx < children.length) {
+        const c = children[idx];
+        if (c.type === "text" && (c.value ?? "").trim().length === 0) {
+          idx += 1;
+          continue;
+        }
+        break;
+      }
+      if (idx >= children.length) return;
+
+      // If already starts with <strong>, respect it
+      const head = children[idx];
+      if (head.type === "element" && head.tagName === "strong") {
+        return;
+      }
+
+      // Helper to create a <strong> wrapper
+      const strongWrap = (nodes: Array<HastElement | HastText>): HastElement => ({
+        type: "element",
+        tagName: "strong",
+        properties: {},
+        children: nodes,
+      });
+
+      if (head.type === "text") {
+        const raw = head.value ?? "";
+        // Heuristic: bold until first boundary token
+        let splitAt = -1;
+        if (mode === "heuristic") {
+          const candidates: number[] = [];
+          const punctuation = [":", ".", "!", "?"]; // include the punctuation itself
+          for (const ch of punctuation) {
+            const p = raw.indexOf(ch);
+            if (p >= 0) candidates.push(p + 1);
+          }
+          const spacedDashes = [" - ", " – ", " — "];
+          for (const seq of spacedDashes) {
+            const p = raw.indexOf(seq);
+            if (p >= 0) candidates.push(p + seq.length);
+          }
+          if (candidates.length > 0) {
+            splitAt = Math.min(...candidates);
+          }
+        }
+
+        if (splitAt <= 0) {
+          // No boundary — conservative: bold the whole first run/paragraph
+          // Replace the head with a strong-wrapped version
+          children.splice(idx, 1, strongWrap([{ type: "text", value: raw }]));
+        } else {
+          const before = raw.slice(0, splitAt);
+          const after = raw.slice(splitAt);
+          children.splice(
+            idx,
+            1,
+            strongWrap([{ type: "text", value: before }]),
+            { type: "text", value: after },
+          );
+        }
+        return;
+      }
+
+      // If the head is an element (link/em/etc.), wrap that element in <strong>.
+      children.splice(idx, 1, strongWrap([head]));
     });
   };
 }

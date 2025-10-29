@@ -10,8 +10,9 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "dev": "vite dev",
+    "dev": "NO_PROXY=127.0.0.1,localhost HTTP_PROXY= HTTPS_PROXY= vite dev --host 0.0.0.0",
     "dev:init": "rw-scripts dev-init",
+    "codex:dev": "npm run dev",
     "preview": "vite preview",
     "worker:run": "rw-scripts worker-run",
     "clean": "npm run clean:vite",

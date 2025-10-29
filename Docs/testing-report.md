@@ -41,3 +41,19 @@
   - ⚠️ Pending: verify the copy button copies highlighted code to the clipboard and resets state after success/error.
 - Trace volume (manual)
   - ⚠️ Pending: review recent `conversation:apply`/OpenAI traces and decide on sampling before enabling in production logs.
+
+## 2025-10-29
+
+- Tool invocation scaffolding (manual)
+  - ⚠️ Pending: once execution handlers are wired, verify assistant tool calls append invocation metadata and surface graceful fallback when a handler returns `status: failed`.
+- Composer attachments (manual)
+  - ⚠️ Pending: attach a local file, confirm the upload server action persists metadata to the message’s `attachments` array, and that the UI renders a chip with filename + size.
+- Web search result rendering (manual)
+  - ⚠️ Pending: trigger an assistant response that uses web search, ensure result snippets render in the branch column with source URLs and that traces log `tools:invoke` with latency.
+  - ✅ Updated to render clickable source list with host + snippets at the bottom of assistant messages. Confirmed the links open in a new tab and the UI shows the “web results” header once the tool completes.
+- Plan-format markdown contract (manual)
+  - ⚠️ Pending: prompt the assistant with a “plan” request and confirm the rendered response includes the `Short answer` line, `# Plan` heading with numbered sections, optional follow-up sections, and a `References` block with clickable blue links.
+- Agent prompt enforcement (manual)
+  - ⚠️ Pending: start a non-plan conversation to verify the new system prompt still produces normal markdown, and a plan conversation to confirm the same instructions trigger `Short answer` + `# Plan` without regressions.
+- Sidebar branch indentation (manual)
+  - ✅ Expanded a 5-level nested branch tree in the conversation sidebar; all child rows stay within the card width and truncated titles remain readable. Checked focus/hover states for active branches after indent adjustments.

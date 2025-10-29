@@ -24,11 +24,13 @@ import type {
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import {
-  MoreHorizontal,
-  Plus,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, MoreVertical, SquarePen } from "lucide-react";
 import { navigate } from "rwsdk/client";
+import {
+  emitDirectoryUpdate,
+  useDirectoryUpdate,
+  type DirectoryUpdateDetail,
+} from "@/app/components/conversation/directoryEvents";
 
 interface ConversationSidebarProps {
   conversation: Conversation;
@@ -54,6 +56,15 @@ const UNTITLED_BRANCH = "Untitled Branch";
 const MAX_DISPLAY_TITLE_LENGTH = 32;
 const MAX_BRANCH_TITLE_LENGTH = 60;
 
+// Keeps nested branch indentation compact enough to stay within the sidebar.
+const BRANCH_INDENT_BASE_REM = 0.65;
+const BRANCH_INDENT_STEP_REM = 0.45;
+const BRANCH_INDENT_MAX_REM = 3.75;
+const BRANCH_GUIDE_MARGIN_BASE_REM = 0.55;
+const BRANCH_GUIDE_MARGIN_STEP_REM = 0.35;
+const BRANCH_GUIDE_MARGIN_MAX_REM = 3.2;
+const BRANCH_GUIDE_PADDING_REM = 0.7;
+
 export function ConversationSidebar({
   conversation,
   tree,
@@ -77,6 +88,64 @@ export function ConversationSidebar({
   const [directoryOverrides, setDirectoryOverrides] = useState<
     Record<string, DirectoryOverride>
   >({});
+  const directoryUpdateHandler = useCallback(
+    (detail: DirectoryUpdateDetail) => {
+      setDirectoryOverrides((current) => {
+        const existing = current[detail.conversationId] ?? {};
+        const nextOverride: DirectoryOverride = { ...existing };
+        if (detail.title !== undefined) {
+          nextOverride.title = detail.title;
+        }
+        if (detail.branchCount !== undefined) {
+          nextOverride.branchCount = detail.branchCount;
+        }
+
+        const hasChanges =
+          nextOverride.title !== existing.title ||
+          nextOverride.branchCount !== existing.branchCount;
+
+        if (!hasChanges) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [detail.conversationId]: nextOverride,
+        };
+      });
+
+      const nextTitle = detail.title;
+      if (nextTitle === undefined) {
+        return;
+      }
+
+      setLoadedConversations((current) => {
+        const loaded = current[detail.conversationId];
+        if (!loaded) {
+          return current;
+        }
+        if (loaded.tree.branch.title === nextTitle) {
+          return current;
+        }
+        return {
+          ...current,
+          [detail.conversationId]: {
+            ...loaded,
+            tree: {
+              ...loaded.tree,
+              branch: {
+                ...loaded.tree.branch,
+                title: nextTitle,
+              },
+            },
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  useDirectoryUpdate(directoryUpdateHandler);
 
   useEffect(() => {
     setLoadedConversations((current) => ({
@@ -176,15 +245,21 @@ export function ConversationSidebar({
             conversation: loadedConversation,
           },
         }));
+        const normalizedTitle =
+          branchTree.branch.title?.trim() || loadedConversation.id;
+        const normalizedBranchCount = Object.keys(result.snapshot.branches).length;
         setDirectoryOverrides((current) => ({
           ...current,
           [targetConversationId]: {
-            title:
-              branchTree.branch.title?.trim() ||
-              loadedConversation.id,
-            branchCount: Object.keys(result.snapshot.branches).length,
+            title: normalizedTitle,
+            branchCount: normalizedBranchCount,
           },
         }));
+        emitDirectoryUpdate({
+          conversationId: targetConversationId,
+          title: normalizedTitle,
+          branchCount: normalizedBranchCount,
+        });
         return {
           tree: branchTree,
           conversation: loadedConversation,
@@ -268,22 +343,17 @@ export function ConversationSidebar({
     >
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Conversations
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              {conversations.length} chat{conversations.length === 1 ? "" : "s"}
-            </p>
-          </div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Connexus
+          </h2>
           <button
             type="button"
             onClick={startNewConversation}
             disabled={isCreating}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
+            aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            {isCreating ? "Creating…" : "New chat"}
+            <SquarePen className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         {creationError ? (
@@ -427,45 +497,56 @@ function ConversationCard({
   );
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm">
-      <div className="flex items-start justify-between gap-2">
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-md px-3 py-2 text-sm shadow-sm transition",
+        isActive
+          ? "bg-primary/10 text-primary shadow-sm hover:bg-primary/15"
+          : "bg-card text-foreground hover:bg-muted/70",
+      )}
+      data-active={isActive}
+    >
+      <div className="grid grid-cols-[1fr_auto] items-center gap-2">
         <button
           type="button"
           onClick={() => {
             onToggle();
           }}
           className={cn(
-            "min-w-0 flex-1 text-left",
-            expanded ? "text-foreground" : "text-foreground/90",
+            "flex min-w-0 items-center gap-2 text-left transition",
+            isActive
+              ? "text-primary"
+              : expanded
+                ? "text-foreground"
+                : "text-foreground/90",
           )}
           aria-expanded={expanded}
         >
-          <p className="font-medium" title={entry.title}>
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
+          <span className="min-w-0 truncate font-medium" title={entry.title}>
             {entry.title.trim() || entry.id}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {branchCount} branch{branchCount === 1 ? "" : "es"}
-            {modelLabel ? ` · ${modelLabel}` : ""}
-            {conversationIdentifier && modelLabel
-              ? ` · ${conversationIdentifier}`
-              : ""}
-          </p>
+          </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          {isActive ? (
-            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary-foreground">
-              Active
-            </span>
-          ) : null}
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {branchCount} branch{branchCount === 1 ? "" : "es"}
+          </span>
           <button
             type="button"
             onClick={() => {
               void toggleEditing();
             }}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className={cn(
+              "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              isActive && "text-primary/80 hover:text-primary",
+            )}
             aria-label={isEditing ? "Cancel rename" : "Rename chat"}
           >
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            <MoreVertical className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -564,25 +645,33 @@ function BranchTree({
   const containsActiveDescendant = tree.children.some((child) =>
     branchContainsActive(child, activeBranchId),
   );
+  const indentRem = Math.min(
+    BRANCH_INDENT_BASE_REM + level * BRANCH_INDENT_STEP_REM,
+    BRANCH_INDENT_MAX_REM,
+  );
+  const guideMarginRem = Math.min(
+    BRANCH_GUIDE_MARGIN_BASE_REM + level * BRANCH_GUIDE_MARGIN_STEP_REM,
+    BRANCH_GUIDE_MARGIN_MAX_REM,
+  );
 
   return (
     <div className="flex flex-col">
       <a
         href={buildBranchHref(conversationId, tree.branch.id)}
         className={cn(
-          "group relative flex items-center justify-between rounded-md border border-transparent px-3 py-2 text-sm transition hover:bg-muted/80",
+          "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80",
           isActive
-            ? "border-primary bg-primary/10 font-semibold text-primary shadow-sm"
+            ? "bg-primary/10 font-semibold text-primary shadow-sm hover:bg-primary/15"
             : "text-foreground",
         )}
         data-active={isActive}
         aria-current={isActive ? "page" : undefined}
-        style={{ paddingLeft: `${level * 0.75 + 0.75}rem` }}
+        style={{ paddingInlineStart: `${indentRem}rem` }}
       >
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <span
             className={cn(
-              "h-2 w-2 rounded-full border border-border/60 transition",
+              "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
               isActive
                 ? "border-primary bg-primary"
                 : "bg-muted group-hover:border-foreground/40",
@@ -606,11 +695,15 @@ function BranchTree({
       {tree.children.length > 0 ? (
         <div
           className={cn(
-            "ml-2 border-l pl-2",
+            "border-l",
             containsActiveDescendant
               ? "border-primary/40"
               : "border-border/60",
           )}
+          style={{
+            marginLeft: `${guideMarginRem}rem`,
+            paddingLeft: `${BRANCH_GUIDE_PADDING_REM}rem`,
+          }}
         >
           {tree.children.map((child) => (
             <BranchTree

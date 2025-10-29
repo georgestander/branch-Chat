@@ -16,6 +16,30 @@ Tailwind + shadcn/ui compatibility (ability to style via Tailwind classes or use
 - **Rollback plan:** if highlight.js becomes too heavy, disable syntax highlighting via the `enableSyntaxHighlighting` flag (or wire in a Worker-safe tokenizer) without touching the client components.
 - Manual validation matrix (tables, inline/block code, KaTeX) is tracked in `docs/testing-report.md`; re-run the 5-case checklist after any pipeline change.
 
+### Plan Response Contract (2025-10-29)
+
+For “plan-style” answers we now mirror ChatGPT’s readable structure. When the latest user request explicitly asks for a plan/roadmap/steps, the assistant must:
+
+1. Lead with a single sentence line that begins with `Short answer:` summarising the recommendation.
+2. Insert a blank line, then render `# Plan`.
+3. Under `# Plan`, use an ordered list where each item name is in Title Case (prefer bold text) and include a nested unordered list of concrete actions, callouts, or caveats.
+4. If execution details are helpful, follow with `## Step-by-step build (copy/paste)` containing numbered instructions the user can run verbatim.
+5. Close with `## Key constraints to remember` (bulleted) when the prompt involves risks, limits, or preconditions.
+6. Cite sources inline using bracket references (for example `([Microsoft Learn][1])`) and finish with a dedicated `References` (or `Web Results`) block that lists `[n]: URL "Title"` entries so links stay obvious and clickable.
+
+Implementation highlights:
+
+- Detection happens in `buildResponseInputFromBranch`; speech that includes “plan”, “roadmap”, “step-by-step”, “action plan”, or “strategy” triggers the contract-specific prompt.
+- The formatting hint is layered on top of the existing system prompt so generic chats still work; enforcement relies on prompt tuning rather than post-processing.
+- Web-search tool invocations keep emitting badges and also provide suitable references for the `References` block when present.
+- Test checklist update: after each markdown pipeline change, run a “plan” prompt to verify summary, nesting, citations, and link styling (document the run in `docs/testing-report.md`).
+
+### Agent Prompt Source (2025-10-29)
+
+- The canonical system instructions live in `src/lib/openai/agentPrompt.ts` (`buildAgentInstructions`).
+- `buildResponseInputFromBranch` calls that builder for every OpenAI request, passing contextual flags (plan detection, tool availability, etc.). Custom conversation prompts are appended afterwards so admins can extend behavior per chat.
+- Any changes to persona, decision flow, or formatting rules should be made in that module and validated with a regression conversation (plan run, non-plan run, forced tool call). Record outcomes in `docs/testing-report.md`.
+
 Below are the top open-source libraries (and combinations) that closely match ChatGPT’s markdown and code rendering fidelity, with reasoning and setup examples for each.
 1. React Markdown + Remark/Rehype Plugins (Unified Ecosystem)
 Using React Markdown (from the remark unified ecosystem) is a popular and safe choice. It converts markdown strings to React elements, and supports plugins for GFM, math, and syntax highlighting
