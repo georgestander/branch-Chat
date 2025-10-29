@@ -8,6 +8,7 @@ import {
   applyConversationUpdates,
   ensureConversationSnapshot,
   buildResponseInputFromBranch,
+  buildStudyAgentInputFromBranch,
   draftBranchFromSelection,
   generateConversationId,
   maybeApplyRootBranchFallbackTitle,
@@ -23,6 +24,13 @@ import {
 } from "@/app/shared/conversationDirectory.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
 import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
+import {
+  createAttachmentUpload as createAttachmentUploadHelper,
+  finalizeAttachmentUpload as finalizeAttachmentUploadHelper,
+  getMaxAttachmentSizeBytes,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  removeStagedAttachment as removeStagedAttachmentHelper,
+} from "@/app/shared/uploads.server";
 import type {
   Branch,
   BranchId,
@@ -30,6 +38,7 @@ import type {
   ConversationGraphSnapshot,
   ConversationModelId,
   Message,
+  PendingAttachment,
   ToolInvocation,
   ToolInvocationStatus,
 } from "@/lib/conversation";
@@ -81,6 +90,88 @@ export interface ConversationPayload {
   conversationId?: ConversationModelId;
 }
 
+export interface AttachmentConstraintsResponse {
+  maxSizeBytes: number;
+  maxAttachments: number;
+}
+
+export function getAttachmentConstraints(): AttachmentConstraintsResponse {
+  return {
+    maxSizeBytes: getMaxAttachmentSizeBytes(),
+    maxAttachments: MAX_ATTACHMENTS_PER_MESSAGE,
+  };
+}
+
+export interface CreateAttachmentUploadActionInput extends ConversationPayload {
+  fileName: string;
+  size: number;
+  contentType: string;
+}
+
+export interface CreateAttachmentUploadActionOutput {
+  attachment: PendingAttachment;
+  uploadUrl: string;
+  uploadHeaders: Record<string, string>;
+  expiresAt: string;
+  maxSizeBytes: number;
+  maxAttachments: number;
+}
+
+export async function createAttachmentUploadAction(
+  input: CreateAttachmentUploadActionInput,
+): Promise<CreateAttachmentUploadActionOutput> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const storeClient = ctx.getConversationStore(conversationId);
+
+  const result = await createAttachmentUploadHelper(ctx, {
+    ...input,
+    conversationId,
+  });
+
+  return {
+    ...result,
+    maxSizeBytes: getMaxAttachmentSizeBytes(),
+    maxAttachments: MAX_ATTACHMENTS_PER_MESSAGE,
+  };
+}
+
+export interface FinalizeAttachmentUploadActionInput
+  extends ConversationPayload {
+  attachmentId: string;
+}
+
+export async function finalizeAttachmentUploadAction(
+  input: FinalizeAttachmentUploadActionInput,
+): Promise<PendingAttachment> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  return finalizeAttachmentUploadHelper(ctx, {
+    conversationId,
+    attachmentId: input.attachmentId,
+  });
+}
+
+export interface RemoveAttachmentUploadActionInput extends ConversationPayload {
+  attachmentId: string;
+}
+
+export async function removeAttachmentUploadAction(
+  input: RemoveAttachmentUploadActionInput,
+): Promise<PendingAttachment | null> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+
+  return removeStagedAttachmentHelper(ctx, {
+    conversationId,
+    attachmentId: input.attachmentId,
+  });
+}
+
 export interface LoadConversationResponse {
   conversationId: ConversationModelId;
   snapshot: ConversationGraphSnapshot;
@@ -92,6 +183,7 @@ export interface SendMessageInput extends ConversationPayload {
   content: string;
   streamId?: string;
   tools?: ConversationComposerTool[];
+  attachmentIds?: string[];
 }
 
 export interface SendMessageResponse extends LoadConversationResponse {
@@ -350,6 +442,7 @@ export async function sendMessage(
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
   const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const storeClient = ctx.getConversationStore(conversationId);
 
   if (!input.content || input.content.trim().length === 0) {
     throw new Error("Message content is required");
@@ -364,7 +457,45 @@ export async function sendMessage(
     throw new Error(`Branch ${branchId} not found for conversation`);
   }
 
-  const selectedTools = Array.isArray(input.tools)
+  const attachmentIds = Array.isArray(input.attachmentIds)
+    ? input.attachmentIds
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0)
+    : [];
+
+  if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    throw new Error(
+      `A maximum of ${MAX_ATTACHMENTS_PER_MESSAGE} attachments are allowed per message.`,
+    );
+  }
+
+  let consumedAttachments: PendingAttachment[] = [];
+  if (attachmentIds.length > 0) {
+    consumedAttachments = await storeClient.consumeAttachments(attachmentIds);
+    if (consumedAttachments.length !== attachmentIds.length) {
+      throw new Error(
+        "Some attachments are no longer available. Please re-upload and try again.",
+      );
+    }
+  }
+
+  let attachmentsToRestore: PendingAttachment[] | null =
+    consumedAttachments.length > 0 ? [...consumedAttachments] : null;
+
+  const toMessageAttachment = (attachment: PendingAttachment) => ({
+    id: attachment.id,
+    kind: "file" as const,
+    name: attachment.name,
+    contentType: attachment.contentType,
+    size: attachment.size,
+    storageKey: attachment.storageKey,
+    openAIFileId: null,
+    description: null,
+    uploadedAt: attachment.uploadedAt ?? new Date().toISOString(),
+  });
+
+  try {
+    const selectedTools = Array.isArray(input.tools)
     ? input.tools.filter((tool): tool is ConversationComposerTool => {
         return (
           tool === "study-and-learn" ||
@@ -382,6 +513,8 @@ export async function sendMessage(
     });
   }
 
+  const settings = ensured.snapshot.conversation.settings;
+
   const now = new Date().toISOString();
   const userMessage: Message = {
     id: crypto.randomUUID(),
@@ -390,7 +523,10 @@ export async function sendMessage(
     content: input.content.trim(),
     createdAt: now,
     tokenUsage: null,
-    attachments: [],
+    attachments:
+      consumedAttachments.length > 0
+        ? consumedAttachments.map(toMessageAttachment)
+        : [],
     toolInvocations: null,
   };
 
@@ -439,10 +575,40 @@ export async function sendMessage(
     });
 
     let agentOutput = "";
+    const allowWebSearchForAgent =
+      selectedToolSet.size === 0 ||
+      selectedToolSet.has("web-search") ||
+      selectedToolSet.has("study-and-learn");
+
+    const studyAgentInput = buildStudyAgentInputFromBranch({
+      snapshot: appendedSnapshot.snapshot,
+      branchId,
+      nextUserContent: userMessage.content,
+      allowWebSearch: allowWebSearchForAgent,
+      allowFileTools: selectedToolSet.has("file-upload"),
+    });
+
+    const agentHistory = [...studyAgentInput.messages];
+    if (consumedAttachments.length > 0) {
+      const attachmentSummary = consumedAttachments
+        .map((attachment) => {
+          const sizeKb = Math.max(1, Math.round(attachment.size / 1024));
+          return `• ${attachment.name} (${attachment.contentType}, ${sizeKb} KB)`;
+        })
+        .join("\n");
+      agentHistory.push({
+        role: "user",
+        content: `The user attached supporting files:\n${attachmentSummary}`,
+      });
+    }
 
     try {
       const result = await runStudyAndLearnAgent({
-        prompt: userMessage.content,
+        instructions: studyAgentInput.instructions,
+        history: agentHistory,
+        model: settings.model,
+        temperature: settings.temperature,
+        reasoningEffort: settings.reasoningEffort ?? undefined,
         traceMetadata: {
           conversationId,
           branchId,
@@ -493,10 +659,29 @@ export async function sendMessage(
       ms: Date.now() - finalPersistStart,
     });
 
+    let latestResult = applied;
+    try {
+      const fallbackResult = await maybeApplyRootBranchFallbackTitle({
+        ctx,
+        conversationId,
+        snapshot: applied.snapshot,
+        branchId,
+      });
+      if (fallbackResult) {
+        latestResult = fallbackResult;
+      }
+    } catch (error) {
+      ctx.trace("conversation:auto-title:fallback-error", {
+        conversationId,
+        branchId,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+
     void maybeAutoSummarizeRootBranchTitle({
       ctx,
       conversationId,
-      snapshot: applied.snapshot,
+      snapshot: latestResult.snapshot,
       branchId,
     }).catch((error) => {
       ctx.trace("conversation:auto-title:deferred-error", {
@@ -506,21 +691,26 @@ export async function sendMessage(
       });
     });
 
+    attachmentsToRestore = null;
     return {
       conversationId,
-      snapshot: applied.snapshot,
-      version: applied.version,
+      snapshot: latestResult.snapshot,
+      version: latestResult.version,
       appendedMessages: [userMessage, finalAssistantMessage],
     };
   }
+
+  const enableWebSearchTool =
+    selectedToolSet.size === 0 || selectedToolSet.has("web-search");
 
   const openaiInput = buildResponseInputFromBranch({
     snapshot: appendedSnapshot.snapshot,
     branchId,
     nextUserContent: userMessage.content,
+    allowWebSearch: enableWebSearchTool,
+    allowFileTools: selectedToolSet.has("file-upload"),
   });
 
-  const settings = ensured.snapshot.conversation.settings;
   const openai = ctx.getOpenAIClient();
 
   const streamStart = Date.now();
@@ -533,9 +723,6 @@ export async function sendMessage(
     messageCount: openaiInput.length,
     reasoningEffort: settings.reasoningEffort ?? null,
   });
-
-  const enableWebSearchTool =
-    selectedToolSet.size === 0 || selectedToolSet.has("web-search");
   const responseTools = getDefaultResponseTools({
     enableWebSearchTool,
     enableFileUploadTool: selectedToolSet.has("file-upload"),
@@ -853,12 +1040,46 @@ export async function sendMessage(
     });
   });
 
+  attachmentsToRestore = null;
   return {
     conversationId,
     snapshot: latestSnapshot,
     version: latestVersion,
     appendedMessages: [userMessage, finalAssistantMessage],
   };
+  } catch (error) {
+    if (attachmentsToRestore && attachmentsToRestore.length > 0) {
+      for (const attachment of attachmentsToRestore) {
+        try {
+          const staged = await storeClient.stageAttachment(
+            {
+              id: attachment.id,
+              name: attachment.name,
+              contentType: attachment.contentType,
+              size: attachment.size,
+              storageKey: attachment.storageKey,
+              createdAt: attachment.createdAt ?? new Date().toISOString(),
+            },
+            { maxAllowed: MAX_ATTACHMENTS_PER_MESSAGE },
+          );
+          if (attachment.status === "ready") {
+            await storeClient.finalizeAttachment(attachment.id, {
+              size: attachment.size,
+              uploadedAt:
+                attachment.uploadedAt ?? staged.attachment.uploadedAt ?? new Date().toISOString(),
+            });
+          }
+        } catch (restoreError) {
+          ctx.trace("attachment:restore:failed", {
+            conversationId,
+            attachmentId: attachment.id,
+            error: restoreError instanceof Error ? restoreError.message : "unknown",
+          });
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 export async function createBranchFromSelection(

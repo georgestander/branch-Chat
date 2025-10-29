@@ -60,6 +60,19 @@ export interface MessageAttachment {
   uploadedAt: ISODateTimeString;
 }
 
+export type PendingAttachmentStatus = "pending" | "ready";
+
+export interface PendingAttachment {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  storageKey: string;
+  status: PendingAttachmentStatus;
+  createdAt: ISODateTimeString;
+  uploadedAt?: ISODateTimeString | null;
+}
+
 export type ToolInvocationStatus =
   | "pending"
   | "running"

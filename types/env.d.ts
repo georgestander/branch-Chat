@@ -5,5 +5,6 @@ declare global {
     ConversationGraphDO: DurableObjectNamespace;
     ConversationDirectoryDO: DurableObjectNamespace;
     OPENAI_API_KEY: string;
+    UploadsBucket: R2Bucket;
   }
 }

@@ -4,6 +4,7 @@ import {
   type ConversationGraphUpdate,
   type ConversationModelId,
   type Message,
+  type PendingAttachment,
 } from "@/lib/conversation";
 import { validateConversationGraphSnapshot } from "@/lib/conversation";
 
@@ -11,6 +12,7 @@ type StoredState = {
   snapshot: ConversationGraphSnapshot | null;
   version: number;
   updatedAt: string;
+  pendingAttachments: Record<string, PendingAttachment>;
 };
 
 type ReadResult =
@@ -29,6 +31,84 @@ type ApplyPayload =
     };
 
 const STORAGE_STATE_KEY = "conversation.store.state.v1";
+const DEFAULT_ATTACHMENT_LIMIT = 32;
+
+type StageAttachmentInput = {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  storageKey: string;
+  createdAt: string;
+};
+
+function sanitizeAttachmentId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError("attachment id must be a string");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError("attachment id is required");
+  }
+  return trimmed;
+}
+
+function sanitizeNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${label} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError(`${label} is required`);
+  }
+  return trimmed;
+}
+
+function createPendingAttachmentFromPayload(
+  payload: Record<string, unknown>,
+): PendingAttachment {
+  const id = sanitizeAttachmentId(payload.id);
+  const name = sanitizeNonEmptyString(payload.name, "attachment name");
+  const contentType = sanitizeNonEmptyString(
+    payload.contentType,
+    "attachment content type",
+  );
+  const storageKey = sanitizeNonEmptyString(
+    payload.storageKey,
+    "attachment storage key",
+  );
+
+  const sizeValue = Number(payload.size);
+  if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
+    throw new TypeError("attachment size must be a positive number");
+  }
+
+  const createdAt =
+    typeof payload.createdAt === "string" && payload.createdAt.trim().length > 0
+      ? payload.createdAt
+      : new Date().toISOString();
+
+  return {
+    id,
+    name,
+    contentType,
+    size: Math.floor(sizeValue),
+    storageKey,
+    status: "pending",
+    createdAt,
+    uploadedAt: null,
+  } satisfies PendingAttachment;
+}
+
+function normalizeStoredState(value: StoredState | null): StoredState {
+  const base = (value ?? {}) as Partial<StoredState>;
+  return {
+    snapshot: base.snapshot ?? null,
+    version: typeof base.version === "number" ? base.version : 0,
+    updatedAt: base.updatedAt ?? new Date().toISOString(),
+    pendingAttachments: base.pendingAttachments ?? {},
+  } satisfies StoredState;
+}
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -61,13 +141,7 @@ export class ConversationStoreDO implements DurableObject {
     this.ready = this.state.blockConcurrencyWhile(async () => {
       const stored =
         (await this.state.storage.get<StoredState>(STORAGE_STATE_KEY)) ?? null;
-      this.cache =
-        stored ??
-        ({
-          snapshot: null,
-          version: 0,
-          updatedAt: new Date().toISOString(),
-        } satisfies StoredState);
+      this.cache = normalizeStoredState(stored);
     });
   }
 
@@ -87,6 +161,40 @@ export class ConversationStoreDO implements DurableObject {
     if (request.method === "POST" && url.pathname === "/apply") {
       const payload = await request.json().catch(() => null);
       return this.handleApplyUpdates(payload);
+    }
+
+    if (request.method === "POST" && url.pathname === "/attachments/stage") {
+      const payload = await request.json().catch(() => null);
+      return this.handleStageAttachment(payload);
+    }
+
+    if (request.method === "POST" && url.pathname === "/attachments/finalize") {
+      const payload = await request.json().catch(() => null);
+      return this.handleFinalizeAttachment(payload);
+    }
+
+    if (request.method === "POST" && url.pathname === "/attachments/consume") {
+      const payload = await request.json().catch(() => null);
+      return this.handleConsumeAttachments(payload);
+    }
+
+    if (request.method === "GET" && url.pathname === "/attachments/pending") {
+      return this.handleListAttachments();
+    }
+
+    if (url.pathname.startsWith("/attachments/")) {
+      const id = decodeURIComponent(url.pathname.replace("/attachments/", ""));
+      if (!id) {
+        return jsonResponse({ error: "attachment-id-required" }, { status: 400 });
+      }
+
+      if (request.method === "GET") {
+        return this.handleGetAttachment(id);
+      }
+
+      if (request.method === "DELETE") {
+        return this.handleDeleteAttachment(id);
+      }
     }
 
     if (request.method === "DELETE" && url.pathname === "/snapshot") {
@@ -135,11 +243,12 @@ export class ConversationStoreDO implements DurableObject {
 
       const validated = validateConversationGraphSnapshot(snapshot);
 
-      const nextState = await this.updateState(() => ({
+      const nextState = await this.updateState((current) => ({
         snapshot: cloneConversationSnapshot(validated),
-        version: this.cache ? this.cache.version + 1 : 1,
+        version: current.version + 1,
         updatedAt: new Date().toISOString(),
-      }));
+        pendingAttachments: current.pendingAttachments,
+      } satisfies StoredState));
 
       const payloadBytes = computePayloadSize(nextState.snapshot);
       console.log(
@@ -184,7 +293,8 @@ export class ConversationStoreDO implements DurableObject {
           snapshot,
           version: current.version + 1,
           updatedAt: new Date().toISOString(),
-        };
+          pendingAttachments: current.pendingAttachments,
+        } satisfies StoredState;
       });
 
       const payloadBytes = computePayloadSize(nextState.snapshot);
@@ -213,11 +323,211 @@ export class ConversationStoreDO implements DurableObject {
     }
   }
 
+  private async handleStageAttachment(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const { attachment, maxAllowed } = payload as Record<string, unknown>;
+      if (!attachment || typeof attachment !== "object") {
+        throw new TypeError("Attachment metadata is required");
+      }
+
+      const limitCandidate = Number(maxAllowed);
+      const limit = Number.isFinite(limitCandidate) && limitCandidate > 0
+        ? Math.floor(limitCandidate)
+        : DEFAULT_ATTACHMENT_LIMIT;
+
+      const record = createPendingAttachmentFromPayload(
+        attachment as Record<string, unknown>,
+      );
+
+      const stagedAttachment = await this.updateState((current) => {
+        const count = Object.keys(current.pendingAttachments).length;
+        if (count >= limit) {
+          throw new Error("attachment-limit-exceeded");
+        }
+        if (current.pendingAttachments[record.id]) {
+          throw new Error("attachment-duplicate");
+        }
+        return {
+          ...current,
+          pendingAttachments: {
+            ...current.pendingAttachments,
+            [record.id]: record,
+          },
+          updatedAt: new Date().toISOString(),
+        } satisfies StoredState;
+      });
+
+      const pendingCount = Object.keys(stagedAttachment.pendingAttachments).length;
+      return jsonResponse(
+        {
+          attachment: stagedAttachment.pendingAttachments[record.id],
+          pendingCount,
+        },
+        { status: 200 },
+      );
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message === "attachment-limit-exceeded") {
+          return jsonResponse({ error: error.message }, { status: 409 });
+        }
+        if (error.message === "attachment-duplicate") {
+          return jsonResponse({ error: error.message }, { status: 409 });
+        }
+      }
+      console.error("[ERROR] attachments:stage failed", error);
+      return jsonResponse({ error: "invalid-attachment-stage" }, { status: 400 });
+    }
+  }
+
+  private async handleFinalizeAttachment(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const { id, size, uploadedAt } = payload as Record<string, unknown>;
+      const attachmentId = sanitizeAttachmentId(id);
+      const sizeValue = Number(size);
+      const resolvedSize = Number.isFinite(sizeValue) && sizeValue > 0 ? Math.floor(sizeValue) : undefined;
+      const uploadedAtValue =
+        typeof uploadedAt === "string" && uploadedAt.trim().length > 0
+          ? uploadedAt
+          : new Date().toISOString();
+
+      let updated: PendingAttachment | undefined;
+      const state = await this.updateState((current) => {
+        const existing = current.pendingAttachments[attachmentId];
+        if (!existing) {
+          throw new Error("attachment-not-found");
+        }
+        if (existing.status === "ready" && existing.uploadedAt) {
+          updated = existing;
+          return current;
+        }
+
+        const nextAttachment: PendingAttachment = {
+          ...existing,
+          status: "ready",
+          uploadedAt: uploadedAtValue,
+          size: resolvedSize ?? existing.size,
+        };
+
+        updated = nextAttachment;
+        return {
+          ...current,
+          pendingAttachments: {
+            ...current.pendingAttachments,
+            [attachmentId]: nextAttachment,
+          },
+          updatedAt: new Date().toISOString(),
+        } satisfies StoredState;
+      });
+
+      const attachment = updated ?? state.pendingAttachments[attachmentId];
+      return jsonResponse({ attachment }, { status: 200 });
+    } catch (error) {
+      if (error instanceof Error && error.message === "attachment-not-found") {
+        return jsonResponse({ error: error.message }, { status: 404 });
+      }
+      console.error("[ERROR] attachments:finalize failed", error);
+      return jsonResponse({ error: "invalid-attachment-finalize" }, { status: 400 });
+    }
+  }
+
+  private async handleConsumeAttachments(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const { ids } = payload as Record<string, unknown>;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        throw new TypeError("ids must be a non-empty array");
+      }
+
+      const attachmentIds = ids.map((value) => sanitizeAttachmentId(value));
+      const consumed: PendingAttachment[] = [];
+
+      await this.updateState((current) => {
+        const pendingEntries = { ...current.pendingAttachments };
+        for (const id of attachmentIds) {
+          const existing = pendingEntries[id];
+          if (!existing) {
+            throw new Error("attachment-not-found");
+          }
+          if (existing.status !== "ready") {
+            throw new Error("attachment-not-ready");
+          }
+          consumed.push(existing);
+          delete pendingEntries[id];
+        }
+
+        return {
+          ...current,
+          pendingAttachments: pendingEntries,
+          updatedAt: new Date().toISOString(),
+        } satisfies StoredState;
+      });
+
+      return jsonResponse({ attachments: consumed }, { status: 200 });
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message === "attachment-not-found") {
+          return jsonResponse({ error: error.message }, { status: 404 });
+        }
+        if (error.message === "attachment-not-ready") {
+          return jsonResponse({ error: error.message }, { status: 409 });
+        }
+      }
+      console.error("[ERROR] attachments:consume failed", error);
+      return jsonResponse({ error: "invalid-attachment-consume" }, { status: 400 });
+    }
+  }
+
+  private async handleListAttachments(): Promise<Response> {
+    const state = await this.getState();
+    return jsonResponse({ attachments: Object.values(state.pendingAttachments) }, { status: 200 });
+  }
+
+  private async handleGetAttachment(id: string): Promise<Response> {
+    const state = await this.getState();
+    const attachment = state.pendingAttachments[id];
+    if (!attachment) {
+      return jsonResponse({ error: "attachment-not-found" }, { status: 404 });
+    }
+    return jsonResponse({ attachment }, { status: 200 });
+  }
+
+  private async handleDeleteAttachment(id: string): Promise<Response> {
+    let removed: PendingAttachment | undefined;
+    await this.updateState((current) => {
+      const existing = current.pendingAttachments[id];
+      if (!existing) {
+        return current;
+      }
+      removed = existing;
+      const { [id]: _removed, ...rest } = current.pendingAttachments;
+      return {
+        ...current,
+        pendingAttachments: rest,
+        updatedAt: new Date().toISOString(),
+      } satisfies StoredState;
+    });
+
+    if (!removed) {
+      return jsonResponse({ error: "attachment-not-found" }, { status: 404 });
+    }
+
+    return jsonResponse({ attachment: removed }, { status: 200 });
+  }
+
   private async handleReset(): Promise<Response> {
     const nextState = await this.updateState(() => ({
       snapshot: null,
       version: 0,
       updatedAt: new Date().toISOString(),
+      pendingAttachments: {},
     }));
 
     console.log(
@@ -238,13 +548,7 @@ export class ConversationStoreDO implements DurableObject {
 
     const stored =
       (await this.state.storage.get<StoredState>(STORAGE_STATE_KEY)) ?? null;
-    this.cache =
-      stored ??
-      ({
-        snapshot: null,
-        version: 0,
-        updatedAt: new Date().toISOString(),
-      } satisfies StoredState);
+    this.cache = normalizeStoredState(stored);
     return this.cache;
   }
 
@@ -254,9 +558,10 @@ export class ConversationStoreDO implements DurableObject {
     return this.state.blockConcurrencyWhile(async () => {
       const current = await this.getState();
       const next = mutator(current);
-      this.cache = next;
-      await this.state.storage.put(STORAGE_STATE_KEY, next);
-      return next;
+      const normalized = normalizeStoredState(next);
+      this.cache = normalized;
+      await this.state.storage.put(STORAGE_STATE_KEY, normalized);
+      return normalized;
     });
   }
 
@@ -467,6 +772,133 @@ export class ConversationStoreClient {
       snapshot: validated,
       version: data.version ?? 0,
     };
+  }
+
+  async stageAttachment(
+    input: StageAttachmentInput,
+    options: { maxAllowed?: number } = {},
+  ): Promise<{ attachment: PendingAttachment; pendingCount: number }> {
+    const response = await this.stub.fetch("https://conversation/attachments/stage", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attachment: input, maxAllowed: options.maxAllowed }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to stage attachment: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      attachment: PendingAttachment;
+      pendingCount: number;
+    };
+
+    return data;
+  }
+
+  async finalizeAttachment(
+    id: string,
+    options: { size?: number; uploadedAt?: string } = {},
+  ): Promise<PendingAttachment> {
+    const response = await this.stub.fetch("https://conversation/attachments/finalize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, size: options.size, uploadedAt: options.uploadedAt }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to finalize attachment: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as { attachment: PendingAttachment };
+    return data.attachment;
+  }
+
+  async consumeAttachments(ids: string[]): Promise<PendingAttachment[]> {
+    const response = await this.stub.fetch("https://conversation/attachments/consume", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to consume attachments: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      attachments: PendingAttachment[];
+    };
+    return data.attachments ?? [];
+  }
+
+  async getAttachment(id: string): Promise<PendingAttachment | null> {
+    const response = await this.stub.fetch(
+      `https://conversation/attachments/${encodeURIComponent(id)}`,
+      {
+        method: "GET",
+      },
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Failed to load attachment: ${response.status} ${text}`);
+    }
+
+    const data = (await response.json()) as { attachment: PendingAttachment };
+    return data.attachment ?? null;
+  }
+
+  async listAttachments(): Promise<PendingAttachment[]> {
+    const response = await this.stub.fetch("https://conversation/attachments/pending", {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Failed to list attachments: ${response.status} ${text}`);
+    }
+
+    const data = (await response.json()) as {
+      attachments: PendingAttachment[];
+    };
+
+    return data.attachments ?? [];
+  }
+
+  async deleteAttachment(id: string): Promise<PendingAttachment | null> {
+    const response = await this.stub.fetch(
+      `https://conversation/attachments/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to delete attachment: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as { attachment: PendingAttachment };
+    return data.attachment ?? null;
   }
 
   async reset(): Promise<void> {

@@ -111,3 +111,20 @@
   - ⚠️ Pending: Validate that sending a first message immediately renames the chat via fallback, and that a later streaming response upgrades the title when OpenAI is available.
 - Empty-state landing (manual)
   - ⚠️ Pending: With no existing conversations, confirm the page renders the new landing view and only creates a chat after the user clicks “New chat”.
+
+## 2025-11-08
+
+- `npm run types`
+  - ✅ Passes after wiring Study & Learn agent context + instructions.
+- Study & Learn context retention (manual)
+  - ⚠️ Pending: Re-run a multi-turn tutoring session once OpenAI access is available to confirm branch history persists, auto-titles apply, and `agent:study:*` traces include web search/tool decisions.
+- `pnpm tsc --noEmit`
+  - ✅ Passes after adding attachment retry UX and cleanup guard in the composer.
+- Composer attachment retry (manual)
+  - ⚠️ Pending: Start the dev UI to ensure failed uploads show the retry control, re-trigger the upload spinner, and keep the composer footprint unchanged.
+- Attachment cleanup on navigation (manual)
+  - ⚠️ Pending: With staged uploads, navigate away from the conversation and confirm the cleanup effect removes temporary objects (check DO traces once env is available).
+- Dev-mode upload proxy (manual)
+  - ⚠️ Pending: In local dev (no `createPresignedUrl`), confirm uploads stream through `/_uploads` without errors and that finalize succeeds.
+- Study agent reasoning fallback (manual)
+  - ⚠️ Pending: Toggle reasoning effort in settings, trigger Study & Learn, and confirm chat models skip reasoning params while non-chat models still accept them.

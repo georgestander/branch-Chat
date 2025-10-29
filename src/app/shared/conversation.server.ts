@@ -590,67 +590,54 @@ export async function maybeApplyRootBranchFallbackTitle(options: {
   ]);
 }
 
-export function buildResponseInputFromBranch(options: {
+type ConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type ConversationAssembly = {
+  systemMessages: string[];
+  conversationMessages: ConversationMessage[];
+};
+
+function assembleConversationMessages(options: {
   snapshot: ConversationGraphSnapshot;
   branchId: BranchId;
   nextUserContent: string;
-}): Array<{
-  role: "system" | "user" | "assistant";
-  content: string;
-}> {
-  const { snapshot, branchId, nextUserContent } = options;
-  const chain = getBranchChain(snapshot, branchId);
+  allowWebSearch?: boolean;
+  allowFileTools?: boolean;
+}): ConversationAssembly {
+  const {
+    snapshot,
+    branchId,
+    nextUserContent,
+    allowWebSearch = true,
+    allowFileTools = true,
+  } = options;
 
+  const chain = getBranchChain(snapshot, branchId);
   const orderedMessages: Message[] = [];
+
   for (let index = 0; index < chain.length; index++) {
-    const branch = chain[index];
-    const branchMessages = getBranchMessages(snapshot, branch.id);
+    const branchNode = chain[index];
+    const branchMessages = getBranchMessages(snapshot, branchNode.id);
 
     const isTargetBranch = index === chain.length - 1;
     if (isTargetBranch) {
-      orderedMessages.push(...branchMessages.filter((message) => message.content.trim().length > 0));
+      orderedMessages.push(...branchMessages);
       continue;
     }
 
     const childBranch = chain[index + 1];
     const cutOffId = childBranch.createdFrom?.messageId;
     if (!cutOffId) {
-      orderedMessages.push(...branchMessages.filter((message) => message.content.trim().length > 0));
+      orderedMessages.push(...branchMessages);
       continue;
     }
 
     const cutOffIndex = branchMessages.findIndex((message) => message.id === cutOffId);
     const sliceEnd = cutOffIndex >= 0 ? cutOffIndex + 1 : branchMessages.length;
-    orderedMessages.push(
-      ...branchMessages
-        .slice(0, sliceEnd)
-        .filter((message) => message.content.trim().length > 0),
-    );
-  }
-
-  const inputs: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
-
-  const systemPrompt = snapshot.conversation.settings.systemPrompt;
-  const planFormattingEnabled = shouldApplyPlanFormatting(nextUserContent);
-  inputs.push({
-    role: "system",
-    content: buildAgentInstructions({
-      conversationId: snapshot.conversation.id,
-      branchId,
-      needsPlan: planFormattingEnabled,
-      allowWebSearch: true,
-      allowFileTools: true,
-      userLocale: undefined,
-      costSummary: undefined,
-      safetyMode: "default",
-    }),
-  });
-
-  if (systemPrompt?.trim()) {
-    inputs.push({
-      role: "system",
-      content: systemPrompt,
-    });
+    orderedMessages.push(...branchMessages.slice(0, sliceEnd));
   }
 
   if (orderedMessages.length > 0) {
@@ -663,28 +650,112 @@ export function buildResponseInputFromBranch(options: {
     }
   }
 
+  const systemMessages: string[] = [];
+  const conversationMessages: ConversationMessage[] = [];
+
+  const planFormattingEnabled = shouldApplyPlanFormatting(nextUserContent);
+  systemMessages.push(
+    buildAgentInstructions({
+      conversationId: snapshot.conversation.id,
+      branchId,
+      needsPlan: planFormattingEnabled,
+      allowWebSearch,
+      allowFileTools,
+      userLocale: undefined,
+      costSummary: undefined,
+      safetyMode: "default",
+    }),
+  );
+
+  const systemPrompt = snapshot.conversation.settings.systemPrompt?.trim();
+  if (systemPrompt) {
+    systemMessages.push(systemPrompt);
+  }
+
   for (const message of orderedMessages) {
-    inputs.push({
-      role: message.role,
-      content: message.content,
-    });
+    const trimmed = message.content.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    if (message.role === "system") {
+      systemMessages.push(trimmed);
+      continue;
+    }
+
+    if (message.role === "user" || message.role === "assistant") {
+      conversationMessages.push({
+        role: message.role,
+        content: trimmed,
+      });
+    }
   }
 
   const branch = snapshot.branches[branchId];
   const excerpt = branch?.createdFrom?.excerpt?.trim();
   if (excerpt) {
-    inputs.push({
+    conversationMessages.push({
       role: "user",
       content: `For reference, this question refers to the highlighted portion of the parent response: "${excerpt}"`,
     });
   }
 
-  inputs.push({
+  conversationMessages.push({
     role: "user",
-    content: nextUserContent,
+    content: nextUserContent.trim(),
   });
 
+  return {
+    systemMessages,
+    conversationMessages,
+  };
+}
+
+export function buildResponseInputFromBranch(options: {
+  snapshot: ConversationGraphSnapshot;
+  branchId: BranchId;
+  nextUserContent: string;
+  allowWebSearch?: boolean;
+  allowFileTools?: boolean;
+}): Array<{
+  role: "system" | "user" | "assistant";
+  content: string;
+}> {
+  const { systemMessages, conversationMessages } = assembleConversationMessages(options);
+
+  const inputs: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
+  for (const content of systemMessages) {
+    inputs.push({ role: "system", content });
+  }
+  for (const message of conversationMessages) {
+    inputs.push({ role: message.role, content: message.content });
+  }
+
   return inputs;
+}
+
+export interface StudyAgentConversationInput {
+  instructions: string;
+  messages: ConversationMessage[];
+}
+
+export function buildStudyAgentInputFromBranch(options: {
+  snapshot: ConversationGraphSnapshot;
+  branchId: BranchId;
+  nextUserContent: string;
+  allowWebSearch?: boolean;
+  allowFileTools?: boolean;
+}): StudyAgentConversationInput {
+  const { systemMessages, conversationMessages } = assembleConversationMessages(options);
+  const instructions = systemMessages
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+    .join("\n\n");
+
+  return {
+    instructions,
+    messages: conversationMessages,
+  };
 }
 
 function shouldApplyPlanFormatting(nextUserContent: string): boolean {

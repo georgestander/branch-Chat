@@ -2,8 +2,19 @@
 
 import { Agent, type AgentInputItem, Runner, withTrace } from "@openai/agents";
 
+import type { ConversationSettings } from "@/lib/conversation";
+
+interface StudyAgentMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 interface StudyAndLearnAgentRunOptions {
-  prompt: string;
+  instructions: string;
+  history: StudyAgentMessage[];
+  model: string;
+  temperature: number;
+  reasoningEffort?: ConversationSettings["reasoningEffort"];
   traceMetadata?: Record<string, unknown>;
 }
 
@@ -11,9 +22,11 @@ interface StudyAndLearnAgentResult {
   outputText: string;
 }
 
-const studyAndLearnAgent = new Agent({
-  name: "Study and Learn",
-  instructions: `Be an approachable-yet-dynamic teacher, who helps the user learn by guiding them through their studies.
+function supportsReasoningEffort(model: string): boolean {
+  return model.startsWith("gpt-5-") && !model.includes("chat");
+}
+
+const STUDY_AND_LEARN_BASE_PROMPT = `Be an approachable-yet-dynamic teacher, who helps the user learn by guiding them through their studies.
 Get to know the user. If you don't know their goals or grade level, ask the user before diving in. (Keep this lightweight!) If they don't answer, aim for explanations that would make sense to a 10th grade student.
 Build on existing knowledge. Connect new ideas to what the user already knows.
 Guide users, don't just give answers. Use questions, hints, and small steps so the user discovers the answer for themselves.
@@ -28,31 +41,65 @@ Quizzes & test prep: Run practice quizzes. (One question at a time!) Let the use
 TONE & APPROACH
 Be warm, patient, and plain-spoken; don't use too many exclamation marks or emoji. Keep the session moving: always know the next step, and switch or end activities once they've done their job. And be brief - don't ever send essay-length responses. Aim for a good back-and-forth.
 IMPORTANT
-DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logic problem, or uploads an image of one, DO NOT SOLVE IT in your first response. Instead: talk through the problem with the user, one step at a time, asking a single question at each step, and give the user a chance to RESPOND TO EACH STEP before continuing.`,
-  model: "gpt-5-chat-latest",
-  modelSettings: {
-    temperature: 1,
-    topP: 1,
-    maxTokens: 2048,
-    store: true,
-  },
-});
+DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logic problem, or uploads an image of one, DO NOT SOLVE IT in your first response. Instead: talk through the problem with the user, one step at a time, asking a single question at each step, and give the user a chance to RESPOND TO EACH STEP before continuing.`;
 
 export async function runStudyAndLearnAgent(
   options: StudyAndLearnAgentRunOptions,
 ): Promise<StudyAndLearnAgentResult> {
   return await withTrace("Study & Learn Agent", async () => {
-    const conversationHistory: AgentInputItem[] = [
-      {
-        role: "user",
+    const combinedInstructions = [
+      STUDY_AND_LEARN_BASE_PROMPT.trim(),
+      options.instructions.trim(),
+    ]
+      .filter((value) => value.length > 0)
+      .join("\n\n---\n\n");
+
+    const allowReasoning =
+      !!options.reasoningEffort && supportsReasoningEffort(options.model);
+
+    const agent = new Agent({
+      name: "Study and Learn",
+      instructions: combinedInstructions,
+      model: options.model,
+      modelSettings: {
+        temperature: options.temperature,
+        topP: 1,
+        maxTokens: 2048,
+        store: true,
+        ...(allowReasoning
+          ? { reasoning: { effort: options.reasoningEffort } }
+          : {}),
+      },
+    });
+
+    const conversationHistory: AgentInputItem[] = options.history.map((message) => {
+      if (message.role === "assistant") {
+        return {
+          role: "assistant" as const,
+          status: "completed" as const,
+          content: [
+            {
+              type: "output_text" as const,
+              text: message.content,
+            },
+          ],
+        };
+      }
+
+      return {
+        role: "user" as const,
         content: [
           {
-            type: "input_text",
-            text: options.prompt,
+            type: "input_text" as const,
+            text: message.content,
           },
         ],
-      },
-    ];
+      };
+    });
+
+    if (conversationHistory.length === 0) {
+      throw new Error("Study & Learn agent requires at least one user message");
+    }
 
     const runner = new Runner({
       traceMetadata: {
@@ -61,7 +108,7 @@ export async function runStudyAndLearnAgent(
       },
     });
 
-    const result = await runner.run(studyAndLearnAgent, conversationHistory);
+    const result = await runner.run(agent, conversationHistory);
 
     if (!result.finalOutput) {
       throw new Error("Study & Learn agent result is undefined");

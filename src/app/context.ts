@@ -13,4 +13,5 @@ export interface AppContext {
   ) => ConversationStoreClient;
   getOpenAIClient: () => OpenAIClient;
   getConversationDirectory: () => ConversationDirectoryClient;
+  getUploadsBucket: () => R2Bucket;
 }

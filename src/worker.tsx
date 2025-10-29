@@ -7,6 +7,7 @@ import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
+import { handleDirectUploadRequest } from "@/app/shared/uploadsProxy.server";
 import { createSSEStream } from "@/app/shared/streaming.server";
 import {
   ConversationDirectoryClient,
@@ -77,6 +78,13 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
     return client;
   };
 
+  const getUploadsBucket: AppContext["getUploadsBucket"] = () => {
+    if (!env.UploadsBucket) {
+      throw new Error("Uploads bucket binding is not configured");
+    }
+    return env.UploadsBucket;
+  };
+
   const context = ctx as AppContext;
   context.env = env;
   context.locals = locals;
@@ -85,11 +93,13 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   context.getOpenAIClient = getOpenAIClient;
   context.getConversationStore = getConversationStore;
   context.getConversationDirectory = getConversationDirectory;
+  context.getUploadsBucket = getUploadsBucket;
 };
 
 const app = defineApp<AppRequestInfo>([
   provideAppContext(),
   setCommonHeaders(),
+  route("/_uploads", handleDirectUploadRequest),
   render(Document, [
     route("/", Home),
     route("/events", async ({ request }) => {

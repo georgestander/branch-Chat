@@ -25,6 +25,13 @@
     ]
   },
 
+  "r2_buckets": [
+    {
+      "binding": "UploadsBucket",
+      "bucket_name": "connexus-uploads"
+    }
+  ],
+
   "migrations": [
     {
       "tag": "v1-conversation-store",

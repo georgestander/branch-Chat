@@ -10,17 +10,32 @@ import {
 } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  AlertTriangle,
   Check,
   Globe,
   GraduationCap,
   Loader2,
+  Paperclip,
   Plus,
+  RotateCcw,
   SendHorizontal,
   Upload,
   X,
 } from "lucide-react";
 
-import { getConversationSummary, sendMessage } from "@/app/pages/conversation/functions";
+import {
+  createAttachmentUploadAction,
+  finalizeAttachmentUploadAction,
+  getConversationSummary,
+  removeAttachmentUploadAction,
+  sendMessage,
+} from "@/app/pages/conversation/functions";
+import {
+  formatBytes,
+  isAttachmentMimeTypeAllowed,
+  UPLOAD_MAX_ATTACHMENTS,
+  UPLOAD_MAX_SIZE_BYTES,
+} from "@/app/shared/uploads.config";
 import { cn } from "@/lib/utils";
 import { emitDirectoryUpdate } from "@/app/components/conversation/directoryEvents";
 import {
@@ -35,6 +50,19 @@ type ToolOption = {
   label: string;
   description?: string;
   icon: LucideIcon;
+};
+
+type ComposerAttachmentStatus = "pending" | "uploading" | "ready" | "error";
+
+type ComposerAttachment = {
+  tempId: string;
+  id: string | null;
+  name: string;
+  size: number;
+  contentType: string;
+  status: ComposerAttachmentStatus;
+  error: string | null;
+  file: File | null;
 };
 
 const TOOL_OPTIONS: ToolOption[] = [
@@ -74,6 +102,7 @@ export function ConversationComposer({
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
     [],
   );
@@ -82,6 +111,8 @@ export function ConversationComposer({
   const pendingRefreshTimers = useRef<number[]>([]);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuId = useId();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentsRef = useRef<ComposerAttachment[]>([]);
 
   useEffect(() => {
     if (!autoFocus) {
@@ -119,6 +150,10 @@ export function ConversationComposer({
       pendingRefreshTimers.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
 
   useEffect(() => {
     if (!isToolMenuOpen) {
@@ -160,18 +195,311 @@ export function ConversationComposer({
     };
   }, [isToolMenuOpen]);
 
-  const handleToolSelect = useCallback((tool: ToolOption["id"]) => {
+  useEffect(() => {
     setSelectedTools((previous) => {
-      if (previous.includes(tool)) {
-        return previous.filter((value) => value !== tool);
+      const hasFileUpload = previous.includes("file-upload");
+      if (attachments.length > 0 && !hasFileUpload) {
+        return [...previous, "file-upload"];
       }
-      return [...previous, tool];
+      if (attachments.length === 0 && hasFileUpload) {
+        return previous.filter((value) => value !== "file-upload");
+      }
+      return previous;
     });
+  }, [attachments.length]);
+
+  const openFilePicker = useCallback(() => {
+    const input = fileInputRef.current;
+    if (!input) {
+      return;
+    }
+    input.value = "";
+    input.click();
   }, []);
+
+  const processAttachment = useCallback(
+    async (tempId: string, file: File) => {
+      let stagedAttachmentId: string | null = null;
+      try {
+        setAttachments((previous) =>
+          previous.map((attachment) =>
+            attachment.tempId === tempId
+              ? {
+                  ...attachment,
+                  status: "uploading",
+                  error: null,
+                  file,
+                }
+              : attachment,
+          ),
+        );
+
+        const creation = await createAttachmentUploadAction({
+          conversationId,
+          fileName: file.name,
+          size: file.size,
+          contentType: file.type || "application/octet-stream",
+        });
+
+        stagedAttachmentId = creation.attachment.id;
+
+        setAttachments((previous) =>
+          previous.map((attachment) =>
+            attachment.tempId === tempId
+              ? {
+                  ...attachment,
+                  id: creation.attachment.id,
+                  name: creation.attachment.name,
+                  size: creation.attachment.size ?? file.size,
+                  contentType: creation.attachment.contentType,
+                  status: "uploading",
+                  error: null,
+                  file,
+                }
+              : attachment,
+          ),
+        );
+
+        if (!attachmentsRef.current.some((attachment) => attachment.tempId === tempId)) {
+          await removeAttachmentUploadAction({
+            conversationId,
+            attachmentId: creation.attachment.id,
+          }).catch(() => {});
+          return;
+        }
+
+        const response = await fetch(creation.uploadUrl, {
+          method: "PUT",
+          headers: creation.uploadHeaders,
+          body: file,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Upload failed with status ${response.status}`);
+        }
+
+        if (!attachmentsRef.current.some((attachment) => attachment.tempId === tempId)) {
+          await removeAttachmentUploadAction({
+            conversationId,
+            attachmentId: creation.attachment.id,
+          }).catch(() => {});
+          return;
+        }
+
+        const finalized = await finalizeAttachmentUploadAction({
+          conversationId,
+          attachmentId: creation.attachment.id,
+        });
+
+        setAttachments((previous) =>
+          previous.map((attachment) =>
+            attachment.tempId === tempId
+              ? {
+                  ...attachment,
+                  id: finalized.id,
+                  name: finalized.name,
+                  size: finalized.size,
+                  contentType: finalized.contentType,
+                  status: "ready",
+                  error: null,
+                  file: null,
+                }
+              : attachment,
+          ),
+        );
+        console.info("[Composer] attachment upload finalized", {
+          conversationId,
+          attachmentId: finalized.id,
+        });
+      } catch (caught) {
+        console.error("[Composer] attachment upload failed", caught);
+        const message =
+          caught instanceof Error
+            ? caught.message
+            : "Upload failed. Please try again.";
+        setAttachments((previous) =>
+          previous.map((attachment) =>
+            attachment.tempId === tempId
+              ? { ...attachment, status: "error", error: message }
+              : attachment,
+          ),
+        );
+        if (stagedAttachmentId) {
+          await removeAttachmentUploadAction({
+            conversationId,
+            attachmentId: stagedAttachmentId,
+          }).catch(() => {});
+        }
+        setError(message);
+      }
+    },
+    [conversationId],
+  );
+
+  const handleFilesSelected = useCallback(
+    async (fileList: FileList | null) => {
+      if (!fileList) {
+        return;
+      }
+
+      const files = Array.from(fileList);
+      let availableSlots = UPLOAD_MAX_ATTACHMENTS - attachmentsRef.current.length;
+
+      for (const file of files) {
+        if (availableSlots <= 0) {
+          setError(`You can upload up to ${UPLOAD_MAX_ATTACHMENTS} files per message.`);
+          break;
+        }
+
+        if (!isAttachmentMimeTypeAllowed(file.type)) {
+          setError(`Unsupported file type: ${file.type || "unknown"}.`);
+          continue;
+        }
+
+        if (file.size > UPLOAD_MAX_SIZE_BYTES) {
+          setError(
+            `"${file.name}" exceeds the ${formatBytes(UPLOAD_MAX_SIZE_BYTES)} limit.`,
+          );
+          continue;
+        }
+
+        const tempId = crypto.randomUUID();
+        availableSlots -= 1;
+        setAttachments((previous) => [
+          ...previous,
+          {
+            tempId,
+            id: null,
+            name: file.name,
+            size: file.size,
+            contentType: file.type || "application/octet-stream",
+            status: "pending",
+            error: null,
+            file,
+          },
+        ]);
+        setError(null);
+        void processAttachment(tempId, file);
+      }
+    },
+    [processAttachment],
+  );
+
+  const handleRemoveAttachment = useCallback(
+    async (tempId: string) => {
+      const target = attachmentsRef.current.find((attachment) => attachment.tempId === tempId);
+      setAttachments((previous) =>
+        previous.filter((attachment) => attachment.tempId !== tempId),
+      );
+
+      if (target?.id && target.status !== "pending" && target.status !== "uploading") {
+        try {
+          await removeAttachmentUploadAction({
+            conversationId,
+            attachmentId: target.id,
+          });
+        } catch (error) {
+          console.error("[Composer] remove attachment failed", error);
+        }
+      }
+    },
+    [conversationId],
+  );
+
+  const handleRetryAttachment = useCallback(
+    (tempId: string) => {
+      const target = attachmentsRef.current.find(
+        (attachment) => attachment.tempId === tempId,
+      );
+      if (!target || !target.file) {
+        return;
+      }
+
+      setAttachments((previous) =>
+        previous.map((attachment) =>
+          attachment.tempId === tempId
+            ? {
+                ...attachment,
+                status: "pending",
+                error: null,
+              }
+            : attachment,
+        ),
+      );
+      void processAttachment(tempId, target.file);
+    },
+    [processAttachment],
+  );
+
+  const clearAllAttachments = useCallback(async () => {
+    const snapshot = attachmentsRef.current;
+    if (snapshot.length === 0) {
+      setAttachments([]);
+      return;
+    }
+
+    setAttachments([]);
+
+    await Promise.all(
+      snapshot
+        .filter(
+          (attachment) =>
+            attachment.id &&
+            attachment.status !== "pending" &&
+            attachment.status !== "uploading",
+        )
+        .map((attachment) =>
+          removeAttachmentUploadAction({
+            conversationId,
+            attachmentId: attachment.id as string,
+          }).catch((error) => {
+            console.error("[Composer] clear attachment failed", error);
+          }),
+        ),
+    );
+  }, [conversationId]);
+
+  useEffect(() => {
+    return () => {
+      if (attachmentsRef.current.length > 0) {
+        void clearAllAttachments();
+      }
+    };
+  }, [clearAllAttachments]);
+
+  const handleToolSelect = useCallback(
+    (tool: ToolOption["id"]) => {
+      setSelectedTools((previous) => {
+        if (tool === "file-upload") {
+          if (attachmentsRef.current.length >= UPLOAD_MAX_ATTACHMENTS) {
+            setError(
+              `You can upload up to ${UPLOAD_MAX_ATTACHMENTS} files per message.`,
+            );
+            return previous.includes(tool) ? previous : previous;
+          }
+          const next = previous.includes(tool) ? previous : [...previous, tool];
+          setIsToolMenuOpen(false);
+          openFilePicker();
+          return next;
+        }
+
+        if (previous.includes(tool)) {
+          return previous.filter((value) => value !== tool);
+        }
+        return [...previous, tool];
+      });
+
+      if (tool !== "file-upload") {
+        setIsToolMenuOpen(false);
+      }
+    },
+    [openFilePicker],
+  );
 
   const handleClearTool = useCallback(() => {
     setSelectedTools([]);
-  }, []);
+    void clearAllAttachments();
+  }, [clearAllAttachments]);
 
   const activeToolOptions = TOOL_OPTIONS.filter((option) =>
     selectedTools.includes(option.id),
@@ -180,9 +508,32 @@ export function ConversationComposer({
   const visibleToolOptions = activeToolOptions.slice(0, MAX_VISIBLE_TOOL_ICONS);
   const overflowCount = activeToolOptions.length - visibleToolOptions.length;
   const hasSelectedTools = activeToolOptions.length > 0;
+  const hasPendingAttachments = attachments.some(
+    (attachment) => attachment.status === "pending" || attachment.status === "uploading",
+  );
+  const hasErroredAttachments = attachments.some(
+    (attachment) => attachment.status === "error",
+  );
+  const canAddMoreAttachments = attachments.length < UPLOAD_MAX_ATTACHMENTS;
+  const isSendDisabled = isPending || hasPendingAttachments || hasErroredAttachments;
 
   const submitMessage = () => {
     if (isPending) {
+      return;
+    }
+
+    if (
+      attachments.some(
+        (attachment) =>
+          attachment.status === "pending" || attachment.status === "uploading",
+      )
+    ) {
+      setError("Please wait for files to finish uploading before sending.");
+      return;
+    }
+
+    if (attachments.some((attachment) => attachment.status === "error")) {
+      setError("Remove or retry failed uploads before sending.");
       return;
     }
 
@@ -193,6 +544,9 @@ export function ConversationComposer({
     }
 
     setError(null);
+    const readyAttachmentIds = attachments
+      .filter((attachment) => attachment.status === "ready" && attachment.id)
+      .map((attachment) => attachment.id as string);
     const optimisticId =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
@@ -219,8 +573,10 @@ export function ConversationComposer({
           content,
           streamId,
           tools: selectedTools,
+          attachmentIds: readyAttachmentIds,
         });
         setValue("");
+        setAttachments([]);
 
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
@@ -286,9 +642,18 @@ export function ConversationComposer({
     submitMessage();
   };
 
-  const LeadingIcon = visibleToolOptions[0]?.icon;
   return (
     <div className={cn("mx-auto flex w-full max-w-3xl flex-col gap-2", className)}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt,image/*"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          void handleFilesSelected(event.target.files);
+        }}
+      />
       <form
         onSubmit={handleSubmit}
         className="flex items-end gap-3 rounded-full border border-border/70 bg-card/95 px-1 py-2"
@@ -404,38 +769,115 @@ export function ConversationComposer({
           )}
         </div>
 
-        <div className="relative flex-1">
-          <label htmlFor="conversation-composer" className="sr-only">
-            Message
-          </label>
-          <textarea
-            id="conversation-composer"
-            ref={textareaRef}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="Ask Connexus to explore a new direction..."
-            rows={1}
-            onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.shiftKey &&
-                !event.nativeEvent.isComposing
-              ) {
-                event.preventDefault();
-                submitMessage();
-              }
-            }}
-            className="w-full resize-none border-none bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={isPending}
-            aria-disabled={isPending}
-            aria-invalid={error ? true : undefined}
-            style={{ maxHeight: 160 }}
-          />
+        <div className="flex flex-1 flex-col gap-2">
+          {attachments.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {attachments.map((attachment) => {
+                const statusIcon = (() => {
+                  if (attachment.status === "ready") {
+                    return <Paperclip className="h-4 w-4 text-primary" aria-hidden="true" />;
+                  }
+                  if (attachment.status === "error") {
+                    return <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />;
+                  }
+                  return <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />;
+                })();
+
+                const subtitle =
+                  attachment.status === "ready"
+                    ? formatBytes(attachment.size)
+                    : attachment.status === "error"
+                      ? "Upload failed"
+                      : `${formatBytes(attachment.size)} · Uploading…`;
+
+                return (
+                  <div
+                    key={attachment.tempId}
+                    className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-3 py-1 text-xs"
+                  >
+                    <span className="inline-flex h-5 w-5 items-center justify-center">
+                      {statusIcon}
+                    </span>
+                    <div className="flex max-w-[160px] flex-col">
+                      <span className="truncate font-medium text-foreground">
+                        {attachment.name}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{subtitle}</span>
+                      {attachment.status === "error" && attachment.error ? (
+                        <span className="text-[11px] text-destructive">
+                          {attachment.error}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {attachment.status === "error" ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRetryAttachment(attachment.tempId)}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
+                          aria-label={`Retry ${attachment.name}`}
+                        >
+                          <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(attachment.tempId)}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
+                        aria-label={`Remove ${attachment.name}`}
+                      >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {canAddMoreAttachments ? (
+                <button
+                  type="button"
+                  onClick={openFilePicker}
+                  className="inline-flex items-center gap-2 rounded-full border border-dashed border-primary/60 px-3 py-1 text-xs text-primary transition hover:bg-primary/10"
+                >
+                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Add files</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="relative">
+            <label htmlFor="conversation-composer" className="sr-only">
+              Message
+            </label>
+            <textarea
+              id="conversation-composer"
+              ref={textareaRef}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder="Ask Connexus to explore a new direction..."
+              rows={1}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  submitMessage();
+                }
+              }}
+              className="w-full resize-none border-none bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={isPending}
+              aria-disabled={isPending}
+              aria-invalid={error ? true : undefined}
+              style={{ maxHeight: 160 }}
+            />
+          </div>
         </div>
 
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isSendDisabled}
           className={cn(
             "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70",
             isPending ? "animate-pulse" : "",
