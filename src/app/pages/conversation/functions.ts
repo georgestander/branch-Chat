@@ -10,6 +10,7 @@ import {
   buildResponseInputFromBranch,
   draftBranchFromSelection,
   generateConversationId,
+  maybeApplyRootBranchFallbackTitle,
   maybeAutoSummarizeRootBranchTitle,
   sanitizeBranchTitle,
   invalidateConversationCache,
@@ -817,10 +818,32 @@ export async function sendMessage(
     ms: Date.now() - finalPersistStart,
   });
 
+  let latestResult = applied;
+  try {
+    const fallbackResult = await maybeApplyRootBranchFallbackTitle({
+      ctx,
+      conversationId,
+      snapshot: applied.snapshot,
+      branchId,
+    });
+    if (fallbackResult) {
+      latestResult = fallbackResult;
+    }
+  } catch (error) {
+    ctx.trace("conversation:auto-title:fallback-error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+
+  const latestSnapshot = latestResult.snapshot;
+  const latestVersion = latestResult.version;
+
   void maybeAutoSummarizeRootBranchTitle({
     ctx,
     conversationId,
-    snapshot: applied.snapshot,
+    snapshot: latestSnapshot,
     branchId,
   }).catch((error) => {
     ctx.trace("conversation:auto-title:deferred-error", {
@@ -832,8 +855,8 @@ export async function sendMessage(
 
   return {
     conversationId,
-    snapshot: applied.snapshot,
-    version: applied.version,
+    snapshot: latestSnapshot,
+    version: latestVersion,
     appendedMessages: [userMessage, finalAssistantMessage],
   };
 }

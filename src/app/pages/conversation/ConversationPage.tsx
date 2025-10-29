@@ -13,6 +13,7 @@ import {
   touchConversationDirectoryEntry,
 } from "@/app/shared/conversationDirectory.server";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
+import { ConversationEmptyLayout } from "@/app/components/conversation/ConversationEmptyLayout";
 
 interface ConversationPageProps extends AppRequestInfo {
   conversationId?: string;
@@ -26,8 +27,33 @@ export async function ConversationPage({
   const requestUrl = new URL(request.url);
   const requestedConversationId =
     requestUrl.searchParams.get("conversationId") ?? conversationId;
-  const result = await ensureConversationSnapshot(ctx, requestedConversationId);
   const requestedBranchId = requestUrl.searchParams.get("branchId");
+
+  const directoryEntries = await listConversationDirectoryEntries(ctx);
+
+  const directoryById = new Map(directoryEntries.map((entry) => [entry.id, entry] as const));
+  let targetConversationId: string | null = null;
+
+  if (requestedConversationId && directoryById.has(requestedConversationId)) {
+    targetConversationId = requestedConversationId;
+  } else if (!requestedConversationId && directoryEntries.length > 0) {
+    targetConversationId = directoryEntries[0]!.id;
+  }
+
+  if (!targetConversationId) {
+    return (
+      <ConversationEmptyLayout
+        conversations={directoryEntries}
+        missingConversationId={
+          requestedConversationId && !directoryById.has(requestedConversationId)
+            ? requestedConversationId
+            : null
+        }
+      />
+    );
+  }
+
+  const result = await ensureConversationSnapshot(ctx, targetConversationId);
   const snapshot = result.snapshot;
 
   const nowIso = new Date().toISOString();
@@ -40,7 +66,6 @@ export async function ConversationPage({
     lastActiveAt: nowIso,
   });
 
-  const directoryEntries = await listConversationDirectoryEntries(ctx);
   const summaries = mergeDirectoryEntries(directoryEntries, {
     id: result.conversationId,
     title: rootBranch?.title ?? result.conversationId,

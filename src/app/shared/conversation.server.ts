@@ -388,10 +388,6 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
     return null;
   }
 
-  if (branch.title && branch.title !== DEFAULT_BRANCH_TITLE) {
-    return null;
-  }
-
   const messages = getBranchMessages(snapshot, branchId);
   const nonSystemMessages = messages.filter((message) => message.role !== "system");
   const firstUserMessage = nonSystemMessages.find(
@@ -402,6 +398,19 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
   );
 
   if (!firstUserMessage || !firstAssistantMessage) {
+    return null;
+  }
+
+  const fallbackTitle = deriveRootBranchFallbackTitle({
+    userContent: firstUserMessage.content,
+    assistantContent: firstAssistantMessage.content,
+  });
+
+  const hasCustomTitle =
+    branch.title &&
+    branch.title !== DEFAULT_BRANCH_TITLE &&
+    (!fallbackTitle || branch.title !== fallbackTitle);
+  if (hasCustomTitle) {
     return null;
   }
 
@@ -420,15 +429,20 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
   let candidateTitle: string | null = null;
   let candidateSource: "model" | "fallback" | null = null;
 
+  const settingsModel = snapshot.conversation.settings.model;
+  const autoTitleModel = settingsModel.includes("chat")
+    ? settingsModel
+    : "gpt-5-chat-latest";
+
   try {
     ctx.trace("conversation:auto-title:start", {
       conversationId,
       branchId,
-      model: "gpt-5-nano",
+      model: autoTitleModel,
     });
 
     const response = await openai.responses.create({
-      model: "gpt-5-nano",
+      model: autoTitleModel,
       temperature: 0.2,
       max_output_tokens: 32,
       input: [
@@ -466,11 +480,6 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
   }
 
   if (!candidateTitle) {
-    const fallbackTitle = deriveRootBranchFallbackTitle({
-      userContent: firstUserMessage.content,
-      assistantContent: firstAssistantMessage.content,
-    });
-
     if (fallbackTitle) {
       candidateTitle = fallbackTitle;
       candidateSource = "fallback";
@@ -515,6 +524,67 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
       branch: {
         ...branch,
         title: candidateTitle,
+      },
+    },
+  ]);
+}
+
+export async function maybeApplyRootBranchFallbackTitle(options: {
+  ctx: AppContext;
+  conversationId: ConversationModelId;
+  snapshot: ConversationGraphSnapshot;
+  branchId: BranchId;
+}): Promise<ConversationLoadResult | null> {
+  const { ctx, conversationId, snapshot, branchId } = options;
+  const rootBranchId = snapshot.conversation.rootBranchId;
+  if (branchId !== rootBranchId) {
+    return null;
+  }
+
+  const branch = snapshot.branches[branchId];
+  if (!branch || branch.parentId) {
+    return null;
+  }
+
+  if (branch.title && branch.title !== DEFAULT_BRANCH_TITLE) {
+    return null;
+  }
+
+  const messages = getBranchMessages(snapshot, branchId);
+  const nonSystemMessages = messages.filter((message) => message.role !== "system");
+  const firstUserMessage = nonSystemMessages.find(
+    (message) => message.role === "user" && message.content.trim().length > 0,
+  );
+  const firstAssistantMessage = nonSystemMessages.find(
+    (message) => message.role === "assistant" && message.content.trim().length > 0,
+  );
+
+  if (!firstUserMessage || !firstAssistantMessage) {
+    return null;
+  }
+
+  const fallbackTitle = deriveRootBranchFallbackTitle({
+    userContent: firstUserMessage.content,
+    assistantContent: firstAssistantMessage.content,
+  });
+
+  if (!fallbackTitle || fallbackTitle === DEFAULT_BRANCH_TITLE) {
+    return null;
+  }
+
+  ctx.trace("conversation:auto-title:fallback-immediate", {
+    conversationId,
+    branchId,
+    title: fallbackTitle,
+  });
+
+  return applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "branch:update",
+      conversationId,
+      branch: {
+        ...branch,
+        title: fallbackTitle,
       },
     },
   ]);

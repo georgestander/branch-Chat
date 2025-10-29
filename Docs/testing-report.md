@@ -102,3 +102,12 @@
   - ⚠️ Pending: Dev server unavailable during this pass; need to verify the plus-menu opens, multi-selection works (icons stack + overflow badge), composer footprint stays stable, and blue active icons persist across sends.
 - Study & Learn agent send (manual)
   - ⚠️ Pending: Requires live OpenAI credentials to confirm the new agent path appends tutor responses and records `agent:study:*` traces; rerun once sandbox access is restored.
+
+## 2025-11-07
+
+- `pnpm tsc --noEmit`
+  - ✅ Passes after adding fallback titling and conversation landing flow.
+- Root branch auto-title (manual)
+  - ⚠️ Pending: Validate that sending a first message immediately renames the chat via fallback, and that a later streaming response upgrades the title when OpenAI is available.
+- Empty-state landing (manual)
+  - ⚠️ Pending: With no existing conversations, confirm the page renders the new landing view and only creates a chat after the user clicks “New chat”.
