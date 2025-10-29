@@ -533,7 +533,8 @@ export async function sendMessage(
     reasoningEffort: settings.reasoningEffort ?? null,
   });
 
-  const enableWebSearchTool = selectedToolSet.has("web-search");
+  const enableWebSearchTool =
+    selectedToolSet.size === 0 || selectedToolSet.has("web-search");
   const responseTools = getDefaultResponseTools({
     enableWebSearchTool,
     enableFileUploadTool: selectedToolSet.has("file-upload"),
@@ -729,12 +730,17 @@ export async function sendMessage(
       buffered.trim();
     promptTokens = finalResponse.usage?.input_tokens ?? 0;
     completionTokens = finalResponse.usage?.output_tokens ?? 0;
+    const streamReply =
+      typeof finalResponse?.response?.output?.[0]?.content?.[0]?.text === "string"
+        ? finalResponse.response.output[0].content[0].text
+        : buffered;
     ctx.trace("openai:stream:complete", {
       conversationId,
       branchId,
       promptTokens,
       completionTokens,
       characters: finalContent.length,
+      streamReply,
     });
   } catch (error) {
     ctx.trace("openai:stream:finalize-error", {
