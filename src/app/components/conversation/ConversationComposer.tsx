@@ -180,7 +180,10 @@ export function ConversationComposer({
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+          className={cn(
+            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70",
+            isPending ? "animate-pulse" : "",
+          )}
           aria-label="Send message"
         >
           {isPending ? (

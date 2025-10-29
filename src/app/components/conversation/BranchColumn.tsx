@@ -24,6 +24,31 @@ interface BranchColumnProps {
   leadingActions?: ReactNode;
 }
 
+function AssistantPendingBubble() {
+  return (
+    <div
+      className="w-full rounded-2xl bg-muted/30 px-4 py-4 shadow-sm ring-1 ring-border/30"
+      aria-live="polite"
+    >
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:120ms]" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+          </span>
+          <span>Connexus is preparing a response…</span>
+        </div>
+        <div className="mt-2 flex flex-col gap-3">
+          <span className="h-3 w-4/5 rounded-full bg-muted-foreground/15 animate-pulse" />
+          <span className="h-3 w-3/4 rounded-full bg-muted-foreground/10 animate-pulse" />
+          <span className="h-3 w-1/2 rounded-full bg-muted-foreground/10 animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BranchColumn({
   branch,
   messages,
@@ -52,6 +77,7 @@ export function BranchColumn({
     !!lastMessage &&
     lastMessage.role === "assistant" &&
     !lastMessage.tokenUsage;
+  const awaitingAssistant = isActive && lastMessage?.role === "user";
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
@@ -153,9 +179,15 @@ export function BranchColumn({
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-5 py-6 pb-24"
       >
-        <ol className="flex flex-col gap-4">
+        <ol className="mx-auto flex w-full max-w-4xl flex-col gap-4">
           {visibleMessages.map((message) => (
-            <li key={message.id}>
+            <li
+              key={message.id}
+              className={cn(
+                "flex w-full",
+                message.role === "user" ? "justify-end" : "justify-start",
+              )}
+            >
               <MessageBubble
                 message={message}
                 isActive={isActive}
@@ -164,6 +196,11 @@ export function BranchColumn({
               />
             </li>
           ))}
+          {awaitingAssistant ? (
+            <li className="flex w-full justify-start">
+              <AssistantPendingBubble />
+            </li>
+          ) : null}
         </ol>
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
@@ -204,15 +241,25 @@ function MessageBubble({
   branch: Branch;
 }) {
   if (message.role === "user") {
-    return <UserMessageBubble message={message} />;
+    return (
+      <UserMessageBubble
+        message={message}
+        className="inline-flex max-w-xl flex-col rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm text-primary"
+      />
+    );
   }
 
+  const highlightClass = message.hasBranchHighlight
+    ? "ring-2 ring-primary/40"
+    : "";
+
   if (isActive && message.role === "assistant") {
+    const isStreaming = !message.tokenUsage;
     return (
       <div
         className={cn(
-          "rounded-2xl bg-card px-4 py-4 shadow-sm transition",
-          message.hasBranchHighlight ? "ring-2 ring-primary/40" : "",
+          "w-full rounded-2xl bg-card px-4 py-4 shadow-sm transition",
+          highlightClass,
           "[&_.prose]:mt-0",
         )}
       >
@@ -224,6 +271,16 @@ function MessageBubble({
           renderedHtml={message.renderedHtml}
           toolInvocations={message.toolInvocations}
         />
+        {isStreaming ? (
+          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:120ms]" />
+              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+            </span>
+            <span>Streaming response…</span>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -231,8 +288,8 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "rounded-2xl bg-muted/40 px-4 py-3 text-sm shadow-sm transition",
-        message.hasBranchHighlight ? "ring-2 ring-primary/40" : "",
+        "w-full rounded-2xl bg-muted/40 px-4 py-4 text-sm shadow-sm transition",
+        highlightClass,
         "[&_.prose]:mt-0",
       )}
     >
@@ -251,8 +308,10 @@ function MessageBubble({
 
 function UserMessageBubble({
   message,
+  className,
 }: {
   message: RenderedMessage;
+  className?: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const previewText = useMemo(() => {
@@ -266,17 +325,11 @@ function UserMessageBubble({
   }, [message.content]);
 
   return (
-    <div
-      className={cn(
-        "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
-        "text-primary",
-        message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
-      )}
-    >
+    <div className={cn(className, message.hasBranchHighlight ? "ring-2 ring-primary/50" : "", "transition")}>
       <button
         type="button"
         onClick={() => setIsExpanded((value) => !value)}
-        className="flex w-full items-start justify-between gap-3 text-left"
+        className="flex items-start justify-between gap-3 text-left"
         aria-expanded={isExpanded}
       >
         <span className="font-medium leading-relaxed">
@@ -302,4 +355,3 @@ function UserMessageBubble({
     </div>
   );
 }
-
