@@ -25,6 +25,37 @@ export const MAX_BRANCH_TITLE_LENGTH = 60;
 
 export const DEFAULT_CONVERSATION_ID: ConversationModelId = "default-dev";
 
+const PLAN_REQUEST_PATTERNS: RegExp[] = [
+  /\bplan\b/i,
+  /\broadmap\b/i,
+  /\baction\s+plan\b/i,
+  /\bexecution\s+plan\b/i,
+  /\bimplementation\s+plan\b/i,
+  /\bimplementation\s+steps\b/i,
+  /\bstrategy\b/i,
+  /\bstep[-\s]*by[-\s]*step\b/i,
+  /\bwhat'?s\s+the\s+plan\b/i,
+];
+
+const PLAN_SECONDARY_PATTERNS: Array<(value: string) => boolean> = [
+  (value) => value.includes("outline") && value.includes("steps"),
+  (value) => value.includes("how do i") && value.includes("steps"),
+  (value) => value.includes("walk me through"),
+  (value) => value.includes("give me") && value.includes("steps"),
+  (value) => value.includes("what is the approach"),
+];
+
+const PLAN_FORMATTING_PROMPT = [
+  "Because the user is asking for a plan, format the reply with this exact contract:",
+  "1. Begin with a single sentence line that starts with `Short answer:` summarizing the recommendation.",
+  "2. Add a blank line followed by `# Plan`.",
+  "3. Under `# Plan`, emit an ordered list. Each list item should lead with a short, Title Case label (bold is encouraged) and include compact sub-bullets describing the actions, decision points, or caveats for that step.",
+  "4. When actionable execution details are available, include a `## Step-by-step build (copy/paste)` section containing numbered instructions the user can follow directly.",
+  "5. When the work involves constraints, risks, or prerequisites, include a `## Key constraints to remember` section with bullet points.",
+  "6. Cite supporting material inline with bracket references such as `([Source][1])` and finish with a `References` section that lists `[n]: URL \"Title\"` entries (reuse web-search sources when present, omit the section only if there are truly no sources).",
+  "7. Keep the Markdown tidy, avoid redundant prose, and do not add explanations outside these sections.",
+].join("\n");
+
 export function generateConversationId(): ConversationModelId {
   const random = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   return `conversation-${random}` as ConversationModelId;
@@ -453,6 +484,14 @@ export function buildResponseInputFromBranch(options: {
     });
   }
 
+  const planFormattingEnabled = shouldApplyPlanFormatting(nextUserContent);
+  if (planFormattingEnabled) {
+    inputs.push({
+      role: "system",
+      content: PLAN_FORMATTING_PROMPT,
+    });
+  }
+
   if (orderedMessages.length > 0) {
     const lastMessage = orderedMessages[orderedMessages.length - 1];
     if (
@@ -485,6 +524,21 @@ export function buildResponseInputFromBranch(options: {
   });
 
   return inputs;
+}
+
+function shouldApplyPlanFormatting(nextUserContent: string): boolean {
+  if (!nextUserContent) {
+    return false;
+  }
+
+  const normalized = nextUserContent.toLowerCase();
+  const condensed = normalized.replace(/\s+/g, " ");
+
+  if (PLAN_REQUEST_PATTERNS.some((pattern) => pattern.test(condensed))) {
+    return true;
+  }
+
+  return PLAN_SECONDARY_PATTERNS.some((predicate) => predicate(condensed));
 }
 
 export function getBranchChain(

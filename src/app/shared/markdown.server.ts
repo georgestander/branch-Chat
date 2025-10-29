@@ -111,9 +111,13 @@ function createSanitizeSchema(): typeof defaultSchema {
   extend("code", ["className", "data-language"]);
   extend("pre", ["className", "data-theme"]);
   extend("button", ["className", "type", "data-copy-code", "data-copy-state"]);
+  extend("section", ["className", "aria-labelledby", "aria-label"]);
+  extend("sup", ["className"]);
 
   schema.attributes = attributes;
-  schema.tagNames = Array.from(new Set([...(schema.tagNames ?? []), "mark", "span", "button", "div"]));
+  schema.tagNames = Array.from(
+    new Set([...(schema.tagNames ?? []), "mark", "span", "button", "div", "section", "sup"]),
+  );
 
   return schema as typeof defaultSchema;
 }
