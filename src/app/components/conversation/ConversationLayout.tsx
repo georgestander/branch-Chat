@@ -13,9 +13,9 @@ import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
 import {
+  GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
-  SquareSplitVertical,
 } from "lucide-react";
 
 import { BranchColumn } from "./BranchColumn";
@@ -118,7 +118,7 @@ export function ConversationLayout({
                   aria-expanded={true}
                   title="Hide parent thread"
                 >
-                  <SquareSplitVertical className="h-4 w-4" aria-hidden="true" />
+                  <GitBranch className="h-4 w-4" aria-hidden="true" />
                   <span className="sr-only">Hide parent branch column</span>
                 </button>
               }
@@ -168,7 +168,7 @@ export function ConversationLayout({
                     aria-expanded={false}
                     title="Show parent thread"
                   >
-                    <SquareSplitVertical className="h-4 w-4" aria-hidden="true" />
+                    <GitBranch className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">
                       Show parent branch column
                     </span>

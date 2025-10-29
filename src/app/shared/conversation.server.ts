@@ -184,11 +184,16 @@ export function draftBranchFromSelection(options: {
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const derivedTitle = deriveBranchTitle({
+    explicitTitle: title,
+    excerpt: excerpt ?? null,
+    fallbackId: id,
+  });
 
   return {
     id,
     parentId: parentBranchId,
-    title: title ?? `Branch ${id.slice(0, 6)}`,
+    title: derivedTitle,
     createdFrom: {
       messageId,
       span: span ?? undefined,
@@ -198,6 +203,31 @@ export function draftBranchFromSelection(options: {
     createdAt: now,
     archivedAt: undefined,
   };
+}
+
+const MAX_BRANCH_TITLE_CHARS = 20;
+
+function deriveBranchTitle(options: {
+  explicitTitle?: string;
+  excerpt: string | null;
+  fallbackId: string;
+}): string {
+  const { explicitTitle, excerpt, fallbackId } = options;
+  if (explicitTitle && explicitTitle.trim().length > 0) {
+    return explicitTitle.trim();
+  }
+
+  if (excerpt) {
+    const normalized = excerpt.replace(/\s+/g, " ").trim();
+    if (normalized.length > 0) {
+      if (normalized.length <= MAX_BRANCH_TITLE_CHARS) {
+        return normalized;
+      }
+      return `${normalized.slice(0, MAX_BRANCH_TITLE_CHARS).trimEnd()}...`;
+    }
+  }
+
+  return `Branch ${fallbackId.slice(0, 6)}`;
 }
 
 export async function applyConversationUpdates(
