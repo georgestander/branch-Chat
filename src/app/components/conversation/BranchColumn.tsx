@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { Branch, ConversationModelId } from "@/lib/conversation";
@@ -38,8 +38,15 @@ export function BranchColumn({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
 
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => message.role !== "system"),
+    [messages],
+  );
+
   const lastMessage =
-    messages.length > 0 ? messages[messages.length - 1] : undefined;
+    visibleMessages.length > 0
+      ? visibleMessages[visibleMessages.length - 1]
+      : undefined;
   const isStreamingAssistant =
     isActive &&
     !!lastMessage &&
@@ -48,11 +55,11 @@ export function BranchColumn({
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
-      return `empty-${messages.length}`;
+      return `empty-${visibleMessages.length}`;
     }
     const suffix = lastMessage.tokenUsage ? "final" : "delta";
-    return `${messages.length}-${lastMessage.id}-${lastMessage.content.length}-${suffix}`;
-  }, [lastMessage, messages.length]);
+    return `${visibleMessages.length}-${lastMessage.id}-${lastMessage.content.length}-${suffix}`;
+  }, [lastMessage, visibleMessages.length]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -147,7 +154,7 @@ export function BranchColumn({
         className="flex-1 overflow-y-auto px-5 py-6 pb-24"
       >
         <ol className="flex flex-col gap-4">
-          {messages.map((message) => (
+          {visibleMessages.map((message) => (
             <li key={message.id}>
               <MessageBubble
                 message={message}
@@ -196,22 +203,19 @@ function MessageBubble({
   conversationId: ConversationModelId;
   branch: Branch;
 }) {
-
-  const commonHeader = (
-    <div className="flex items-center justify-between">
-      <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-        {message.role}
-      </span>
-      <span className="text-xs text-muted-foreground">
-        {formatTimestamp(message.createdAt)}
-      </span>
-    </div>
-  );
+  if (message.role === "user") {
+    return <UserMessageBubble message={message} />;
+  }
 
   if (isActive && message.role === "assistant") {
     return (
-      <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
-        {commonHeader}
+      <div
+        className={cn(
+          "rounded-2xl bg-card px-4 py-4 shadow-sm transition",
+          message.hasBranchHighlight ? "ring-2 ring-primary/40" : "",
+          "[&_.prose]:mt-0",
+        )}
+      >
         <BranchableMessage
           branchId={branch.id}
           conversationId={conversationId}
@@ -226,29 +230,76 @@ function MessageBubble({
 
   return (
     <div
-      className={`rounded-lg border border-border px-4 py-3 shadow-sm ${message.hasBranchHighlight ? "bg-primary/5" : "bg-card"}`}
+      className={cn(
+        "rounded-2xl bg-muted/40 px-4 py-3 text-sm shadow-sm transition",
+        message.hasBranchHighlight ? "ring-2 ring-primary/40" : "",
+        "[&_.prose]:mt-0",
+      )}
     >
-      {commonHeader}
       <MarkdownContent
-        className="prose prose-sm mt-3 max-w-none text-foreground"
+        className="prose prose-sm max-w-none text-foreground"
         html={message.renderedHtml}
       />
       <ToolInvocationSummary
         toolInvocations={message.toolInvocations}
         fallbackHtml={message.renderedHtml}
-        className="mt-4"
+        className="mt-3"
       />
     </div>
   );
 }
 
-function formatTimestamp(isoString: string): string {
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) {
-    return isoString;
-  }
-  const iso = date.toISOString();
-  const [dayPart, timePart] = iso.split("T");
-  const time = timePart?.slice(0, 8) ?? "00:00:00";
-  return `${dayPart}, ${time} UTC`;
+function UserMessageBubble({
+  message,
+}: {
+  message: RenderedMessage;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const previewText = useMemo(() => {
+    const normalized = message.content.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "User prompt";
+    }
+    return normalized.length > 96
+      ? `${normalized.slice(0, 93)}…`
+      : normalized;
+  }, [message.content]);
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
+        "text-primary",
+        message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setIsExpanded((value) => !value)}
+        className="flex w-full items-start justify-between gap-3 text-left"
+        aria-expanded={isExpanded}
+      >
+        <span className="font-medium leading-relaxed">
+          “{previewText}”
+        </span>
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.18em] text-primary/70">
+          {isExpanded ? "Hide" : "Show"}
+        </span>
+      </button>
+
+      <div
+        className={cn(
+          "overflow-hidden pt-3 text-primary transition-all duration-300 ease-out",
+          isExpanded ? "max-h-[100rem] opacity-100" : "max-h-0 opacity-0",
+          "[&_.prose]:text-primary [&_.prose strong]:text-primary",
+        )}
+      >
+        <MarkdownContent
+          className="prose prose-sm max-w-none text-primary"
+          html={message.renderedHtml}
+        />
+      </div>
+    </div>
+  );
 }
+
