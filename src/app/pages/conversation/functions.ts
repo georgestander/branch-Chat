@@ -30,6 +30,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   removeStagedAttachment as removeStagedAttachmentHelper,
 } from "@/app/shared/uploads.server";
+import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import {
   buildRetrievalContext,
   formatRetrievedContextForPrompt,
@@ -587,26 +588,6 @@ export async function sendMessage(
       allowedAttachmentIds: null,
       minScore: 0.12,
     });
-    if (
-      retrievalContextResult.attachments.length === 0 &&
-      retrievalContextResult.fallbackAttachments.length > 0
-    ) {
-      ctx.trace("retrieval:context:fallback-attachments", {
-        conversationId,
-        branchId,
-        count: retrievalContextResult.fallbackAttachments.length,
-      });
-    }
-    if (
-      retrievalContextResult.webSnippets.length === 0 &&
-      retrievalContextResult.fallbackWebSnippets.length > 0
-    ) {
-      ctx.trace("retrieval:context:fallback-web", {
-        conversationId,
-        branchId,
-        count: retrievalContextResult.fallbackWebSnippets.length,
-      });
-    }
     if (retrievalContextResult.blocks.length > 0) {
       retrievalContextText = formatRetrievedContextForPrompt(
         retrievalContextResult.blocks,
@@ -645,7 +626,7 @@ export async function sendMessage(
       .slice(0, 5);
 
     if (summaryLines.length > 0) {
-      retrievalContextText = `Here is what the user has shared so far:\n${summaryLines.join("\n")}\n\nReference these notes in your reply. Start by acknowledging the file and asking how they want to study (quiz, explanation, notes) unless they already told you.`;
+      retrievalContextText = `Here is what the user has shared so far:\n${summaryLines.join("\n")}\n\nUse these materials immediately—summarize key themes, surface important facts, and offer a study plan tailored to the document without waiting for more clarification.`;
     }
   }
 
@@ -696,41 +677,7 @@ export async function sendMessage(
     });
 
     try {
-      const workflowId = ctx.env?.STUDY_LEARN_WORKFLOW_ID;
-      if (!workflowId) {
-        throw new Error("Study & Learn workflow ID is not configured");
-      }
-
-      const openai = ctx.getOpenAIClient();
-
-      const workflowInput: Array<{
-        role: string;
-        content: Array<{ type: "input_text"; text: string }>;
-      }> = [];
-
-      if (studyAgentInput.instructions) {
-        workflowInput.push({
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text: studyAgentInput.instructions,
-            },
-          ],
-        });
-      }
-
-      if (retrievalContextText) {
-        workflowInput.push({
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text: `Context for this turn:\n${retrievalContextText}`,
-            },
-          ],
-        });
-      }
+      const agentHistory = [...studyAgentInput.messages];
 
       if (consumedAttachments.length > 0) {
         const attachmentSummary = consumedAttachments
@@ -739,51 +686,33 @@ export async function sendMessage(
             return `• ${attachment.name} (${attachment.contentType}, ${sizeKb} KB)`;
           })
           .join("\n");
-        workflowInput.push({
+        agentHistory.push({
           role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: `The user provided these reference files:\n${attachmentSummary}`,
-            },
-          ],
+          content: `The user attached supporting files:\n${attachmentSummary}`,
         });
       }
 
-      for (const message of studyAgentInput.messages) {
-        workflowInput.push({
-          role: message.role,
-          content: [
-            {
-              type: "input_text",
-              text: message.content,
-            },
-          ],
+      if (retrievalContextText) {
+        agentHistory.push({
+          role: "user",
+          content: `Additional context from uploads & searches:\n${retrievalContextText}`,
         });
       }
 
-      const workflowResponse = await openai.responses.create({
-        workflow: workflowId,
-        input: workflowInput,
-        metadata: {
+      const result = await runStudyAndLearnAgent({
+        instructions: studyAgentInput.instructions,
+        history: agentHistory,
+        model: settings.model,
+        temperature: settings.temperature,
+        reasoningEffort: settings.reasoningEffort ?? undefined,
+        traceMetadata: {
           conversationId,
           branchId,
           assistantMessageId: assistantMessage.id,
-          toolSet: Array.from(selectedToolSet).join(","),
         },
       });
 
-      const outputText =
-        workflowResponse.output_text?.trim() ??
-        workflowResponse.output
-          ?.map((item: any) =>
-            item.content?.map?.((part: any) => part.text ?? "")?.join("") ?? "",
-          )
-          ?.join("")
-          .trim() ??
-        "";
-
-      agentOutput = outputText;
+      agentOutput = result.outputText.trim();
       ctx.trace("agent:study:success", {
         conversationId,
         branchId,
@@ -800,9 +729,7 @@ export async function sendMessage(
         error: error instanceof Error ? error.message : "unknown",
       });
       agentOutput =
-        error instanceof Error && /not configured/i.test(error.message)
-          ? "Study & Learn agent is not available right now. Please contact support."
-          : "We couldn't reach the Study & Learn tutor. Please try again.";
+        "We couldn't reach the Study & Learn tutor. Please try again.";
     }
 
     if (!agentOutput) {

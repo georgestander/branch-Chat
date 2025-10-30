@@ -184,7 +184,7 @@ async function parseDocumentWithOpenAI(
             {
               type: "input_text",
               text:
-                "Read the attached document and return JSON with an optional summary and an array of chunk objects. Each chunk should include any heading as title, the text content, and pageNumber if available.",
+                "Read the attached document and respond ONLY with valid JSON using this structure: {\"summary\": string|null, \"chunks\": [{\"title\": string|null, \"text\": string, \"pageNumber\": number|null}]}. Ensure the JSON is strictly valid.",
             },
             {
               type: "input_file",
@@ -193,48 +193,54 @@ async function parseDocumentWithOpenAI(
           ],
         },
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "DocumentChunks",
-          schema: {
-            type: "object",
-            properties: {
-              summary: { type: "string" },
-              chunks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    text: { type: "string" },
-                    pageNumber: { type: "number" },
-                  },
-                  required: ["text"],
-                },
-                minItems: 1,
-                maxItems: 40,
-              },
-            },
-            required: ["chunks"],
-          },
-        },
-      },
     });
 
-    const output = response.output_text ?? "";
-    const parsed = JSON.parse(output) as {
-      summary?: string | null;
-      chunks: Array<{
-        title?: string | null;
-        text: string;
-        pageNumber?: number | null;
-      }>;
-    };
+    const output = response.output_text?.trim() ?? "";
+    let parsed:
+      | {
+          summary?: string | null;
+          chunks: Array<{
+            title?: string | null;
+            text: string;
+            pageNumber?: number | null;
+          }>;
+        }
+      | null = null;
+
+    try {
+      parsed = JSON.parse(output) as {
+        summary?: string | null;
+        chunks: Array<{
+          title?: string | null;
+          text: string;
+          pageNumber?: number | null;
+        }>;
+      };
+    } catch (parseError) {
+      console.warn("[WARN] parseDocumentWithOpenAI JSON parse failed", parseError, {
+        output: output.slice(0, 2400),
+      });
+    }
+
+    const chunks = parsed?.chunks ?? [];
+
+    if (chunks.length === 0) {
+      return {
+        chunks: [
+          {
+            title: file.name,
+            text: output || "",
+            pageNumber: null,
+          },
+        ],
+        summary: parsed?.summary ?? null,
+        fileId: uploaded.id,
+      };
+    }
 
     return {
-      chunks: parsed.chunks ?? [],
-      summary: parsed.summary ?? null,
+      chunks,
+      summary: parsed?.summary ?? null,
       fileId: uploaded.id,
     };
   } catch (error) {

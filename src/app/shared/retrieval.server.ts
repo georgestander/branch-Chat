@@ -57,37 +57,12 @@ function attachmentChunkToContext(
   match: AttachmentChunkMatch & { ingestion: AttachmentIngestionRecord | null },
 ): RetrievedContextChunk {
   const { chunk, similarity, ingestion } = match;
-  const rawMetadata = (chunk.metadata ?? {}) as Record<string, unknown>;
+  const metadata = (chunk.metadata ?? {}) as Record<string, unknown>;
   const fileName =
-    typeof rawMetadata.fileName === "string"
-      ? rawMetadata.fileName
+    typeof metadata.fileName === "string" && metadata.fileName.length > 0
+      ? metadata.fileName
       : ingestion?.attachmentId ?? "Attachment";
-  const pageNumber =
-    typeof rawMetadata.pageNumber === "number" && Number.isFinite(rawMetadata.pageNumber)
-      ? rawMetadata.pageNumber
-      : null;
-  const contentType =
-    typeof rawMetadata.contentType === "string"
-      ? rawMetadata.contentType
-      : undefined;
-  const size =
-    typeof rawMetadata.size === "number" && Number.isFinite(rawMetadata.size)
-      ? rawMetadata.size
-      : undefined;
-  const summary =
-    typeof rawMetadata.summary === "string"
-      ? rawMetadata.summary
-      : ingestion?.summary ?? null;
-
-  const titleParts: string[] = [];
-  if (fileName) {
-    titleParts.push(String(fileName));
-  }
-  if (pageNumber !== null) {
-    titleParts.push(`page ${pageNumber}`);
-  }
-  const title =
-    titleParts.length > 0 ? titleParts.join(", ") : fileName ?? "Attachment";
+  const title = fileName;
 
   return {
     id: chunk.id,
@@ -98,10 +73,6 @@ function attachmentChunkToContext(
     relevance: Number.isFinite(similarity) ? similarity : 0,
     metadata: {
       fileName,
-      contentType: contentType ?? null,
-      size: size ?? null,
-      pageNumber,
-      summary,
     },
   };
 }
@@ -127,8 +98,6 @@ export interface RetrievalContextResult {
   blocks: RetrievedContextChunk[];
   attachments: Array<AttachmentChunkMatch & { ingestion: AttachmentIngestionRecord | null }>;
   webSnippets: WebSearchSnippetMatch[];
-  fallbackAttachments: Array<AttachmentChunkMatch & { ingestion: AttachmentIngestionRecord | null }>;
-  fallbackWebSnippets: WebSearchSnippetMatch[];
 }
 
 export async function buildRetrievalContext(
@@ -144,7 +113,7 @@ export async function buildRetrievalContext(
 ): Promise<RetrievalContextResult> {
   const normalizedQuery = options.query.trim();
   if (!normalizedQuery) {
-    return { blocks: [], attachments: [], webSnippets: [], fallbackAttachments: [], fallbackWebSnippets: [] };
+    return { blocks: [], attachments: [], webSnippets: [] };
   }
 
   const embedding = await embedQuery(ctx, normalizedQuery);
@@ -159,8 +128,6 @@ export async function buildRetrievalContext(
 
   const attachmentMatches = result.attachments ?? [];
   const webMatches = result.webSnippets ?? [];
-  const fallbackAttachmentMatches = result.fallbackAttachments ?? [];
-  const fallbackWebMatches = result.fallbackWebSnippets ?? [];
 
   const blocks: RetrievedContextChunk[] = [];
   for (const match of attachmentMatches) {
@@ -177,24 +144,6 @@ export async function buildRetrievalContext(
     blocks.push(webSnippetToContext(match));
   }
 
-  if (blocks.length === 0 && fallbackAttachmentMatches.length > 0) {
-    for (const match of fallbackAttachmentMatches) {
-      blocks.push(
-        attachmentChunkToContext({
-          chunk: match.chunk as AttachmentChunk,
-          similarity: match.similarity,
-          ingestion: match.ingestion ?? null,
-        }),
-      );
-    }
-  }
-
-  if (blocks.length === 0 && fallbackWebMatches.length > 0) {
-    for (const match of fallbackWebMatches) {
-      blocks.push(webSnippetToContext(match));
-    }
-  }
-
   return {
     blocks,
     attachments: attachmentMatches.map((match) => ({
@@ -202,8 +151,6 @@ export async function buildRetrievalContext(
       ingestion: match.ingestion ?? null,
     })),
     webSnippets: webMatches,
-    fallbackAttachments: fallbackAttachmentMatches,
-    fallbackWebSnippets: fallbackWebMatches,
   };
 }
 

@@ -928,11 +928,6 @@ export class ConversationStoreDO implements DurableObject {
           : -1;
 
       const state = await this.getState();
-      const allAttachmentMatches: Array<{
-        chunk: AttachmentChunk;
-        similarity: number;
-        ingestion: AttachmentIngestionRecord | null;
-      }> = [];
       const attachmentMatches: Array<{
         chunk: AttachmentChunk;
         similarity: number;
@@ -950,27 +945,19 @@ export class ConversationStoreDO implements DurableObject {
         if (!Number.isFinite(similarity)) {
           continue;
         }
-        const matchRecord = {
-          chunk,
-          similarity,
-          ingestion: state.attachmentIngestions[chunk.attachmentId] ?? null,
-        };
-        allAttachmentMatches.push(matchRecord);
         if (similarity < minSimilarity) {
           continue;
         }
-        attachmentMatches.push(matchRecord);
+        attachmentMatches.push({
+          chunk,
+          similarity,
+          ingestion: state.attachmentIngestions[chunk.attachmentId] ?? null,
+        });
       }
 
       attachmentMatches.sort((a, b) => b.similarity - a.similarity);
-      allAttachmentMatches.sort((a, b) => b.similarity - a.similarity);
       const topAttachmentMatches = attachmentMatches.slice(0, attachmentLimit);
-      const fallbackAttachmentMatches =
-        topAttachmentMatches.length > 0
-          ? []
-          : allAttachmentMatches.slice(0, Math.min(attachmentLimit, 4));
 
-      const allWebMatches: Array<{ snippet: WebSearchSnippet; similarity: number }> = [];
       const webMatches: Array<{ snippet: WebSearchSnippet; similarity: number }> = [];
       for (const snippet of Object.values(state.webSearchSnippets)) {
         if (snippet.embedding.length !== queryEmbedding.length) {
@@ -980,28 +967,19 @@ export class ConversationStoreDO implements DurableObject {
         if (!Number.isFinite(similarity)) {
           continue;
         }
-        const matchRecord = { snippet, similarity };
-        allWebMatches.push(matchRecord);
         if (similarity < minSimilarity) {
           continue;
         }
-        webMatches.push(matchRecord);
+        webMatches.push({ snippet, similarity });
       }
 
       webMatches.sort((a, b) => b.similarity - a.similarity);
-      allWebMatches.sort((a, b) => b.similarity - a.similarity);
       const topWebMatches = webMatches.slice(0, webLimit);
-      const fallbackWebMatches =
-        topWebMatches.length > 0
-          ? []
-          : allWebMatches.slice(0, Math.min(webLimit, 4));
 
       return jsonResponse(
         {
           attachments: topAttachmentMatches,
           webSnippets: topWebMatches,
-          fallbackAttachments: fallbackAttachmentMatches,
-          fallbackWebSnippets: fallbackWebMatches,
         },
         { status: 200 },
       );
@@ -1495,15 +1473,6 @@ export class ConversationStoreClient {
       snippet: WebSearchSnippet;
       similarity: number;
     }>;
-    fallbackAttachments: Array<{
-      chunk: AttachmentChunk;
-      similarity: number;
-      ingestion: AttachmentIngestionRecord | null;
-    }>;
-    fallbackWebSnippets: Array<{
-      snippet: WebSearchSnippet;
-      similarity: number;
-    }>;
   }> {
     const response = await this.stub.fetch(
       "https://conversation/retrieval/query",
@@ -1528,15 +1497,6 @@ export class ConversationStoreClient {
         ingestion: AttachmentIngestionRecord | null;
       }>;
       webSnippets: Array<{
-        snippet: WebSearchSnippet;
-        similarity: number;
-      }>;
-      fallbackAttachments: Array<{
-        chunk: AttachmentChunk;
-        similarity: number;
-        ingestion: AttachmentIngestionRecord | null;
-      }>;
-      fallbackWebSnippets: Array<{
         snippet: WebSearchSnippet;
         similarity: number;
       }>;

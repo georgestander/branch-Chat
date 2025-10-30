@@ -586,6 +586,16 @@ export function ConversationComposer({
     void clearAllAttachments();
   }, [clearAllAttachments]);
 
+  const handleRemoveTool = useCallback(
+    (tool: ConversationComposerTool) => {
+      setSelectedTools((previous) => previous.filter((value) => value !== tool));
+      if (tool === "file-upload") {
+        void clearAllAttachments();
+      }
+    },
+    [clearAllAttachments],
+  );
+
   const handleModelSelection = useCallback(
     async (
       nextModel: string,
@@ -610,9 +620,7 @@ export function ConversationComposer({
   const activeToolOptions = TOOL_OPTIONS.filter((option) =>
     selectedTools.includes(option.id),
   );
-  const MAX_VISIBLE_TOOL_ICONS = 3;
-  const visibleToolOptions = activeToolOptions.slice(0, MAX_VISIBLE_TOOL_ICONS);
-  const overflowCount = activeToolOptions.length - visibleToolOptions.length;
+  const fileUploadSelected = selectedTools.includes("file-upload");
   const hasSelectedTools = activeToolOptions.length > 0;
   const hasPendingAttachments = attachments.some(
     (attachment) => attachment.status === "pending" || attachment.status === "uploading",
@@ -760,6 +768,116 @@ export function ConversationComposer({
           void handleFilesSelected(event.target.files);
         }}
       />
+      {(hasSelectedTools || attachments.length > 0) ? (
+        <div className="rounded-2xl border border-border/70 bg-card/90 px-3 py-2">
+          {hasSelectedTools ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {activeToolOptions.map((option) => (
+                  <span
+                    key={`composer-selected-tool-${option.id}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary"
+                  >
+                    <option.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{option.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTool(option.id)}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-transparent text-primary transition hover:bg-primary/20"
+                      aria-label={`Remove ${option.label}`}
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleClearTool}
+                className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!hasSelectedTools}
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+                <span>Clear</span>
+              </button>
+            </div>
+          ) : null}
+          {(attachments.length > 0 || (fileUploadSelected && canAddMoreAttachments)) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {attachments.map((attachment) => {
+                const statusIcon = (() => {
+                  if (attachment.status === "ready") {
+                    return <Paperclip className="h-3.5 w-3.5 text-primary" aria-hidden="true" />;
+                  }
+                  if (attachment.status === "error") {
+                    return <AlertTriangle className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />;
+                  }
+                  return (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" aria-hidden="true" />
+                  );
+                })();
+
+                const subtitle =
+                  attachment.status === "ready"
+                    ? formatBytes(attachment.size)
+                    : attachment.status === "error"
+                      ? "Upload failed"
+                      : `${formatBytes(attachment.size)} · Uploading…`;
+
+                return (
+                  <div
+                    key={attachment.tempId}
+                    className="flex items-center gap-2 rounded-full border border-border/70 bg-background/95 px-3 py-1 text-[11px] shadow-sm"
+                  >
+                    <span className="inline-flex h-5 w-5 items-center justify-center">
+                      {statusIcon}
+                    </span>
+                    <div className="flex max-w-[160px] flex-col">
+                      <span className="truncate text-[11px] font-semibold text-foreground">
+                        {attachment.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{subtitle}</span>
+                      {attachment.status === "error" && attachment.error ? (
+                        <span className="text-[10px] text-destructive">{attachment.error}</span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {attachment.status === "error" ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRetryAttachment(attachment.tempId)}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
+                          aria-label={`Retry ${attachment.name}`}
+                        >
+                          <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(attachment.tempId)}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
+                        aria-label={`Remove ${attachment.name}`}
+                      >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {fileUploadSelected && canAddMoreAttachments ? (
+                <button
+                  type="button"
+                  onClick={openFilePicker}
+                  className="inline-flex items-center gap-2 rounded-full border border-dashed border-primary/60 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/10"
+                >
+                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Add files</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <form
         onSubmit={handleSubmit}
         className="flex items-end gap-3 rounded-full border border-border/70 bg-card/95 px-1 py-2"
@@ -848,109 +966,7 @@ export function ConversationComposer({
           ) : null}
         </div>
 
-        <div className="inline-flex h-10 w-14 shrink-0 items-center justify-center">
-          {hasSelectedTools ? (
-            <div className="flex items-center gap-1">
-              <div className="flex -space-x-2">
-                {visibleToolOptions.map((option) => (
-                  <span
-                    key={`composer-tool-${option.id}`}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-primary/40 bg-primary/15 text-primary"
-                    aria-label={`${option.label} tool selected`}
-                  >
-                    <option.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                  </span>
-                ))}
-              </div>
-              {overflowCount > 0 ? (
-                <span className="inline-flex h-6 items-center justify-center rounded-full bg-primary/20 px-2 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                  +{overflowCount}
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            <span className="inline-flex h-6 w-6 items-center justify-center opacity-0">
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-1 flex-col gap-2">
-          {attachments.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {attachments.map((attachment) => {
-                const statusIcon = (() => {
-                  if (attachment.status === "ready") {
-                    return <Paperclip className="h-4 w-4 text-primary" aria-hidden="true" />;
-                  }
-                  if (attachment.status === "error") {
-                    return <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />;
-                  }
-                  return <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />;
-                })();
-
-                const subtitle =
-                  attachment.status === "ready"
-                    ? formatBytes(attachment.size)
-                    : attachment.status === "error"
-                      ? "Upload failed"
-                      : `${formatBytes(attachment.size)} · Uploading…`;
-
-                return (
-                  <div
-                    key={attachment.tempId}
-                    className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-3 py-1 text-xs"
-                  >
-                    <span className="inline-flex h-5 w-5 items-center justify-center">
-                      {statusIcon}
-                    </span>
-                    <div className="flex max-w-[160px] flex-col">
-                      <span className="truncate font-medium text-foreground">
-                        {attachment.name}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">{subtitle}</span>
-                      {attachment.status === "error" && attachment.error ? (
-                        <span className="text-[11px] text-destructive">
-                          {attachment.error}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {attachment.status === "error" ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRetryAttachment(attachment.tempId)}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
-                          aria-label={`Retry ${attachment.name}`}
-                        >
-                          <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAttachment(attachment.tempId)}
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
-                        aria-label={`Remove ${attachment.name}`}
-                      >
-                        <X className="h-3 w-3" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {canAddMoreAttachments ? (
-                <button
-                  type="button"
-                  onClick={openFilePicker}
-                  className="inline-flex items-center gap-2 rounded-full border border-dashed border-primary/60 px-3 py-1 text-xs text-primary transition hover:bg-primary/10"
-                >
-                  <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Add files</span>
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
+        <div className="flex flex-1 flex-col">
           <div className="relative">
             <label htmlFor="conversation-composer" className="sr-only">
               Message
