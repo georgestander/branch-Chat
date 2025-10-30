@@ -1068,7 +1068,7 @@ export function ConversationComposer({
                     role="menuitemradio"
                     aria-checked={isSelected}
                     onClick={() => {
-                      void handleModelSelection("gpt-5-nano", option);
+                      void handleModelSelection("gpt-5-mini", option);
                     }}
                     disabled={conversationSettingsSaving}
                     className={cn(

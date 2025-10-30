@@ -58,7 +58,7 @@ import {
 } from "@/lib/conversation/tools";
 import type { AppRequestInfo } from "@/worker";
 
-const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano"]);
+const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
 
 function isReasoningModel(model: string): boolean {
   // Heuristics: treat non-chat variants of gpt-5 as reasoning models
