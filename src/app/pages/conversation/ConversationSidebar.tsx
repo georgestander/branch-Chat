@@ -572,7 +572,7 @@ export function ConversationSidebar({
         className,
       )}
     >
-      <div className="border-b border-border px-4 py-3">
+      <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-base font-semibold tracking-tight text-foreground">
             Connexus
