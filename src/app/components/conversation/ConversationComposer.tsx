@@ -790,14 +790,14 @@ export function ConversationComposer({
                 {activeToolOptions.map((option) => (
                   <span
                     key={`composer-selected-tool-${option.id}`}
-                    className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary"
+                    className="interactive-target state-selected inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-primary-foreground"
                   >
                     <option.icon className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>{option.label}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveTool(option.id)}
-                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-transparent text-primary transition hover:bg-primary/20"
+                      className="interactive-target inline-flex h-4 w-4 items-center justify-center rounded-full border border-transparent text-primary-foreground/75 hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                       aria-label={`Remove ${option.label}`}
                     >
                       <X className="h-3 w-3" aria-hidden="true" />
@@ -808,7 +808,7 @@ export function ConversationComposer({
               <button
                 type="button"
                 onClick={handleClearTool}
-                className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="interactive-target inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={!hasSelectedTools}
               >
                 <X className="h-3 w-3" aria-hidden="true" />
@@ -860,7 +860,7 @@ export function ConversationComposer({
                         <button
                           type="button"
                           onClick={() => handleRetryAttachment(attachment.tempId)}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
+                          className="interactive-target inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                           aria-label={`Retry ${attachment.name}`}
                         >
                           <RotateCcw className="h-3 w-3" aria-hidden="true" />
@@ -869,7 +869,7 @@ export function ConversationComposer({
                       <button
                         type="button"
                         onClick={() => handleRemoveAttachment(attachment.tempId)}
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground transition hover:text-foreground"
+                        className="interactive-target inline-flex h-5 w-5 items-center justify-center rounded-full border border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                         aria-label={`Remove ${attachment.name}`}
                       >
                         <X className="h-3 w-3" aria-hidden="true" />
@@ -882,7 +882,7 @@ export function ConversationComposer({
                 <button
                   type="button"
                   onClick={openFilePicker}
-                  className="inline-flex items-center gap-2 rounded-full border border-dashed border-primary/60 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/10"
+                  className="interactive-target inline-flex items-center gap-2 rounded-full border border-dashed border-primary/60 px-3 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Add files</span>
@@ -894,26 +894,26 @@ export function ConversationComposer({
       ) : null}
       <form
         onSubmit={handleSubmit}
-        className="flex items-end gap-3 rounded-full border border-border/70 bg-card/95 px-1 py-2"
+        className="flex items-end gap-3 rounded-full border border-border/70 bg-card/90 px-1 py-2 shadow-sm"
       >
         <div className="relative" ref={toolMenuRef}>
           <button
             type="button"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-background"
+            className="interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-background hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="New prompt options"
             aria-expanded={isToolMenuOpen}
             aria-controls={isToolMenuOpen ? toolMenuId : undefined}
             aria-haspopup="menu"
             onClick={() => setIsToolMenuOpen((prev) => !prev)}
           >
-            <Plus className="h-5 w-5" aria-hidden="true" />
+            <Plus className="h-5 w-5 text-foreground/80" aria-hidden="true" />
           </button>
 
           {isToolMenuOpen ? (
             <div
               id={toolMenuId}
               role="menu"
-              className="absolute left-0 bottom-full z-20 mb-2 w-56 rounded-xl border border-border/70 bg-popover p-1 shadow-lg"
+              className="absolute left-0 bottom-full z-20 mb-2 w-56 rounded-xl border border-border/80 bg-popover/95 p-1 shadow-xl backdrop-blur-[2px]"
             >
               {TOOL_OPTIONS.map((option) => {
                 const isSelected = selectedTools.includes(option.id);
@@ -939,30 +939,30 @@ export function ConversationComposer({
                       handleToolSelect(option.id);
                     }}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      "interactive-target flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
                       isSelected
-                        ? "bg-primary/10 text-primary"
+                        ? "state-selected font-semibold text-primary-foreground"
                         : isDisabled
                           ? "cursor-not-allowed text-muted-foreground"
-                          : "hover:bg-muted/60",
+                          : "hover:bg-muted/70",
                     )}
                   >
                     <span
-                      className={cn(
-                        "inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent",
-                        isSelected
-                          ? "bg-primary/20 text-primary"
+                    className={cn(
+                      "interactive-target inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent",
+                      isSelected
+                          ? "border-primary/40 bg-primary/20 text-primary-foreground"
                           : isDisabled
                             ? "bg-muted text-muted-foreground/60"
-                            : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {isSelected ? (
-                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                      ) : (
-                        <option.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                      )}
-                    </span>
+                            : "bg-muted text-muted-foreground/80",
+                    )}
+                  >
+                    {isSelected ? (
+                      <Check className="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" />
+                    ) : (
+                      <option.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </span>
                     <span className="flex-1">
                       <span className="block font-medium">{option.label}</span>
                       {optionDescription ? (
@@ -983,13 +983,20 @@ export function ConversationComposer({
                 onClick={handleClearTool}
                 disabled={!hasSelectedTools}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "interactive-target flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
                   hasSelectedTools
-                    ? "hover:bg-muted/60"
+                    ? "hover:bg-muted/70"
                     : "cursor-default text-muted-foreground",
                 )}
               >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <span
+                  className={cn(
+                    "inline-flex h-6 w-6 items-center justify-center rounded-full",
+                    hasSelectedTools
+                      ? "bg-primary/25 text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
                 <span className="flex-1 font-medium">Clear selection</span>
@@ -1034,7 +1041,10 @@ export function ConversationComposer({
             type="button"
             ref={modelButtonRef}
             onClick={() => setIsModelMenuOpen((value) => !value)}
-            className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70"
+            className={cn(
+              "interactive-target inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/90 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+              isModelMenuOpen ? "bg-muted/70 text-foreground" : null,
+            )}
             aria-haspopup="menu"
             aria-expanded={isModelMenuOpen}
             aria-controls={isModelMenuOpen ? modelMenuId : undefined}
@@ -1045,8 +1055,8 @@ export function ConversationComposer({
             </span>
             <ChevronDown
               className={cn(
-                "h-3 w-3 transition-transform text-muted-foreground",
-                isModelMenuOpen ? "rotate-180" : "rotate-0",
+                "h-3 w-3 text-muted-foreground transition-transform",
+                isModelMenuOpen ? "rotate-180 text-primary" : "rotate-0",
               )}
               aria-hidden="true"
             />
@@ -1065,7 +1075,7 @@ export function ConversationComposer({
               ref={modelMenuRef}
               id={modelMenuId}
               role="menu"
-              className="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-border/70 bg-popover p-2 shadow-lg"
+              className="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-[2px]"
             >
               <button
                 type="button"
@@ -1076,13 +1086,13 @@ export function ConversationComposer({
                 }}
                 disabled={conversationSettingsSaving}
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  !isReasoningModel ? "bg-primary/10 text-primary" : "hover:bg-muted/60",
+                  "interactive-target flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+                  !isReasoningModel ? "state-selected font-semibold text-primary-foreground" : "hover:bg-muted/70",
                 )}
               >
                 <span className="font-medium">Fast chat</span>
                 {!isReasoningModel ? (
-                  <Check className="h-4 w-4" aria-hidden="true" />
+                  <Check className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
                 ) : null}
               </button>
 
@@ -1104,13 +1114,13 @@ export function ConversationComposer({
                     }}
                     disabled={conversationSettingsSaving}
                     className={cn(
-                      "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted/60",
+                      "interactive-target flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+                      isSelected ? "state-selected font-semibold text-primary-foreground" : "hover:bg-muted/70",
                     )}
                   >
                     <span className="font-medium">{`Reasoning · ${effortLabels[option]}`}</span>
                     {isSelected ? (
-                      <Check className="h-4 w-4" aria-hidden="true" />
+                      <Check className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
                     ) : null}
                   </button>
                 );
@@ -1123,7 +1133,7 @@ export function ConversationComposer({
           type="submit"
           disabled={isSendDisabled}
           className={cn(
-            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70",
+            "interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
             isPending ? "animate-pulse" : "",
           )}
           aria-label="Send message"

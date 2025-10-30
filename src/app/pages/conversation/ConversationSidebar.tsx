@@ -913,10 +913,10 @@ function ConversationCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-md px-3 py-2 text-sm shadow-sm transition",
+        "interactive-target flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm transition",
         isActive
-          ? "bg-primary/10 text-primary shadow-sm hover:bg-primary/15"
-          : "bg-card text-foreground hover:bg-muted/70",
+          ? "state-selected border-transparent text-primary-foreground shadow-md hover:bg-[color-mix(in_oklab,var(--primary)_28%,transparent)]"
+          : "border-border/70 bg-card text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_15%,transparent)]",
       )}
       data-active={isActive}
     >
@@ -929,7 +929,7 @@ function ConversationCard({
           className={cn(
             "flex min-w-0 items-center gap-2 text-left transition",
             isActive
-              ? "text-primary"
+              ? "text-primary-foreground"
               : expanded
                 ? "text-foreground"
                 : "text-foreground/90",
@@ -937,16 +937,33 @@ function ConversationCard({
           aria-expanded={expanded}
         >
           {expanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 shrink-0",
+                isActive ? "text-primary-foreground" : "text-muted-foreground",
+              )}
+              aria-hidden="true"
+            />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 shrink-0",
+                isActive ? "text-primary-foreground" : "text-muted-foreground",
+              )}
+              aria-hidden="true"
+            />
           )}
           <span className="min-w-0 truncate font-medium" title={entry.title}>
             {entry.title.trim() || entry.id}
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span
+            className={cn(
+              "shrink-0 text-xs text-muted-foreground",
+              isActive && "text-primary-foreground/80",
+            )}
+          >
             {branchCount} branch{branchCount === 1 ? "" : "es"}
           </span>
           {/* Status pill removed */}
@@ -957,7 +974,7 @@ function ConversationCard({
               onClick={() => setIsMenuOpen((value) => !value)}
               className={cn(
                 "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                isActive && "text-primary/80 hover:text-primary",
+                isActive && "text-primary-foreground/80 hover:text-primary-foreground",
                 (archiving || deleting) && "cursor-wait",
               )}
               aria-haspopup="menu"
@@ -1058,12 +1075,24 @@ function ConversationCard({
   ) : null}
 
       {archiving ? (
-        <p className="text-xs text-muted-foreground" role="status">
+        <p
+          className={cn(
+            "text-xs text-muted-foreground",
+            isActive && "text-primary-foreground/85",
+          )}
+          role="status"
+        >
           Archiving chat…
         </p>
       ) : null}
       {deleting ? (
-        <p className="text-xs text-muted-foreground" role="status">
+        <p
+          className={cn(
+            "text-xs text-muted-foreground",
+            isActive && "text-primary-foreground/85",
+          )}
+          role="status"
+        >
           Deleting chat…
         </p>
       ) : null}
@@ -1071,10 +1100,23 @@ function ConversationCard({
       {expanded ? (
         <div className="space-y-2">
           {loading ? (
-            <p className="text-xs text-muted-foreground">Loading branches…</p>
+            <p
+              className={cn(
+                "text-xs text-muted-foreground",
+                isActive && "text-primary-foreground/85",
+              )}
+            >
+              Loading branches…
+            </p>
           ) : null}
           {error ? (
-            <p className="text-xs text-destructive" role="status">
+            <p
+              className={cn(
+                "text-xs text-destructive",
+                isActive && "text-destructive",
+              )}
+              role="status"
+            >
               {error}
             </p>
           ) : null}
@@ -1084,6 +1126,7 @@ function ConversationCard({
               activeBranchId={activeBranchId}
               level={0}
               conversationId={entry.id}
+              conversationSelected={isActive}
             />
           ) : null}
           {!loading && !error && !loadedConversation ? (
@@ -1092,7 +1135,10 @@ function ConversationCard({
               onClick={() => {
                 void onLoad();
               }}
-              className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+              className={cn(
+                "text-xs font-medium underline-offset-4 hover:underline",
+                isActive ? "text-primary-foreground" : "text-primary",
+              )}
             >
               Load branches
             </button>
@@ -1108,11 +1154,13 @@ function BranchTree({
   activeBranchId,
   level,
   conversationId,
+  conversationSelected,
 }: {
   tree: BranchTreeNode;
   activeBranchId?: string;
   level: number;
   conversationId: ConversationModelId;
+  conversationSelected?: boolean;
 }) {
   const isActive = Boolean(activeBranchId && tree.branch.id === activeBranchId);
   const containsActiveDescendant = tree.children.some((child) =>
@@ -1127,15 +1175,21 @@ function BranchTree({
     BRANCH_GUIDE_MARGIN_MAX_REM,
   );
 
+  const isConversationSelected = Boolean(conversationSelected);
+
   return (
     <div className="flex flex-col">
       <a
         href={buildBranchHref(conversationId, tree.branch.id)}
         className={cn(
-          "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition hover:bg-muted/80",
-          isActive
-            ? "bg-primary/10 font-semibold text-primary shadow-sm hover:bg-primary/15"
-            : "text-foreground",
+          "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition",
+          isConversationSelected
+            ? isActive
+              ? "bg-primary/25 text-primary-foreground shadow-sm hover:bg-[color-mix(in_oklab,var(--primary)_35%,transparent)]"
+              : "text-primary-foreground/85 hover:bg-[color-mix(in_oklab,var(--primary)_22%,transparent)]"
+            : isActive
+              ? "hover:bg-primary/15 bg-primary/10 font-semibold text-primary shadow-sm"
+              : "text-foreground hover:bg-muted/80",
         )}
         data-active={isActive}
         aria-current={isActive ? "page" : undefined}
@@ -1145,21 +1199,35 @@ function BranchTree({
           <span
             className={cn(
               "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
-              isActive
-                ? "border-primary bg-primary"
-                : "bg-muted group-hover:border-foreground/40",
+              isConversationSelected
+                ? isActive
+                  ? "border-primary-foreground bg-primary-foreground"
+                  : "border-primary-foreground/60 bg-primary/40 group-hover:border-primary-foreground"
+                : isActive
+                  ? "border-primary bg-primary"
+                  : "bg-muted group-hover:border-foreground/40",
             )}
             aria-hidden
           />
           <span
-            className="truncate"
+            className={cn(
+              "truncate",
+              isConversationSelected ? "text-primary-foreground" : undefined,
+            )}
             title={tree.branch.title?.trim() || UNTITLED_BRANCH}
           >
             {formatBranchTitle(tree.branch.title)}
           </span>
         </span>
         {tree.children.length > 0 ? (
-          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <span
+            className={cn(
+              "text-[10px] uppercase tracking-[0.2em]",
+              isConversationSelected
+                ? "text-primary-foreground/70"
+                : "text-muted-foreground",
+            )}
+          >
             {tree.children.length}
           </span>
         ) : null}
@@ -1169,9 +1237,13 @@ function BranchTree({
         <div
           className={cn(
             "border-l",
-            containsActiveDescendant
-              ? "border-primary/40"
-              : "border-border/60",
+            isConversationSelected
+              ? containsActiveDescendant
+                ? "border-primary-foreground/50"
+                : "border-primary-foreground/30"
+              : containsActiveDescendant
+                ? "border-primary/40"
+                : "border-border/60",
           )}
           style={{
             marginLeft: `${guideMarginRem}rem`,
@@ -1185,6 +1257,7 @@ function BranchTree({
               activeBranchId={activeBranchId}
               level={level + 1}
               conversationId={conversationId}
+              conversationSelected={isConversationSelected}
             />
           ))}
         </div>

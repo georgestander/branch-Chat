@@ -611,7 +611,7 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
       <div
         className={cn(
           "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
-          "text-primary",
+          "text-foreground",
           message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
         )}
       >
@@ -632,15 +632,15 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
           <div
             ref={contentRef}
             className={cn(
-              "overflow-hidden text-primary transition-all duration-300 ease-out",
+              "overflow-hidden text-foreground transition-all duration-300 ease-out",
               isExpanded || !isCollapsible
                 ? "max-h-[100rem] opacity-100"
                 : "max-h-[13rem] opacity-100",
-              "[&_.prose]:text-primary [&_.prose strong]:text-primary",
+              "[&_.prose]:text-foreground [&_.prose strong]:text-foreground",
             )}
           >
             <MarkdownContent
-              className="prose prose-sm max-w-none text-primary"
+              className="prose prose-sm max-w-none text-foreground"
               html={message.renderedHtml}
             />
             <ToolInvocationSummary
