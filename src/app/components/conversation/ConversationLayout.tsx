@@ -12,11 +12,7 @@ import type {
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import {
-  GitBranch,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from "lucide-react";
+import { GitBranch, PanelLeftOpen } from "lucide-react";
 
 import { BranchColumn } from "./BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
@@ -250,7 +246,7 @@ export function ConversationLayout({
 
   return (
     <ToastProvider>
-    <div className="flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
       <div
         className={cn(
           "relative flex h-full flex-shrink-0 overflow-hidden transition-[width] duration-300",
@@ -270,9 +266,27 @@ export function ConversationLayout({
             activeBranchId={activeBranch.id}
             conversationId={conversationId}
             conversations={conversations}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={() =>
+              setIsSidebarCollapsed((value) => !value)
+            }
           />
         </div>
       </div>
+
+      {isSidebarCollapsed ? (
+        <button
+          type="button"
+          onClick={() => setIsSidebarCollapsed(false)}
+          className="absolute left-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          aria-pressed={false}
+          aria-expanded={false}
+          title="Show conversation sidebar"
+        >
+          <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">Show conversation sidebar</span>
+        </button>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
@@ -362,50 +376,27 @@ export function ConversationLayout({
             }
             withLeftBorder={showParentColumn}
             leadingActions={
-              <>
+              parentBranch && isParentCollapsed ? (
                 <button
                   type="button"
-                  onClick={() =>
-                    setIsSidebarCollapsed((value) => !value)
-                  }
+                  onClick={() => {
+                    setIsParentCollapsed(false);
+                    // Restore previous width ratio when uncollapsing
+                    setParentWidthRatio(
+                      lastParentWidthRatioRef.current ?? 0.35,
+                    );
+                  }}
                   className={toggleButtonClass}
-                  aria-pressed={!isSidebarCollapsed}
-                  aria-expanded={!isSidebarCollapsed}
-                  title={
-                    isSidebarCollapsed
-                      ? "Show conversation sidebar"
-                      : "Hide conversation sidebar"
-                  }
+                  aria-pressed={false}
+                  aria-expanded={false}
+                  title="Show parent thread"
                 >
-                  {isSidebarCollapsed ? (
-                    <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  <span className="sr-only">Toggle conversation sidebar</span>
+                  <GitBranch className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">
+                    Show parent branch column
+                  </span>
                 </button>
-                {parentBranch && isParentCollapsed ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsParentCollapsed(false);
-                      // Restore previous width ratio when uncollapsing
-                      setParentWidthRatio(
-                        lastParentWidthRatioRef.current ?? 0.35,
-                      );
-                    }}
-                    className={toggleButtonClass}
-                    aria-pressed={false}
-                    aria-expanded={false}
-                    title="Show parent thread"
-                  >
-                    <GitBranch className="h-4 w-4" aria-hidden="true" />
-                    <span className="sr-only">
-                      Show parent branch column
-                    </span>
-                  </button>
-                ) : null}
-              </>
+              ) : null
             }
           />
         </div>

@@ -34,6 +34,8 @@ import {
   ChevronDown,
   ChevronRight,
   MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
   SquarePen,
   Trash2,
 } from "lucide-react";
@@ -51,6 +53,8 @@ interface ConversationSidebarProps {
   conversationId: ConversationModelId;
   conversations: ConversationDirectoryEntry[];
   className?: string;
+  isSidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
 }
 
 interface LoadedConversationData {
@@ -85,6 +89,8 @@ export function ConversationSidebar({
   conversationId,
   conversations,
   className,
+  isSidebarCollapsed,
+  onToggleSidebar,
 }: ConversationSidebarProps) {
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreating, startCreateTransition] = useTransition();
@@ -577,15 +583,36 @@ export function ConversationSidebar({
           <h2 className="text-base font-semibold tracking-tight text-foreground">
             Connexus
           </h2>
-          <button
-            type="button"
-            onClick={startNewConversation}
-            disabled={isCreating}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
-            aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
-          >
-            <SquarePen className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-pressed={!isSidebarCollapsed}
+              aria-expanded={!isSidebarCollapsed}
+              title={
+                isSidebarCollapsed
+                  ? "Show conversation sidebar"
+                  : "Hide conversation sidebar"
+              }
+            >
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+              )}
+              <span className="sr-only">Toggle conversation sidebar</span>
+            </button>
+            <button
+              type="button"
+              onClick={startNewConversation}
+              disabled={isCreating}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
+              aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
+            >
+              <SquarePen className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
         {creationError ? (
           <p className="mt-2 text-xs text-destructive" role="status">
