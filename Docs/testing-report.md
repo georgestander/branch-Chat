@@ -128,3 +128,15 @@
   - ⚠️ Pending: In local dev (no `createPresignedUrl`), confirm uploads stream through `/_uploads` without errors and that finalize succeeds.
 - Study agent reasoning fallback (manual)
   - ⚠️ Pending: Toggle reasoning effort in settings, trigger Study & Learn, and confirm chat models skip reasoning params while non-chat models still accept them.
+- Attachment ingestion pipeline (manual)
+  - ⚠️ Pending: Upload PDF, DOCX, and image assets to verify ingestion traces, chunk counts, and that failures surface descriptive errors.
+- Retrieval context injection (manual)
+  - ⚠️ Pending: After uploading a document, ask follow-up questions in a new turn and confirm the assistant references retrieved snippets and cites the correct source badge.
+- Attachment cards in timeline (manual)
+  - ⚠️ Pending: Send a message with files and confirm the UI shows the file chips above the user bubble in both optimistic and resolved states.
+- Study & Learn workflow routing (manual)
+  - ⚠️ Pending: Trigger Study & Learn with BUSINESSES.pdf and verify the response matches the Agent Builder behavior and that OpenAI traces attribute to workflow `wf_69022bcfbab881908732f2f06cf859070311893ee1e40203`.
+- Web search persistence (manual)
+  - ⚠️ Pending: Trigger a web-search tool call, then ask a related question to ensure cached snippets appear without a new search and traces log `web-search:persist` hits.
+- Study & Learn workflow wiring (manual)
+  - ⚠️ Pending: Run the tutoring agent and confirm `workflow_id=wf_69022bcfbab881908732f2f06cf859070311893ee1e40203` appears in agent traces.

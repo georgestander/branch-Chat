@@ -8,6 +8,7 @@ import {
   UPLOAD_MAX_ATTACHMENTS,
   UPLOAD_MAX_SIZE_BYTES,
 } from "@/app/shared/uploads.config";
+import { ingestAttachment } from "@/app/shared/uploads.ingest.server";
 
 export const MAX_ATTACHMENTS_PER_MESSAGE = UPLOAD_MAX_ATTACHMENTS;
 const PRESIGNED_EXPIRATION_SECONDS = 15 * 60; // 15 minutes
@@ -159,10 +160,27 @@ export async function finalizeAttachmentUpload(
   }
 
   const uploadedAt = object.uploaded?.toISOString?.() ?? new Date().toISOString();
-  const finalized = await store.finalizeAttachment(staged.id, {
+  let finalized = await store.finalizeAttachment(staged.id, {
     size: object.size,
     uploadedAt,
   });
+
+  try {
+    await ingestAttachment(ctx, {
+      conversationId,
+      attachment: finalized,
+    });
+    const refreshed = await store.getAttachment(finalized.id);
+    if (refreshed) {
+      finalized = refreshed;
+    }
+  } catch (error) {
+    ctx.trace("attachment:ingest:dispatch-error", {
+      conversationId,
+      attachmentId: finalized.id,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
 
   return finalized;
 }

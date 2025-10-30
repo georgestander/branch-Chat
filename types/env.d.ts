@@ -6,5 +6,6 @@ declare global {
     ConversationDirectoryDO: DurableObjectNamespace;
     OPENAI_API_KEY: string;
     UploadsBucket: R2Bucket;
+    STUDY_LEARN_WORKFLOW_ID?: string;
   }
 }

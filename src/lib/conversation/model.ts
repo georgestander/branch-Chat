@@ -71,6 +71,72 @@ export interface PendingAttachment {
   status: PendingAttachmentStatus;
   createdAt: ISODateTimeString;
   uploadedAt?: ISODateTimeString | null;
+  openAIFileId?: string | null;
+  openAIFileStatus?: "pending" | "ready" | "failed" | null;
+  openAIFileError?: string | null;
+}
+
+export type AttachmentChunkKind = "text" | "image";
+
+export interface AttachmentChunk {
+  id: string;
+  attachmentId: string;
+  conversationId: ConversationModelId;
+  kind: AttachmentChunkKind;
+  content: string;
+  tokenCount: number;
+  embedding: number[];
+  createdAt: ISODateTimeString;
+  metadata?: {
+    fileName: string;
+    contentType: string;
+    size: number;
+    pageNumber?: number | null;
+    language?: string | null;
+    summary?: string | null;
+  } | null;
+}
+
+export interface AttachmentIngestionRecord {
+  attachmentId: string;
+  conversationId: ConversationModelId;
+  status: "pending" | "ready" | "failed";
+  chunkIds: string[];
+  updatedAt: ISODateTimeString;
+  summary?: string | null;
+  error?: string | null;
+  openAIFileId?: string | null;
+}
+
+export interface WebSearchSnippet {
+  id: string;
+  conversationId: ConversationModelId;
+  title: string;
+  url: string;
+  snippet: string;
+  embedding: number[];
+  createdAt: ISODateTimeString;
+  provider?: string | null;
+}
+
+export interface AttachmentChunkMatch {
+  chunk: AttachmentChunk;
+  similarity: number;
+}
+
+export interface WebSearchSnippetMatch {
+  snippet: WebSearchSnippet;
+  similarity: number;
+}
+
+export interface RetrievedContextChunk {
+  id: string;
+  type: "attachment" | "web";
+  attachmentId?: string;
+  title: string;
+  content: string;
+  relevance: number;
+  metadata?: Record<string, unknown>;
 }
 
 export type ToolInvocationStatus =

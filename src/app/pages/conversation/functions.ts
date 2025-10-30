@@ -23,7 +23,6 @@ import {
   deleteConversationDirectoryEntry,
 } from "@/app/shared/conversationDirectory.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
-import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import {
   createAttachmentUpload as createAttachmentUploadHelper,
   finalizeAttachmentUpload as finalizeAttachmentUploadHelper,
@@ -31,6 +30,11 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   removeStagedAttachment as removeStagedAttachmentHelper,
 } from "@/app/shared/uploads.server";
+import {
+  buildRetrievalContext,
+  formatRetrievedContextForPrompt,
+  persistWebSearchSnippets,
+} from "@/app/shared/retrieval.server";
 import type {
   Branch,
   BranchId,
@@ -38,7 +42,9 @@ import type {
   ConversationGraphSnapshot,
   ConversationModelId,
   Message,
+  MessageAttachment,
   PendingAttachment,
+  AttachmentIngestionRecord,
   ToolInvocation,
   ToolInvocationStatus,
 } from "@/lib/conversation";
@@ -515,6 +521,30 @@ export async function sendMessage(
 
   const settings = ensured.snapshot.conversation.settings;
 
+  const attachmentLookup = new Map<string, MessageAttachment>();
+  for (const storedMessage of Object.values(ensured.snapshot.messages)) {
+    const storedAttachments = storedMessage.attachments;
+    if (!Array.isArray(storedAttachments)) {
+      continue;
+    }
+    for (const item of storedAttachments) {
+      if (!attachmentLookup.has(item.id)) {
+        attachmentLookup.set(item.id, item);
+      }
+    }
+  }
+
+  let attachmentIngestions: AttachmentIngestionRecord[] = [];
+  try {
+    attachmentIngestions = await storeClient.listAttachmentIngestions();
+  } catch (error) {
+    ctx.trace("retrieval:ingestion:list-error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+
   const now = new Date().toISOString();
   const userMessage: Message = {
     id: crypto.randomUUID(),
@@ -541,6 +571,83 @@ export async function sendMessage(
     toolInvocations: [],
   };
   let assistantState: Message = assistantMessage;
+
+  const enableWebSearchTool =
+    selectedToolSet.size === 0 || selectedToolSet.has("web-search");
+
+  let retrievalContextResult: Awaited<ReturnType<typeof buildRetrievalContext>> | null =
+    null;
+  let retrievalContextText: string | null = null;
+  try {
+    retrievalContextResult = await buildRetrievalContext(ctx, {
+      conversationId,
+      query: userMessage.content,
+      maxAttachmentChunks: 6,
+      maxWebSnippets: enableWebSearchTool ? 6 : 0,
+      allowedAttachmentIds: null,
+      minScore: 0.12,
+    });
+    if (
+      retrievalContextResult.attachments.length === 0 &&
+      retrievalContextResult.fallbackAttachments.length > 0
+    ) {
+      ctx.trace("retrieval:context:fallback-attachments", {
+        conversationId,
+        branchId,
+        count: retrievalContextResult.fallbackAttachments.length,
+      });
+    }
+    if (
+      retrievalContextResult.webSnippets.length === 0 &&
+      retrievalContextResult.fallbackWebSnippets.length > 0
+    ) {
+      ctx.trace("retrieval:context:fallback-web", {
+        conversationId,
+        branchId,
+        count: retrievalContextResult.fallbackWebSnippets.length,
+      });
+    }
+    if (retrievalContextResult.blocks.length > 0) {
+      retrievalContextText = formatRetrievedContextForPrompt(
+        retrievalContextResult.blocks,
+      );
+      ctx.trace("retrieval:context", {
+        conversationId,
+        branchId,
+        blockCount: retrievalContextResult.blocks.length,
+        sources: retrievalContextResult.blocks.map((block) => ({
+          id: block.id,
+          type: block.type,
+          title: block.title,
+          relevance: Number(block.relevance?.toFixed?.(3) ?? block.relevance),
+        })),
+      });
+    }
+  } catch (error) {
+    ctx.trace("retrieval:context:error", {
+      conversationId,
+      branchId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+
+  if (!retrievalContextText && attachmentIngestions.length > 0) {
+    const summaryLines = attachmentIngestions
+      .map((ingestion) => {
+        const attachment = attachmentLookup.get(ingestion.attachmentId);
+        const name = attachment?.name ?? ingestion.attachmentId;
+        const summary = ingestion.summary?.trim();
+        const fallbackSummary = attachment
+          ? `${attachment.contentType} · ${Math.max(1, Math.round(attachment.size / 1024))} KB`
+          : "Uploaded reference";
+        return `• ${name}: ${summary && summary.length > 0 ? summary : fallbackSummary}`;
+      })
+      .slice(0, 5);
+
+    if (summaryLines.length > 0) {
+      retrievalContextText = `Here is what the user has shared so far:\n${summaryLines.join("\n")}\n\nReference these notes in your reply. Start by acknowledging the file and asking how they want to study (quiz, explanation, notes) unless they already told you.`;
+    }
+  }
 
   const toolInvocationMap = new Map<string, ToolInvocation>();
   // NOTE: We intentionally avoid partial Durable Object writes during streaming.
@@ -588,34 +695,95 @@ export async function sendMessage(
       allowFileTools: selectedToolSet.has("file-upload"),
     });
 
-    const agentHistory = [...studyAgentInput.messages];
-    if (consumedAttachments.length > 0) {
-      const attachmentSummary = consumedAttachments
-        .map((attachment) => {
-          const sizeKb = Math.max(1, Math.round(attachment.size / 1024));
-          return `• ${attachment.name} (${attachment.contentType}, ${sizeKb} KB)`;
-        })
-        .join("\n");
-      agentHistory.push({
-        role: "user",
-        content: `The user attached supporting files:\n${attachmentSummary}`,
-      });
-    }
-
     try {
-      const result = await runStudyAndLearnAgent({
-        instructions: studyAgentInput.instructions,
-        history: agentHistory,
-        model: settings.model,
-        temperature: settings.temperature,
-        reasoningEffort: settings.reasoningEffort ?? undefined,
-        traceMetadata: {
+      const workflowId = ctx.env?.STUDY_LEARN_WORKFLOW_ID;
+      if (!workflowId) {
+        throw new Error("Study & Learn workflow ID is not configured");
+      }
+
+      const openai = ctx.getOpenAIClient();
+
+      const workflowInput: Array<{
+        role: string;
+        content: Array<{ type: "input_text"; text: string }>;
+      }> = [];
+
+      if (studyAgentInput.instructions) {
+        workflowInput.push({
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: studyAgentInput.instructions,
+            },
+          ],
+        });
+      }
+
+      if (retrievalContextText) {
+        workflowInput.push({
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: `Context for this turn:\n${retrievalContextText}`,
+            },
+          ],
+        });
+      }
+
+      if (consumedAttachments.length > 0) {
+        const attachmentSummary = consumedAttachments
+          .map((attachment) => {
+            const sizeKb = Math.max(1, Math.round(attachment.size / 1024));
+            return `• ${attachment.name} (${attachment.contentType}, ${sizeKb} KB)`;
+          })
+          .join("\n");
+        workflowInput.push({
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `The user provided these reference files:\n${attachmentSummary}`,
+            },
+          ],
+        });
+      }
+
+      for (const message of studyAgentInput.messages) {
+        workflowInput.push({
+          role: message.role,
+          content: [
+            {
+              type: "input_text",
+              text: message.content,
+            },
+          ],
+        });
+      }
+
+      const workflowResponse = await openai.responses.create({
+        workflow: workflowId,
+        input: workflowInput,
+        metadata: {
           conversationId,
           branchId,
           assistantMessageId: assistantMessage.id,
+          toolSet: Array.from(selectedToolSet).join(","),
         },
       });
-      agentOutput = result.outputText.trim();
+
+      const outputText =
+        workflowResponse.output_text?.trim() ??
+        workflowResponse.output
+          ?.map((item: any) =>
+            item.content?.map?.((part: any) => part.text ?? "")?.join("") ?? "",
+          )
+          ?.join("")
+          .trim() ??
+        "";
+
+      agentOutput = outputText;
       ctx.trace("agent:study:success", {
         conversationId,
         branchId,
@@ -632,7 +800,9 @@ export async function sendMessage(
         error: error instanceof Error ? error.message : "unknown",
       });
       agentOutput =
-        "We couldn't reach the Study & Learn tutor. Please try again.";
+        error instanceof Error && /not configured/i.test(error.message)
+          ? "Study & Learn agent is not available right now. Please contact support."
+          : "We couldn't reach the Study & Learn tutor. Please try again.";
     }
 
     if (!agentOutput) {
@@ -700,9 +870,6 @@ export async function sendMessage(
     };
   }
 
-  const enableWebSearchTool =
-    selectedToolSet.size === 0 || selectedToolSet.has("web-search");
-
   const openaiInput = buildResponseInputFromBranch({
     snapshot: appendedSnapshot.snapshot,
     branchId,
@@ -710,6 +877,13 @@ export async function sendMessage(
     allowWebSearch: enableWebSearchTool,
     allowFileTools: selectedToolSet.has("file-upload"),
   });
+
+  if (retrievalContextText) {
+    openaiInput.unshift({
+      role: "system",
+      content: `Additional context from uploads & searches:\n\n${retrievalContextText}`,
+    });
+  }
 
   const openai = ctx.getOpenAIClient();
 
@@ -954,6 +1128,24 @@ export async function sendMessage(
           resultCount: normalized.length,
           itemKeys: Object.keys(item ?? {}),
         });
+        if (normalized.length > 0) {
+          try {
+            await persistWebSearchSnippets(ctx, {
+              conversationId,
+              snippets: normalized,
+              provider: "openai:web-search",
+            });
+          } catch (persistError) {
+            ctx.trace("web-search:persist:error", {
+              conversationId,
+              branchId,
+              error:
+                persistError instanceof Error
+                  ? persistError.message
+                  : "unknown",
+            });
+          }
+        }
         await updateToolInvocation(item.id, {
           status,
           output: {

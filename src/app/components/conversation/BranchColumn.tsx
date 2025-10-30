@@ -9,12 +9,13 @@ import {
   type ReactNode,
 } from "react";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, File as FileIcon, FileText, Image as ImageIcon, type LucideIcon } from "lucide-react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
-import type { Branch, ConversationModelId } from "@/lib/conversation";
+import type { Branch, ConversationModelId, MessageAttachment } from "@/lib/conversation";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import { cn } from "@/lib/utils";
+import { formatBytes } from "@/app/shared/uploads.config";
 
 import { BranchableMessage } from "./BranchableMessage";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
@@ -553,6 +554,10 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isCollapsible, setIsCollapsible] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const attachments = Array.isArray(message.attachments)
+    ? (message.attachments as MessageAttachment[])
+    : [];
+  const hasAttachments = attachments.length > 0;
 
   const updateCollapsibleState = useCallback(() => {
     const element = contentRef.current;
@@ -594,54 +599,91 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
   };
 
   return (
-    <div
-      className={cn(
-        "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
-        "text-primary",
-        message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
-      )}
-    >
-      {isCollapsible ? (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={handleToggle}
-            className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70 transition hover:text-primary"
-            aria-expanded={isExpanded}
-          >
-            {isExpanded ? "Hide" : "Show"}
-          </button>
+    <div className="flex w-full flex-col gap-3">
+      {hasAttachments ? (
+        <div className="flex flex-wrap gap-2">
+          {attachments.map((attachment) => (
+            <AttachmentCard key={attachment.id} attachment={attachment} />
+          ))}
         </div>
       ) : null}
 
-      <div className={cn("relative", isCollapsible ? "pt-3" : undefined)}>
-        <div
-          ref={contentRef}
-          className={cn(
-            "overflow-hidden text-primary transition-all duration-300 ease-out",
-            isExpanded || !isCollapsible
-              ? "max-h-[100rem] opacity-100"
-              : "max-h-[13rem] opacity-100",
-            "[&_.prose]:text-primary [&_.prose strong]:text-primary",
-          )}
-        >
-          <MarkdownContent
-            className="prose prose-sm max-w-none text-primary"
-            html={message.renderedHtml}
-          />
-          <ToolInvocationSummary
-            toolInvocations={message.toolInvocations}
-            fallbackHtml={message.renderedHtml}
-            className="mt-3"
-          />
-        </div>
-        {isCollapsible && !isExpanded ? (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/10 to-transparent"
-          />
+      <div
+        className={cn(
+          "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
+          "text-primary",
+          message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
+        )}
+      >
+        {isCollapsible ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleToggle}
+              className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70 transition hover:text-primary"
+              aria-expanded={isExpanded}
+            >
+              {isExpanded ? "Hide" : "Show"}
+            </button>
+          </div>
         ) : null}
+
+        <div className={cn("relative", isCollapsible ? "pt-3" : undefined)}>
+          <div
+            ref={contentRef}
+            className={cn(
+              "overflow-hidden text-primary transition-all duration-300 ease-out",
+              isExpanded || !isCollapsible
+                ? "max-h-[100rem] opacity-100"
+                : "max-h-[13rem] opacity-100",
+              "[&_.prose]:text-primary [&_.prose strong]:text-primary",
+            )}
+          >
+            <MarkdownContent
+              className="prose prose-sm max-w-none text-primary"
+              html={message.renderedHtml}
+            />
+            <ToolInvocationSummary
+              toolInvocations={message.toolInvocations}
+              fallbackHtml={message.renderedHtml}
+              className="mt-3"
+            />
+          </div>
+          {isCollapsible && !isExpanded ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/10 to-transparent"
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
+}
+
+function AttachmentCard({ attachment }: { attachment: MessageAttachment }) {
+  const Icon = resolveAttachmentIcon(attachment.contentType);
+  return (
+    <div className="flex min-w-[180px] items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary shadow-sm">
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <div className="flex min-w-0 flex-col">
+        <span className="truncate font-semibold text-primary">{attachment.name}</span>
+        <span className="text-xs text-primary/70">
+          {attachment.contentType} · {formatBytes(attachment.size)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function resolveAttachmentIcon(contentType: string): LucideIcon {
+  if (contentType.startsWith("image/")) {
+    return ImageIcon;
+  }
+  if (contentType === "application/pdf" || contentType.startsWith("text/")) {
+    return FileText;
+  }
+  return FileIcon;
 }

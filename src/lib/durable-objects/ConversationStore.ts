@@ -3,8 +3,11 @@ import {
   type ConversationGraphSnapshot,
   type ConversationGraphUpdate,
   type ConversationModelId,
+  type AttachmentChunk,
+  type AttachmentIngestionRecord,
   type Message,
   type PendingAttachment,
+  type WebSearchSnippet,
 } from "@/lib/conversation";
 import { validateConversationGraphSnapshot } from "@/lib/conversation";
 
@@ -13,6 +16,9 @@ type StoredState = {
   version: number;
   updatedAt: string;
   pendingAttachments: Record<string, PendingAttachment>;
+  attachmentChunks: Record<string, AttachmentChunk>;
+  attachmentIngestions: Record<string, AttachmentIngestionRecord>;
+  webSearchSnippets: Record<string, WebSearchSnippet>;
 };
 
 type ReadResult =
@@ -100,6 +106,211 @@ function createPendingAttachmentFromPayload(
   } satisfies PendingAttachment;
 }
 
+function sanitizeEmbeddingArray(value: unknown, label: string): number[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${label} must be an array of numbers`);
+  }
+  const result: number[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const numeric = Number(value[index]);
+    if (!Number.isFinite(numeric)) {
+      throw new TypeError(`${label}[${index}] must be a finite number`);
+    }
+    result.push(numeric);
+  }
+  if (result.length === 0) {
+    throw new TypeError(`${label} must not be empty`);
+  }
+  return result;
+}
+
+function sanitizeAttachmentChunkPayload(
+  payload: Record<string, unknown>,
+): AttachmentChunk {
+  const id = sanitizeNonEmptyString(payload.id, "chunk id");
+  const attachmentId = sanitizeAttachmentId(payload.attachmentId);
+  const conversationId = sanitizeNonEmptyString(
+    payload.conversationId,
+    "chunk conversation id",
+  );
+  const kind = payload.kind === "image" ? "image" : "text";
+  const content = sanitizeNonEmptyString(payload.content, "chunk content");
+  const tokenCountValue = Number(payload.tokenCount);
+  if (!Number.isFinite(tokenCountValue) || tokenCountValue <= 0) {
+    throw new TypeError("chunk tokenCount must be a positive number");
+  }
+  const embedding = sanitizeEmbeddingArray(payload.embedding, "chunk embedding");
+  const metadataPayload =
+    payload.metadata && typeof payload.metadata === "object"
+      ? (payload.metadata as Record<string, unknown>)
+      : null;
+  const fallbackName =
+    typeof (payload as Record<string, unknown>).name === "string"
+      ? ((payload as Record<string, unknown>).name as string)
+      : `${attachmentId}-chunk`;
+  let metadata: AttachmentChunk["metadata"] = null;
+  if (metadataPayload) {
+    const metaSizeValue = Number(
+      metadataPayload.size ?? (payload as Record<string, unknown>).size ?? 0,
+    );
+    metadata = {
+      fileName: sanitizeNonEmptyString(
+        metadataPayload.fileName ?? fallbackName,
+        "chunk metadata fileName",
+      ),
+      contentType: sanitizeNonEmptyString(
+        metadataPayload.contentType ?? "application/octet-stream",
+        "chunk metadata content type",
+      ),
+      size:
+        Number.isFinite(metaSizeValue) && metaSizeValue >= 0
+          ? Math.floor(metaSizeValue)
+          : 0,
+      pageNumber:
+        typeof metadataPayload.pageNumber === "number" &&
+        Number.isFinite(metadataPayload.pageNumber)
+          ? metadataPayload.pageNumber
+          : null,
+      language:
+        typeof metadataPayload.language === "string"
+          ? metadataPayload.language
+          : null,
+      summary:
+        typeof metadataPayload.summary === "string"
+          ? metadataPayload.summary
+          : null,
+    };
+  } else {
+    metadata = {
+      fileName: sanitizeNonEmptyString(fallbackName, "chunk metadata file name"),
+      contentType: "application/octet-stream",
+      size: 0,
+      pageNumber: null,
+      language: null,
+      summary: null,
+    };
+  }
+  const createdAt =
+    typeof payload.createdAt === "string" && payload.createdAt.trim().length > 0
+      ? payload.createdAt
+      : new Date().toISOString();
+
+  return {
+    id,
+    attachmentId,
+    conversationId,
+    kind,
+    content,
+    tokenCount: Math.floor(tokenCountValue),
+    embedding,
+    metadata,
+    createdAt,
+  };
+}
+
+function sanitizeAttachmentIngestionPayload(
+  payload: Record<string, unknown>,
+  chunkIds: string[],
+): AttachmentIngestionRecord {
+  const attachmentId = sanitizeAttachmentId(payload.attachmentId ?? payload.id);
+  const conversationId = sanitizeNonEmptyString(
+    payload.conversationId,
+    "ingestion conversation id",
+  );
+  const status =
+    payload.status === "failed"
+      ? "failed"
+      : payload.status === "pending"
+        ? "pending"
+        : "ready";
+  const summary =
+    typeof payload.summary === "string" ? payload.summary.trim() || null : null;
+  const error =
+    typeof payload.error === "string" ? payload.error.trim() || null : null;
+  const updatedAt =
+    typeof payload.updatedAt === "string" && payload.updatedAt.trim().length > 0
+      ? payload.updatedAt
+      : new Date().toISOString();
+  const openAIFileId =
+    typeof payload.openAIFileId === "string" && payload.openAIFileId.trim().length > 0
+      ? payload.openAIFileId.trim()
+      : null;
+
+  return {
+    attachmentId,
+    conversationId,
+    status,
+    chunkIds,
+    summary,
+    error: status === "failed" ? error : null,
+    updatedAt,
+    openAIFileId,
+  };
+}
+
+function sanitizeWebSearchSnippetPayload(
+  payload: Record<string, unknown>,
+): WebSearchSnippet {
+  const id = sanitizeNonEmptyString(payload.id, "snippet id");
+  const conversationId = sanitizeNonEmptyString(
+    payload.conversationId,
+    "snippet conversation id",
+  );
+  const title =
+    typeof payload.title === "string" && payload.title.trim().length > 0
+      ? payload.title.trim()
+      : "Untitled source";
+  const url =
+    typeof payload.url === "string" && payload.url.trim().length > 0
+      ? payload.url.trim()
+      : "";
+  const snippet =
+    typeof payload.snippet === "string" ? payload.snippet : "";
+  const embedding = sanitizeEmbeddingArray(payload.embedding, "snippet embedding");
+  const provider =
+    typeof payload.provider === "string" ? payload.provider : null;
+  const createdAt =
+    typeof payload.createdAt === "string" && payload.createdAt.trim().length > 0
+      ? payload.createdAt
+      : new Date().toISOString();
+
+  return {
+    id,
+    conversationId,
+    title,
+    url,
+    snippet,
+    embedding,
+    provider,
+    createdAt,
+  };
+}
+
+function dotProduct(a: number[], b: number[]): number {
+  const length = Math.min(a.length, b.length);
+  let total = 0;
+  for (let index = 0; index < length; index += 1) {
+    total += a[index] * b[index];
+  }
+  return total;
+}
+
+function vectorNorm(vector: number[]): number {
+  let sumSquares = 0;
+  for (const value of vector) {
+    sumSquares += value * value;
+  }
+  return Math.sqrt(sumSquares);
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  const denominator = vectorNorm(a) * vectorNorm(b);
+  if (denominator === 0) {
+    return 0;
+  }
+  return dotProduct(a, b) / denominator;
+}
+
 function normalizeStoredState(value: StoredState | null): StoredState {
   const base = (value ?? {}) as Partial<StoredState>;
   return {
@@ -107,6 +318,9 @@ function normalizeStoredState(value: StoredState | null): StoredState {
     version: typeof base.version === "number" ? base.version : 0,
     updatedAt: base.updatedAt ?? new Date().toISOString(),
     pendingAttachments: base.pendingAttachments ?? {},
+    attachmentChunks: base.attachmentChunks ?? {},
+    attachmentIngestions: base.attachmentIngestions ?? {},
+    webSearchSnippets: base.webSearchSnippets ?? {},
   } satisfies StoredState;
 }
 
@@ -197,6 +411,34 @@ export class ConversationStoreDO implements DurableObject {
       }
     }
 
+    if (
+      request.method === "POST" &&
+      url.pathname === "/retrieval/attachments/ingest"
+    ) {
+      const payload = await request.json().catch(() => null);
+      return this.handleUpsertAttachmentIngestion(payload);
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === "/retrieval/attachments"
+    ) {
+      return this.handleListAttachmentIngestions();
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/retrieval/web/upsert"
+    ) {
+      const payload = await request.json().catch(() => null);
+      return this.handleUpsertWebSearchSnippets(payload);
+    }
+
+    if (request.method === "POST" && url.pathname === "/retrieval/query") {
+      const payload = await request.json().catch(() => null);
+      return this.handleQueryRetrieval(payload);
+    }
+
     if (request.method === "DELETE" && url.pathname === "/snapshot") {
       return this.handleReset();
     }
@@ -248,6 +490,9 @@ export class ConversationStoreDO implements DurableObject {
         version: current.version + 1,
         updatedAt: new Date().toISOString(),
         pendingAttachments: current.pendingAttachments,
+        attachmentChunks: current.attachmentChunks,
+        attachmentIngestions: current.attachmentIngestions,
+        webSearchSnippets: current.webSearchSnippets,
       } satisfies StoredState));
 
       const payloadBytes = computePayloadSize(nextState.snapshot);
@@ -294,6 +539,9 @@ export class ConversationStoreDO implements DurableObject {
           version: current.version + 1,
           updatedAt: new Date().toISOString(),
           pendingAttachments: current.pendingAttachments,
+          attachmentChunks: current.attachmentChunks,
+          attachmentIngestions: current.attachmentIngestions,
+          webSearchSnippets: current.webSearchSnippets,
         } satisfies StoredState;
       });
 
@@ -522,12 +770,256 @@ export class ConversationStoreDO implements DurableObject {
     return jsonResponse({ attachment: removed }, { status: 200 });
   }
 
+  private async handleUpsertAttachmentIngestion(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const { attachment, chunks } = payload as Record<string, unknown>;
+      if (!attachment || typeof attachment !== "object") {
+        throw new TypeError("Attachment ingestion payload is required");
+      }
+
+      const chunkPayloads = Array.isArray(chunks)
+        ? (chunks as Record<string, unknown>[]).map((item) =>
+            sanitizeAttachmentChunkPayload(item),
+          )
+        : [];
+      const chunkIds = chunkPayloads.map((chunk) => chunk.id);
+      const record = sanitizeAttachmentIngestionPayload(
+        attachment as Record<string, unknown>,
+        chunkIds,
+      );
+
+      const nextState = await this.updateState((current) => {
+        const nextChunks = { ...current.attachmentChunks };
+        const existingRecord = current.attachmentIngestions[record.attachmentId];
+        if (existingRecord) {
+          for (const id of existingRecord.chunkIds) {
+            delete nextChunks[id];
+          }
+        }
+        for (const chunk of chunkPayloads) {
+          nextChunks[chunk.id] = chunk;
+        }
+
+        let nextPendingAttachments = current.pendingAttachments;
+        const pending = current.pendingAttachments[record.attachmentId];
+        if (pending) {
+          nextPendingAttachments = {
+            ...current.pendingAttachments,
+            [record.attachmentId]: {
+              ...pending,
+              openAIFileStatus: record.status,
+              openAIFileId: record.openAIFileId ?? pending.openAIFileId ?? null,
+              openAIFileError: record.error ?? null,
+            },
+          };
+        }
+
+        return {
+          ...current,
+          attachmentChunks: nextChunks,
+          attachmentIngestions: {
+            ...current.attachmentIngestions,
+            [record.attachmentId]: {
+              ...record,
+              chunkIds,
+            },
+          },
+          pendingAttachments: nextPendingAttachments,
+          updatedAt: new Date().toISOString(),
+        } satisfies StoredState;
+      });
+
+      return jsonResponse(
+        {
+          ingestion: nextState.attachmentIngestions[record.attachmentId],
+          chunkCount: chunkPayloads.length,
+        },
+        { status: 200 },
+      );
+    } catch (error) {
+      console.error("[ERROR] attachments:ingest failed", error);
+      return jsonResponse({ error: "invalid-attachment-ingestion" }, { status: 400 });
+    }
+  }
+
+  private async handleUpsertWebSearchSnippets(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const { snippets } = payload as Record<string, unknown>;
+      if (!Array.isArray(snippets) || snippets.length === 0) {
+        return jsonResponse({ count: 0 }, { status: 200 });
+      }
+
+      const normalized = (snippets as Record<string, unknown>[]).map((item) =>
+        sanitizeWebSearchSnippetPayload(item),
+      );
+
+      const nextState = await this.updateState((current) => {
+        const nextSnippets = { ...current.webSearchSnippets };
+        for (const snippet of normalized) {
+          nextSnippets[snippet.id] = snippet;
+        }
+        return {
+          ...current,
+          webSearchSnippets: nextSnippets,
+          updatedAt: new Date().toISOString(),
+        } satisfies StoredState;
+      });
+
+      return jsonResponse(
+        {
+          count: normalized.length,
+          total: Object.keys(nextState.webSearchSnippets).length,
+        },
+        { status: 200 },
+      );
+    } catch (error) {
+      console.error("[ERROR] web-search:upsert failed", error);
+      return jsonResponse({ error: "invalid-web-search-upsert" }, { status: 400 });
+    }
+  }
+
+  private async handleListAttachmentIngestions(): Promise<Response> {
+    const state = await this.getState();
+    const items = Object.values(state.attachmentIngestions).map((ingestion) => ({
+      ...ingestion,
+      summary: ingestion.summary ?? null,
+      error: ingestion.error ?? null,
+    }));
+    return jsonResponse({ ingestions: items }, { status: 200 });
+  }
+
+  private async handleQueryRetrieval(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const {
+        embedding,
+        maxAttachmentChunks,
+        maxWebSnippets,
+        allowedAttachmentIds,
+        minScore,
+      } = payload as Record<string, unknown>;
+
+      const queryEmbedding = sanitizeEmbeddingArray(embedding, "query embedding");
+      const attachmentLimitValue = Number(maxAttachmentChunks);
+      const webLimitValue = Number(maxWebSnippets);
+      const attachmentLimit =
+        Number.isFinite(attachmentLimitValue) && attachmentLimitValue > 0
+          ? Math.floor(attachmentLimitValue)
+          : 6;
+      const webLimit =
+        Number.isFinite(webLimitValue) && webLimitValue > 0
+          ? Math.floor(webLimitValue)
+          : 6;
+      const allowedIds =
+        Array.isArray(allowedAttachmentIds) && allowedAttachmentIds.length > 0
+          ? allowedAttachmentIds.map((id) => sanitizeAttachmentId(id))
+          : null;
+      const minSimilarity =
+        typeof minScore === "number" && Number.isFinite(minScore)
+          ? minScore
+          : -1;
+
+      const state = await this.getState();
+      const allAttachmentMatches: Array<{
+        chunk: AttachmentChunk;
+        similarity: number;
+        ingestion: AttachmentIngestionRecord | null;
+      }> = [];
+      const attachmentMatches: Array<{
+        chunk: AttachmentChunk;
+        similarity: number;
+        ingestion: AttachmentIngestionRecord | null;
+      }> = [];
+
+      for (const chunk of Object.values(state.attachmentChunks)) {
+        if (allowedIds && !allowedIds.includes(chunk.attachmentId)) {
+          continue;
+        }
+        if (chunk.embedding.length !== queryEmbedding.length) {
+          continue;
+        }
+        const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
+        if (!Number.isFinite(similarity)) {
+          continue;
+        }
+        const matchRecord = {
+          chunk,
+          similarity,
+          ingestion: state.attachmentIngestions[chunk.attachmentId] ?? null,
+        };
+        allAttachmentMatches.push(matchRecord);
+        if (similarity < minSimilarity) {
+          continue;
+        }
+        attachmentMatches.push(matchRecord);
+      }
+
+      attachmentMatches.sort((a, b) => b.similarity - a.similarity);
+      allAttachmentMatches.sort((a, b) => b.similarity - a.similarity);
+      const topAttachmentMatches = attachmentMatches.slice(0, attachmentLimit);
+      const fallbackAttachmentMatches =
+        topAttachmentMatches.length > 0
+          ? []
+          : allAttachmentMatches.slice(0, Math.min(attachmentLimit, 4));
+
+      const allWebMatches: Array<{ snippet: WebSearchSnippet; similarity: number }> = [];
+      const webMatches: Array<{ snippet: WebSearchSnippet; similarity: number }> = [];
+      for (const snippet of Object.values(state.webSearchSnippets)) {
+        if (snippet.embedding.length !== queryEmbedding.length) {
+          continue;
+        }
+        const similarity = cosineSimilarity(queryEmbedding, snippet.embedding);
+        if (!Number.isFinite(similarity)) {
+          continue;
+        }
+        const matchRecord = { snippet, similarity };
+        allWebMatches.push(matchRecord);
+        if (similarity < minSimilarity) {
+          continue;
+        }
+        webMatches.push(matchRecord);
+      }
+
+      webMatches.sort((a, b) => b.similarity - a.similarity);
+      allWebMatches.sort((a, b) => b.similarity - a.similarity);
+      const topWebMatches = webMatches.slice(0, webLimit);
+      const fallbackWebMatches =
+        topWebMatches.length > 0
+          ? []
+          : allWebMatches.slice(0, Math.min(webLimit, 4));
+
+      return jsonResponse(
+        {
+          attachments: topAttachmentMatches,
+          webSnippets: topWebMatches,
+          fallbackAttachments: fallbackAttachmentMatches,
+          fallbackWebSnippets: fallbackWebMatches,
+        },
+        { status: 200 },
+      );
+    } catch (error) {
+      console.error("[ERROR] retrieval:query failed", error);
+      return jsonResponse({ error: "invalid-retrieval-query" }, { status: 400 });
+    }
+  }
+
   private async handleReset(): Promise<Response> {
     const nextState = await this.updateState(() => ({
       snapshot: null,
       version: 0,
       updatedAt: new Date().toISOString(),
       pendingAttachments: {},
+      attachmentChunks: {},
+      attachmentIngestions: {},
+      webSearchSnippets: {},
     }));
 
     console.log(
@@ -899,6 +1391,157 @@ export class ConversationStoreClient {
 
     const data = (await response.json()) as { attachment: PendingAttachment };
     return data.attachment ?? null;
+  }
+
+  async upsertAttachmentIngestion(input: {
+    attachment: {
+      attachmentId: string;
+      conversationId: ConversationModelId;
+      status: "pending" | "ready" | "failed";
+      summary?: string | null;
+      error?: string | null;
+      updatedAt?: string;
+      openAIFileId?: string | null;
+    };
+    chunks: AttachmentChunk[];
+  }): Promise<{
+    ingestion: AttachmentIngestionRecord;
+    chunkCount: number;
+  }> {
+    const response = await this.stub.fetch(
+      "https://conversation/retrieval/attachments/ingest",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to upsert attachment ingestion: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      ingestion: AttachmentIngestionRecord;
+      chunkCount: number;
+    };
+    return data;
+  }
+
+  async listAttachmentIngestions(): Promise<AttachmentIngestionRecord[]> {
+    const response = await this.stub.fetch(
+      "https://conversation/retrieval/attachments",
+      {
+        method: "GET",
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to list attachment ingestions: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      ingestions: AttachmentIngestionRecord[];
+    };
+    return data.ingestions ?? [];
+  }
+
+  async upsertWebSearchSnippets(
+    snippets: WebSearchSnippet[],
+  ): Promise<{ count: number; total: number }> {
+    if (snippets.length === 0) {
+      return { count: 0, total: 0 };
+    }
+
+    const response = await this.stub.fetch(
+      "https://conversation/retrieval/web/upsert",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snippets }),
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to upsert web search snippets: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as { count: number; total: number };
+    return data;
+  }
+
+  async queryRetrieval(input: {
+    embedding: number[];
+    maxAttachmentChunks?: number;
+    maxWebSnippets?: number;
+    allowedAttachmentIds?: string[];
+    minScore?: number;
+  }): Promise<{
+    attachments: Array<{
+      chunk: AttachmentChunk;
+      similarity: number;
+      ingestion: AttachmentIngestionRecord | null;
+    }>;
+    webSnippets: Array<{
+      snippet: WebSearchSnippet;
+      similarity: number;
+    }>;
+    fallbackAttachments: Array<{
+      chunk: AttachmentChunk;
+      similarity: number;
+      ingestion: AttachmentIngestionRecord | null;
+    }>;
+    fallbackWebSnippets: Array<{
+      snippet: WebSearchSnippet;
+      similarity: number;
+    }>;
+  }> {
+    const response = await this.stub.fetch(
+      "https://conversation/retrieval/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to query retrieval context: ${response.status} ${text}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      attachments: Array<{
+        chunk: AttachmentChunk;
+        similarity: number;
+        ingestion: AttachmentIngestionRecord | null;
+      }>;
+      webSnippets: Array<{
+        snippet: WebSearchSnippet;
+        similarity: number;
+      }>;
+      fallbackAttachments: Array<{
+        chunk: AttachmentChunk;
+        similarity: number;
+        ingestion: AttachmentIngestionRecord | null;
+      }>;
+      fallbackWebSnippets: Array<{
+        snippet: WebSearchSnippet;
+        similarity: number;
+      }>;
+    };
+    return data;
   }
 
   async reset(): Promise<void> {
