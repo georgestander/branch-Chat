@@ -56,6 +56,7 @@ import {
   type WebSearchInvocationOutput,
   type WebSearchResultSummary,
 } from "@/lib/conversation/tools";
+import { isWebSearchSupportedModel } from "@/lib/openai/models";
 import type { AppRequestInfo } from "@/worker";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
@@ -521,6 +522,7 @@ export async function sendMessage(
   }
 
   const settings = ensured.snapshot.conversation.settings;
+  const webSearchSupported = isWebSearchSupportedModel(settings.model);
 
   const attachmentLookup = new Map<string, MessageAttachment>();
   for (const storedMessage of Object.values(ensured.snapshot.messages)) {
@@ -574,7 +576,11 @@ export async function sendMessage(
   let assistantState: Message = assistantMessage;
 
   const enableWebSearchTool =
-    selectedToolSet.size === 0 || selectedToolSet.has("web-search");
+    webSearchSupported &&
+    (selectedToolSet.size === 0 || selectedToolSet.has("web-search"));
+
+  const shouldForceWebSearch =
+    webSearchSupported && selectedToolSet.has("web-search");
 
   let retrievalContextResult: Awaited<ReturnType<typeof buildRetrievalContext>> | null =
     null;
@@ -664,9 +670,10 @@ export async function sendMessage(
 
     let agentOutput = "";
     const allowWebSearchForAgent =
-      selectedToolSet.size === 0 ||
-      selectedToolSet.has("web-search") ||
-      selectedToolSet.has("study-and-learn");
+      webSearchSupported &&
+      (selectedToolSet.size === 0 ||
+        selectedToolSet.has("web-search") ||
+        selectedToolSet.has("study-and-learn"));
 
     const studyAgentInput = buildStudyAgentInputFromBranch({
       snapshot: appendedSnapshot.snapshot,
@@ -837,6 +844,9 @@ export async function sendMessage(
     ...buildResponseOptions(settings),
     input: openaiInput,
     ...(responseTools.length > 0 ? { tools: responseTools } : {}),
+    ...(shouldForceWebSearch
+      ? { tool_choice: { type: "web_search_preview" as const } }
+      : {}),
     ...(streamInclude.length > 0 ? { include: streamInclude } : {}),
   });
 

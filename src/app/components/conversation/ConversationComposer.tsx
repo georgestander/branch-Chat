@@ -45,6 +45,7 @@ import {
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
+import { isWebSearchSupportedModel } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
 
 type ToolOption = {
@@ -134,6 +135,7 @@ export function ConversationComposer({
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const webSearchSupported = isWebSearchSupportedModel(conversationModel);
   const { notify } = useToast();
   const reasoningOptions: Array<"low" | "medium" | "high"> = [
     "low",
@@ -191,6 +193,13 @@ export function ConversationComposer({
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  useEffect(() => {
+    if (webSearchSupported) {
+      return;
+    }
+    setSelectedTools((previous) => previous.filter((tool) => tool !== "web-search"));
+  }, [webSearchSupported]);
 
   useEffect(() => {
     if (!isToolMenuOpen) {
@@ -555,6 +564,11 @@ export function ConversationComposer({
   const handleToolSelect = useCallback(
     (tool: ToolOption["id"]) => {
       setSelectedTools((previous) => {
+        if (tool === "web-search" && !webSearchSupported) {
+          setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+          setIsToolMenuOpen(false);
+          return previous;
+        }
         if (tool === "file-upload") {
           if (attachmentsRef.current.length >= UPLOAD_MAX_ATTACHMENTS) {
             setError(
@@ -578,7 +592,7 @@ export function ConversationComposer({
         setIsToolMenuOpen(false);
       }
     },
-    [openFilePicker],
+    [openFilePicker, webSearchSupported],
   );
 
   const handleClearTool = useCallback(() => {
@@ -903,18 +917,34 @@ export function ConversationComposer({
             >
               {TOOL_OPTIONS.map((option) => {
                 const isSelected = selectedTools.includes(option.id);
+                const isDisabled = option.id === "web-search" && !webSearchSupported;
+                const optionDescription =
+                  option.id === "web-search" && !webSearchSupported
+                    ? "Requires Fast chat or GPT-5 Mini"
+                    : option.description;
                 return (
                   <button
                     key={option.id}
                     type="button"
                     role="menuitemcheckbox"
                     aria-checked={isSelected}
-                    onClick={() => handleToolSelect(option.id)}
+                    aria-disabled={isDisabled ? true : undefined}
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (isDisabled) {
+                        setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+                        setIsToolMenuOpen(false);
+                        return;
+                      }
+                      handleToolSelect(option.id);
+                    }}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                       isSelected
                         ? "bg-primary/10 text-primary"
-                        : "hover:bg-muted/60",
+                        : isDisabled
+                          ? "cursor-not-allowed text-muted-foreground"
+                          : "hover:bg-muted/60",
                     )}
                   >
                     <span
@@ -922,7 +952,9 @@ export function ConversationComposer({
                         "inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent",
                         isSelected
                           ? "bg-primary/20 text-primary"
-                          : "bg-muted text-muted-foreground",
+                          : isDisabled
+                            ? "bg-muted text-muted-foreground/60"
+                            : "bg-muted text-muted-foreground",
                       )}
                     >
                       {isSelected ? (
@@ -933,9 +965,9 @@ export function ConversationComposer({
                     </span>
                     <span className="flex-1">
                       <span className="block font-medium">{option.label}</span>
-                      {option.description ? (
+                      {optionDescription ? (
                         <span className="mt-0.5 block text-xs text-muted-foreground">
-                          {option.description}
+                          {optionDescription}
                         </span>
                       ) : null}
                     </span>

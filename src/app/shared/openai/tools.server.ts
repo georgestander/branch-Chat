@@ -12,7 +12,7 @@ import {
 } from "@/lib/conversation/tools";
 
 export type ResponseToolDefinition =
-  | { type: "web_search" }
+  | { type: "web_search_preview" }
   | {
       type: "function";
       name: string;
@@ -55,7 +55,7 @@ export function getDefaultResponseTools(
   const tools: ResponseToolDefinition[] = [];
 
   if (options.enableWebSearchTool ?? true) {
-    tools.push({ type: "web_search" });
+    tools.push({ type: "web_search_preview" });
   }
 
   if (options.enableFileUploadTool) {
