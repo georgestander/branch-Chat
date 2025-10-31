@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useTransition,
+  type CSSProperties,
+} from "react";
 
 import { ConversationSidebar } from "@/app/pages/conversation/ConversationSidebar";
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
@@ -12,11 +19,15 @@ import type {
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import { GitBranch, PanelLeftOpen } from "lucide-react";
+import { GitBranch, PanelLeftOpen, SquarePen } from "lucide-react";
+import { navigate } from "rwsdk/client";
 
 import { BranchColumn } from "./BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
-import { updateConversationSettings } from "@/app/pages/conversation/functions";
+import {
+  createConversation,
+  updateConversationSettings,
+} from "@/app/pages/conversation/functions";
 
 interface ConversationLayoutProps {
   conversation: Conversation;
@@ -75,6 +86,8 @@ export function ConversationLayout({
   const showParentColumn = Boolean(parentBranch) && !isParentCollapsed;
   const toggleButtonClass =
     "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  const [creationError, setCreationError] = useState<string | null>(null);
+  const [isCreatingConversation, startCreateConversation] = useTransition();
 
   useEffect(() => {
     if (initialSidebarCollapsed) {
@@ -139,6 +152,27 @@ export function ConversationLayout({
   const clearConversationSettingsError = useCallback(() => {
     setSettingsError(null);
   }, []);
+
+  const startNewConversation = useCallback(() => {
+    if (isCreatingConversation) {
+      return;
+    }
+    setCreationError(null);
+    startCreateConversation(async () => {
+      try {
+        const result = await createConversation();
+        navigate(
+          `/?conversationId=${encodeURIComponent(result.conversationId)}`,
+        );
+      } catch (error) {
+        console.error(
+          "[ConversationLayout] createConversation failed",
+          error,
+        );
+        setCreationError("Unable to start a new chat. Please try again.");
+      }
+    });
+  }, [isCreatingConversation]);
 
   // When collapsing/expanding the parent column, snapshot/restore the ratio
   useEffect(() => {
@@ -247,6 +281,11 @@ export function ConversationLayout({
   return (
     <ToastProvider>
     <div className="relative flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
+      {creationError ? (
+        <p className="sr-only" role="status" aria-live="polite">
+          {creationError}
+        </p>
+      ) : null}
       <div
         className={cn(
           "relative flex h-full flex-shrink-0 overflow-hidden transition-[width] duration-300",
@@ -273,21 +312,6 @@ export function ConversationLayout({
           />
         </div>
       </div>
-
-      {isSidebarCollapsed ? (
-        <button
-          type="button"
-          onClick={() => setIsSidebarCollapsed(false)}
-          className="absolute left-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          aria-pressed={false}
-          aria-expanded={false}
-          title="Show conversation sidebar"
-        >
-          <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">Show conversation sidebar</span>
-        </button>
-      ) : null}
-
       <div className="flex min-h-0 flex-1 flex-col">
         <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
           {showParentColumn && parentBranch ? (
@@ -375,29 +399,86 @@ export function ConversationLayout({
                 : undefined
             }
             withLeftBorder={showParentColumn}
-            leadingActions={
-              parentBranch && isParentCollapsed ? (
+            leadingActions={(() => {
+              const sidebarToggleControl = isSidebarCollapsed ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsParentCollapsed(false);
-                    // Restore previous width ratio when uncollapsing
-                    setParentWidthRatio(
-                      lastParentWidthRatioRef.current ?? 0.35,
-                    );
-                  }}
-                  className={toggleButtonClass}
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  className={cn(
+                    toggleButtonClass,
+                    "h-9 w-9",
+                  )}
                   aria-pressed={false}
                   aria-expanded={false}
-                  title="Show parent thread"
+                  title="Show conversation sidebar"
                 >
-                  <GitBranch className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only">
-                    Show parent branch column
-                  </span>
+                  <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">Show conversation sidebar</span>
                 </button>
-              ) : null
-            }
+              ) : null;
+
+              const parentToggleControl =
+                parentBranch && isParentCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsParentCollapsed(false);
+                      // Restore previous width ratio when uncollapsing
+                      setParentWidthRatio(
+                        lastParentWidthRatioRef.current ?? 0.35,
+                      );
+                    }}
+                    className={cn(toggleButtonClass, "h-9 w-9")}
+                    aria-pressed={false}
+                    aria-expanded={false}
+                    title="Show parent thread"
+                  >
+                    <GitBranch className="h-4 w-4" aria-hidden="true" />
+                    <span className="sr-only">
+                      Show parent branch column
+                    </span>
+                  </button>
+                ) : null;
+
+              const newChatControl = isSidebarCollapsed ? (
+                <button
+                  type="button"
+                  onClick={startNewConversation}
+                  disabled={isCreatingConversation}
+                  className={cn(
+                    toggleButtonClass,
+                    "h-9 w-9",
+                    isCreatingConversation
+                      ? "cursor-not-allowed opacity-70"
+                      : "",
+                  )}
+                  aria-label={
+                    isCreatingConversation
+                      ? "Creating new chat"
+                      : "Start a new chat"
+                  }
+                >
+                  <SquarePen className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">Start a new chat</span>
+                </button>
+              ) : null;
+
+              if (
+                !sidebarToggleControl &&
+                !parentToggleControl &&
+                !newChatControl
+              ) {
+                return null;
+              }
+
+              return (
+                <>
+                  {sidebarToggleControl}
+                  {parentToggleControl}
+                  {newChatControl}
+                </>
+              );
+            })()}
           />
         </div>
       </div>

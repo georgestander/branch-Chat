@@ -369,15 +369,15 @@ export function BranchColumn({
       )}
       style={style}
     >
-      <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3 text-sm">
+      <header className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm">
         {leadingActions ? (
           <div className="flex items-center gap-2">{leadingActions}</div>
         ) : null}
-        <h2 className="text-base font-semibold text-foreground">
+        <h2 className="text-sm font-semibold text-foreground sm:text-[0.95rem]">
           {branch.title || "Untitled Branch"}
         </h2>
         <span className="hidden h-4 w-px bg-border/70 sm:inline" aria-hidden="true" />
-        <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+        <span className="text-[0.65rem] uppercase tracking-[0.2em] text-muted-foreground sm:text-[0.7rem]">
           {stateLabel} Branch
         </span>
         {referenceText ? (
