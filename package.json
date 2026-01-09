@@ -20,7 +20,10 @@
     "release": "rw-scripts ensure-deploy-env && npm run clean && npm run build && RWSDK_DEPLOY=1 wrangler deploy",
     "generate": "rw-scripts ensure-env && wrangler types",
     "check": "npm run generate && npm run types",
-    "types": "tsc"
+    "types": "tsc",
+    "typecheck": "npm run types",
+    "test": "echo \"No tests configured\"",
+    "lint": "echo \"No lint configured\""
   },
   "dependencies": {
     "@openai/agents": "^0.2.1",
