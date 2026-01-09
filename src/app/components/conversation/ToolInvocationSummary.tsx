@@ -58,6 +58,12 @@ export function ToolInvocationSummary({
   }, [fallbackHtml]);
 
   const allResults = results.length > 0 ? results : fallbackResults;
+  const externalResults = allResults
+    .map((result) => ({
+      ...result,
+      externalUrl: resolveExternalUrl(result.url),
+    }))
+    .filter((result) => Boolean(result.externalUrl));
 
   if (allResults.length === 0) {
     if (failure) {
@@ -87,10 +93,23 @@ export function ToolInvocationSummary({
     return null;
   }
 
+  if (externalResults.length === 0) {
+    return (
+      <div
+        className={cn(
+          "mt-4 border border-border bg-muted/30 p-4 text-sm text-muted-foreground",
+          className,
+        )}
+      >
+        No external sources available yet.
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
-        "mt-4 rounded-lg border border-border bg-muted/30 p-4",
+        "mt-4 border border-border bg-muted/30 p-4",
         className,
       )}
     >
@@ -104,23 +123,24 @@ export function ToolInvocationSummary({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {allResults.map((result, index) => {
-          const displayUrl = formatDisplayUrl(result.url);
-          const displayHost = formatHost(result.url);
+        {externalResults.map((result, index) => {
+          const externalUrl = result.externalUrl as string;
+          const displayUrl = formatDisplayUrl(externalUrl);
+          const displayHost = formatHost(externalUrl);
           return (
             <div
               key={`badge-${result.id}`}
               className="group relative inline-flex"
             >
               <a
-                href={result.url || "#"}
+                href={externalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={result.url}
-                className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                title={externalUrl}
+                className="inline-flex items-center gap-2 border border-border bg-card px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <ExternalLink
-                  className="h-3.5 w-3.5 text-primary/70"
+                  className="h-3.5 w-3.5 text-primary"
                   aria-hidden="true"
                 />
                 <span className="truncate max-w-[18ch]">{displayHost}</span>
@@ -131,7 +151,7 @@ export function ToolInvocationSummary({
                 ) : null}
               </a>
 
-              <div className="pointer-events-none absolute left-0 top-full z-50 mt-3 hidden w-80 rounded-lg border border-border/80 bg-popover p-4 text-left shadow-xl transition group-hover:pointer-events-auto group-hover:block group-focus-within:block">
+              <div className="pointer-events-none absolute left-0 top-full z-50 mt-3 hidden w-80 border border-border bg-popover p-4 text-left shadow-xl transition group-hover:pointer-events-auto group-hover:block group-focus-within:block">
                 <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   <span>Source {index + 1}</span>
                   {result.siteName ? (
@@ -159,6 +179,25 @@ export function ToolInvocationSummary({
 
     </div>
   );
+}
+
+function resolveExternalUrl(url: string): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const parsed = new URL(url, origin || undefined);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    if (origin && parsed.origin === origin) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function formatDisplayUrl(url: string): string {
@@ -212,7 +251,8 @@ function extractAnchorsFromHtml(html: string): WebSearchResultSummary[] {
     const seen = new Set<string>();
     const summaries: WebSearchResultSummary[] = [];
     anchors.forEach((anchor, index) => {
-      const href = anchor.href;
+      const rawHref = anchor.getAttribute("href") ?? "";
+      const href = resolveExternalUrl(rawHref);
       if (!href || seen.has(href)) {
         return;
       }
