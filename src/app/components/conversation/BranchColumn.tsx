@@ -522,7 +522,7 @@ export function BranchColumn({
           aria-hidden
           className="pointer-events-none absolute"
         />
-        <div className="relative z-10">
+        <div className="relative z-10 mx-auto w-full max-w-3xl">
           {isActive ? (
             <ConversationComposer
               branchId={branch.id}
