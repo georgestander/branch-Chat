@@ -94,7 +94,6 @@ export function BranchableMessage({
           const params = new URLSearchParams({
             conversationId,
             branchId: response.branch.id,
-            focus: "child",
           });
           navigate(`/?${params.toString()}`);
         } catch (cause) {

@@ -107,6 +107,12 @@ export function ConversationLayout({
   }, [activeBranchId, initialParentCollapsed, initialSidebarCollapsed]);
 
   useEffect(() => {
+    if (parentBranch && isParentCollapsed) {
+      setIsParentCollapsed(false);
+    }
+  }, [isParentCollapsed, parentBranch]);
+
+  useEffect(() => {
     const nextModel = conversation.settings.model || "gpt-5-chat-latest";
     const nextEffort = nextModel.includes("chat")
       ? null
@@ -190,8 +196,8 @@ export function ConversationLayout({
     const container = containerRef.current;
     if (!container) return Math.min(0.75, Math.max(0.25, ratio));
     const width = container.clientWidth;
-    const parentMin = 280; // px
-    const childMin = 360; // px
+    const parentMin = 360; // px
+    const childMin = 520; // px
     const minRatio = Math.max(parentMin / Math.max(width, 1), 0);
     const maxRatio = Math.min(1 - childMin / Math.max(width, 1), 1);
     // Ensure sensible defaults when extremely small widths
@@ -289,7 +295,7 @@ export function ConversationLayout({
       <div
         className={cn(
           "relative flex h-full flex-shrink-0 overflow-hidden transition-[width] duration-300",
-          isSidebarCollapsed ? "w-0 border-r-0" : "w-72 border-r border-border",
+          isSidebarCollapsed ? "w-0 border-r-0" : "w-[280px] border-r border-border",
         )}
         aria-hidden={isSidebarCollapsed}
       >
@@ -328,11 +334,12 @@ export function ConversationLayout({
               conversationSettingsSaving={isSavingSettings}
               conversationSettingsError={settingsError}
               onClearConversationSettingsError={clearConversationSettingsError}
+              highlightedBranchId={activeBranch.id}
               // Apply a fixed flex-basis driven by ratio
               // Keep a reasonable maxWidth via inline style for determinism
               style={{
                 flexBasis: `${Math.round(parentWidthRatio * 1000) / 10}%`,
-                minWidth: 280,
+                minWidth: 360,
                 maxWidth: "75%",
               } as CSSProperties}
               leadingActions={
@@ -362,7 +369,7 @@ export function ConversationLayout({
               title="Resize panels"
               onPointerDown={onSeparatorPointerDown}
               onKeyDown={onSeparatorKeyDown}
-              className="relative z-10 -mx-0.5 w-1 cursor-col-resize select-none border-l border-border bg-border/60 focus:outline-none focus:ring-2 focus:ring-ring"
+              className="pane-resizer z-10 -mx-0.5 focus:outline-none focus:ring-2 focus:ring-ring"
               style={{
                 // Visually hide if collapsed (but this element isn't rendered when collapsed already)
                 // Use deterministic styles only
@@ -393,7 +400,7 @@ export function ConversationLayout({
               showParentColumn
                 ? ({
                     // Let it grow to take remaining space, but enforce a min width
-                    minWidth: 360,
+                    minWidth: 520,
                     flexBasis: `calc(100% - ${Math.round(parentWidthRatio * 1000) / 10}%)`,
                   } as CSSProperties)
                 : undefined

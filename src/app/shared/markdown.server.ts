@@ -19,6 +19,8 @@ import type { RenderedMessage } from "@/lib/conversation/rendered";
 
 export interface MarkdownRenderOptions {
   highlightRange?: { start: number; end: number } | null;
+  highlightBranchId?: string | null;
+  highlightMessageId?: string | null;
   enableSyntaxHighlighting?: boolean;
 }
 
@@ -43,7 +45,10 @@ export async function renderMarkdownToHtml(
 
   if (options.highlightRange) {
     processor.use(() => (tree: HastRoot) => {
-      wrapHighlight(tree, options.highlightRange!);
+      wrapHighlight(tree, options.highlightRange!, {
+        branchId: options.highlightBranchId ?? null,
+        messageId: options.highlightMessageId ?? null,
+      });
     });
   }
 
@@ -58,7 +63,11 @@ export async function renderMarkdownToHtml(
 export async function enrichMessagesWithHtml(
   messages: Message[],
   options: {
-    highlight?: { messageId: string; range: { start: number; end: number } | null } | null;
+    highlight?: {
+      messageId: string;
+      range: { start: number; end: number } | null;
+      branchId?: string | null;
+    } | null;
     streamingMessageId?: string | null;
   } = {},
 ): Promise<RenderedMessage[]> {
@@ -73,6 +82,11 @@ export async function enrichMessagesWithHtml(
 
       const renderedHtml = await renderMarkdownToHtml(message.content, {
         highlightRange,
+        highlightBranchId:
+          options.highlight && options.highlight.messageId === message.id
+            ? options.highlight.branchId ?? null
+            : null,
+        highlightMessageId: message.id,
         enableSyntaxHighlighting,
       });
 
@@ -292,12 +306,18 @@ function createCodeHeader(language: string | null): HastElement {
   } satisfies HastElement;
 }
 
-function wrapHighlight(tree: HastRoot, range: { start: number; end: number }) {
+function wrapHighlight(
+  tree: HastRoot,
+  range: { start: number; end: number },
+  meta?: { branchId?: string | null; messageId?: string | null },
+) {
   const { start, end } = range;
   if (start >= end) {
     return;
   }
 
+  const branchId = meta?.branchId ?? null;
+  const messageId = meta?.messageId ?? null;
   const state = { offset: 0 };
 
   function descend(node: HastParent) {
@@ -328,13 +348,21 @@ function wrapHighlight(tree: HastRoot, range: { start: number; end: number }) {
           fragments.push({ type: "text", value: before });
         }
         if (highlighted) {
+          const properties: Record<string, string | string[]> = {
+            className: ["branch-highlight"],
+            "data-branch-highlight": "true",
+          };
+          if (branchId) {
+            properties["data-branch-id"] = branchId;
+            properties.id = `branch-origin-${branchId}`;
+          }
+          if (messageId) {
+            properties["data-message-id"] = messageId;
+          }
           fragments.push({
             type: "element",
             tagName: "mark",
-            properties: {
-              className: ["branch-highlight"],
-              "data-branch-highlight": "true",
-            },
+            properties,
             children: [{ type: "text", value: highlighted }],
           });
         }

@@ -96,6 +96,7 @@ export async function ConversationPage({
     ? {
         messageId: activeBranch.createdFrom.messageId,
         range: activeBranch.createdFrom.span ?? null,
+        branchId: activeBranch.id,
       }
     : null;
 
