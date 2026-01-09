@@ -56,7 +56,10 @@ import {
   type WebSearchInvocationOutput,
   type WebSearchResultSummary,
 } from "@/lib/conversation/tools";
-import { isWebSearchSupportedModel } from "@/lib/openai/models";
+import {
+  getWebSearchToolTypeForModel,
+  isWebSearchSupportedModel,
+} from "@/lib/openai/models";
 import type { AppRequestInfo } from "@/worker";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
@@ -522,7 +525,8 @@ export async function sendMessage(
   }
 
   const settings = ensured.snapshot.conversation.settings;
-  const webSearchSupported = isWebSearchSupportedModel(settings.model);
+  const webSearchToolType = getWebSearchToolTypeForModel(settings.model);
+  const webSearchSupported = webSearchToolType !== null;
 
   const attachmentLookup = new Map<string, MessageAttachment>();
   for (const storedMessage of Object.values(ensured.snapshot.messages)) {
@@ -833,6 +837,7 @@ export async function sendMessage(
   });
   const responseTools = getDefaultResponseTools({
     enableWebSearchTool,
+    webSearchToolType,
     enableFileUploadTool: selectedToolSet.has("file-upload"),
   });
   const streamInclude: string[] = [];
@@ -840,13 +845,16 @@ export async function sendMessage(
     streamInclude.push("web_search_call.results");
   }
 
+  const webSearchToolChoice =
+    shouldForceWebSearch && webSearchToolType
+      ? { type: webSearchToolType }
+      : null;
+
   const stream = await openai.responses.stream({
     ...buildResponseOptions(settings),
     input: openaiInput,
     ...(responseTools.length > 0 ? { tools: responseTools } : {}),
-    ...(shouldForceWebSearch
-      ? { tool_choice: { type: "web_search_preview" as const } }
-      : {}),
+    ...(webSearchToolChoice ? { tool_choice: webSearchToolChoice } : {}),
     ...(streamInclude.length > 0 ? { include: streamInclude } : {}),
   });
 

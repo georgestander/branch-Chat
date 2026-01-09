@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   ChevronDown,
   Check,
-  Expand,
   Globe,
   GraduationCap,
   Loader2,
@@ -22,6 +21,7 @@ import {
   Plus,
   RotateCcw,
   SendHorizontal,
+  Maximize,
   Upload,
   X,
 } from "lucide-react";
@@ -1043,7 +1043,7 @@ export function ConversationComposer({
             className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground transition hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Open large editor"
           >
-            <Expand className="h-2.5 w-2.5" aria-hidden="true" />
+            <Maximize className="h-2 w-2" aria-hidden="true" />
           </button>
         </div>
 

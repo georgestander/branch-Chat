@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import type { ToolInvocation } from "@/lib/conversation";
 import {
   extractWebSearchResults,
@@ -43,10 +45,17 @@ export function ToolInvocationSummary({
     (invocation) => invocation.status === "failed" && invocation.error,
   );
 
-  const fallbackResults =
-    results.length === 0 && fallbackHtml
-      ? extractAnchorsFromHtml(fallbackHtml)
-      : [];
+  const [fallbackResults, setFallbackResults] = useState<
+    WebSearchResultSummary[]
+  >([]);
+
+  useEffect(() => {
+    if (!fallbackHtml) {
+      setFallbackResults([]);
+      return;
+    }
+    setFallbackResults(extractAnchorsFromHtml(fallbackHtml));
+  }, [fallbackHtml]);
 
   const allResults = results.length > 0 ? results : fallbackResults;
 

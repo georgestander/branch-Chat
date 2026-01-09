@@ -10,9 +10,11 @@ import {
   FILE_UPLOAD_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
 } from "@/lib/conversation/tools";
+import type { WebSearchToolType } from "@/lib/openai/models";
 
 export type ResponseToolDefinition =
   | { type: "web_search_preview" }
+  | { type: "web_search" }
   | {
       type: "function";
       name: string;
@@ -46,6 +48,7 @@ export interface ToolExecutionResult {
 
 export interface ResponseToolsOptions {
   enableWebSearchTool?: boolean;
+  webSearchToolType?: WebSearchToolType | null;
   enableFileUploadTool?: boolean;
 }
 
@@ -55,7 +58,8 @@ export function getDefaultResponseTools(
   const tools: ResponseToolDefinition[] = [];
 
   if (options.enableWebSearchTool ?? true) {
-    tools.push({ type: "web_search_preview" });
+    const toolType = options.webSearchToolType ?? "web_search_preview";
+    tools.push({ type: toolType });
   }
 
   if (options.enableFileUploadTool) {
