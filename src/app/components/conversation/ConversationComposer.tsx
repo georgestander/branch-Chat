@@ -771,7 +771,7 @@ export function ConversationComposer({
   };
 
   return (
-    <div className={cn("mx-auto flex w-full max-w-3xl flex-col gap-2", className)}>
+    <div className={cn("flex w-full flex-col gap-2", className)}>
       <input
         ref={fileInputRef}
         type="file"
@@ -894,20 +894,20 @@ export function ConversationComposer({
       ) : null}
       <form
         onSubmit={handleSubmit}
-        className="flex h-12 items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2 shadow-sm"
+        className="flex h-12 items-center gap-2 border border-foreground bg-black px-2 text-white"
       >
         <div className="flex items-center gap-2">
           <div className="relative" ref={toolMenuRef}>
             <button
               type="button"
-              className="interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-background hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center border border-white/40 bg-black text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-label="New prompt options"
               aria-expanded={isToolMenuOpen}
               aria-controls={isToolMenuOpen ? toolMenuId : undefined}
               aria-haspopup="menu"
               onClick={() => setIsToolMenuOpen((prev) => !prev)}
             >
-              <Plus className="h-5 w-5 text-foreground/80" aria-hidden="true" />
+              <Plus className="h-5 w-5 text-white" aria-hidden="true" />
             </button>
 
             {isToolMenuOpen ? (
@@ -1029,7 +1029,7 @@ export function ConversationComposer({
                 submitMessage();
               }
             }}
-            className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-foreground placeholder:text-muted-foreground/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-white placeholder:text-white/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isPending}
             aria-disabled={isPending}
             aria-invalid={error ? true : undefined}
@@ -1040,7 +1040,7 @@ export function ConversationComposer({
             onClick={() => {
               setIsComposerModalOpen(true);
             }}
-            className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground transition hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center border border-white/40 bg-black text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Open large editor"
           >
             <Maximize className="h-2 w-2" aria-hidden="true" />
@@ -1053,20 +1053,20 @@ export function ConversationComposer({
             ref={modelButtonRef}
             onClick={() => setIsModelMenuOpen((value) => !value)}
             className={cn(
-              "interactive-target inline-flex items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/90 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
-              isModelMenuOpen ? "bg-muted/70 text-foreground" : null,
+              "interactive-target inline-flex items-center gap-1 border border-white/40 bg-black px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+              isModelMenuOpen ? "bg-white/10 text-white" : null,
             )}
             aria-haspopup="menu"
             aria-expanded={isModelMenuOpen}
             aria-controls={isModelMenuOpen ? modelMenuId : undefined}
             disabled={conversationSettingsSaving}
           >
-            <span className="text-xs font-semibold text-foreground">
+            <span className="text-xs font-semibold text-white">
               {currentModelLabel}
             </span>
             <ChevronDown
               className={cn(
-                "h-3 w-3 text-muted-foreground transition-transform",
+                "h-3 w-3 text-white transition-transform",
                 isModelMenuOpen ? "rotate-180 text-primary" : "rotate-0",
               )}
               aria-hidden="true"
@@ -1146,7 +1146,7 @@ export function ConversationComposer({
           type="submit"
           disabled={isSendDisabled}
           className={cn(
-            "interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+            "interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center border border-white/40 bg-black text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
             isPending ? "animate-pulse" : "",
           )}
           aria-label="Send message"

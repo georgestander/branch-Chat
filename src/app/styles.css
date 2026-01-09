@@ -43,41 +43,41 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --font-sans: "Inter", "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.22 0 0);
-  --card: oklch(0.985 0 0);
-  --card-foreground: oklch(0.22 0 0);
-  --popover: oklch(0.99 0 0);
-  --popover-foreground: oklch(0.22 0 0);
-  --primary: oklch(0.55 0.13 252);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.86 0.03 250);
-  --secondary-foreground: oklch(0.22 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.52 0 0);
-  --accent: oklch(0.68 0.09 252);
-  --accent-foreground: oklch(0.22 0 0);
-  --destructive: oklch(0.64 0.19 25);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.915 0 0);
-  --input: oklch(0.915 0 0);
-  --ring: oklch(0.62 0.09 252);
-  --chart-1: oklch(0.55 0.13 252);
-  --chart-2: oklch(0.64 0.11 240);
-  --chart-3: oklch(0.52 0.12 265);
-  --chart-4: oklch(0.6 0.12 220);
-  --chart-5: oklch(0.66 0.11 205);
-  --sidebar: oklch(0.98 0 0);
-  --sidebar-foreground: oklch(0.22 0 0);
-  --sidebar-primary: oklch(0.55 0.13 252);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.68 0.09 252);
-  --sidebar-accent-foreground: oklch(0.22 0 0);
-  --sidebar-border: oklch(0.915 0 0);
-  --sidebar-ring: oklch(0.62 0.09 252);
+  --radius: 0.15rem;
+  --font-sans: "Newsreader", "Iowan Old Style", "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #1d4ed8;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f2f2;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f5f5f5;
+  --muted-foreground: #3f3f3f;
+  --accent: #1d4ed8;
+  --accent-foreground: #ffffff;
+  --destructive: #7a0a0a;
+  --destructive-foreground: #ffffff;
+  --border: #1a1a1a;
+  --input: #1a1a1a;
+  --ring: #1d4ed8;
+  --chart-1: #1d4ed8;
+  --chart-2: #1d4ed8;
+  --chart-3: #1d4ed8;
+  --chart-4: #1d4ed8;
+  --chart-5: #1d4ed8;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-primary: #0a0a0a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1d4ed8;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1a1a1a;
+  --sidebar-ring: #1d4ed8;
 }
 
 .dark {
@@ -121,9 +121,9 @@
   }
   body {
     font-family: var(--font-sans);
-    font-size: 0.90625rem;
+    font-size: 0.95rem;
     line-height: 1.45;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.012em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     @apply bg-background text-foreground;
@@ -165,7 +165,7 @@
   }
 
   .prose blockquote {
-    @apply border-l-4 border-border/70 bg-muted/40 px-4 py-2 text-muted-foreground;
+    @apply border-l-4 border-border px-4 py-2 text-muted-foreground;
   }
 
   .prose ul > li::marker {
@@ -173,7 +173,8 @@
   }
 
   .branch-highlight {
-    @apply rounded bg-primary/15 px-0.5 text-primary;
+    @apply border-b-2 border-primary bg-primary/15 px-0.5 font-semibold text-foreground;
+    cursor: pointer;
   }
 
   .interactive-target {
@@ -213,7 +214,7 @@
     align-items: center;
     justify-content: center;
     cursor: col-resize;
-    background-color: var(--border);
+    background-color: var(--foreground);
     transition: background-color 0.15s ease-out;
   }
 
@@ -223,32 +224,32 @@
     width: 2px;
     height: 2.75rem;
     border-radius: 9999px;
-    background-color: color-mix(in oklab, var(--foreground) 10%, transparent);
+    background-color: color-mix(in oklab, var(--background) 70%, transparent);
     transition: background-color 0.15s ease-out;
   }
 
   .pane-resizer:hover {
-    background-color: color-mix(in oklab, var(--primary) 40%, transparent);
+    background-color: var(--primary);
   }
 
   .pane-resizer:hover::before {
-    background-color: color-mix(in oklab, var(--primary) 65%, transparent);
+    background-color: color-mix(in oklab, var(--background) 85%, transparent);
   }
 
   .pane-resizer:active {
-    background-color: color-mix(in oklab, var(--primary) 55%, transparent);
+    background-color: var(--primary);
   }
 
   .pane-resizer:active::before {
-    background-color: color-mix(in oklab, var(--primary) 85%, transparent);
+    background-color: var(--background);
   }
 
   .markdown-codeblock {
-    @apply relative overflow-hidden rounded-xl border border-border bg-card/95 text-sm shadow-sm;
+    @apply relative overflow-hidden border border-border bg-card text-sm;
   }
 
   .markdown-codeblock__header {
-    @apply flex items-center justify-between border-b border-border/70 bg-muted/30 px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted-foreground;
+    @apply flex items-center justify-between border-b border-border bg-muted px-4 py-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground;
   }
 
   .markdown-codeblock__language {
@@ -256,7 +257,7 @@
   }
 
   .markdown-codeblock__copy {
-    @apply inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-semibold text-foreground transition hover:bg-foreground/5;
+    @apply inline-flex items-center gap-1 border border-border bg-background px-2 py-1 text-[10px] font-semibold text-foreground transition hover:bg-muted;
   }
 
   .markdown-codeblock__copy[data-copy-state="copied"] {
@@ -284,14 +285,14 @@
 
   .markdown-codeblock .hljs-comment,
   .markdown-codeblock .hljs-quote {
-    color: hsl(220deg 9% 63%);
+    color: #6b6b6b;
     font-style: italic;
   }
 
   .markdown-codeblock .hljs-keyword,
   .markdown-codeblock .hljs-selector-tag,
   .markdown-codeblock .hljs-subst {
-    color: hsl(271deg 76% 53%);
+    color: var(--primary);
   }
 
   .markdown-codeblock .hljs-string,
@@ -299,7 +300,7 @@
   .markdown-codeblock .hljs-name,
   .markdown-codeblock .hljs-type,
   .markdown-codeblock .hljs-attribute {
-    color: hsl(159deg 65% 45%);
+    color: #0a0a0a;
   }
 
   .markdown-body {
@@ -368,7 +369,8 @@
   }
 
   .markdown-body a {
-    @apply font-medium text-blue-600 underline-offset-4 transition hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2;
+    @apply font-semibold underline-offset-4 transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    color: var(--primary);
   }
 
   .markdown-body table {
