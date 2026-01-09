@@ -7,3 +7,4 @@
 2026-01-09 — Composer constrained to centered max width again (fixed full-width regression). PRD: PRD-UI-001/011. Files: src/app/components/conversation/BranchColumn.tsx.
 2026-01-09 — Composer bar rounded corners restored. PRD: PRD-UI-011. Files: src/app/components/conversation/ConversationComposer.tsx.
 2026-01-09 — Composer alignment fixes: tightened footer padding, matched button heights, white help text, rounded controls. PRD: PRD-UI-001/011. Files: src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationComposer.tsx.
+2026-01-09 — Composer footer set to black band to remove white gutter; forced white input + caret + help text. PRD: PRD-UI-001/011. Files: src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationComposer.tsx.

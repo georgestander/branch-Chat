@@ -517,7 +517,7 @@ export function BranchColumn({
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
 
-      <div className="relative bg-background py-2">
+      <div className="relative border-t border-border bg-black py-2 text-white">
         <div className="relative z-10 mx-auto w-full max-w-3xl">
           {isActive ? (
             <ConversationComposer

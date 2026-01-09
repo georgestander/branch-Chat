@@ -1029,7 +1029,7 @@ export function ConversationComposer({
                 submitMessage();
               }
             }}
-            className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-white placeholder:text-white/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-white caret-white placeholder:text-white/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isPending}
             aria-disabled={isPending}
             aria-invalid={error ? true : undefined}
@@ -1208,7 +1208,7 @@ export function ConversationComposer({
             {error}
           </p>
         ) : (
-          <span className="text-xs text-white/70">
+          <span className="text-xs text-white">
             Enter to send · Shift+Enter for line break
           </span>
         )}
