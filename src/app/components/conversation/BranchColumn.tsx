@@ -517,11 +517,7 @@ export function BranchColumn({
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
 
-      <div className="relative  bg-background px-1 pb-1 pt-1">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-        />
+      <div className="relative bg-background py-2">
         <div className="relative z-10 mx-auto w-full max-w-3xl">
           {isActive ? (
             <ConversationComposer

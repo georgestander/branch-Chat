@@ -894,13 +894,13 @@ export function ConversationComposer({
       ) : null}
       <form
         onSubmit={handleSubmit}
-        className="flex h-12 items-center gap-2 rounded-full border border-foreground bg-black px-2 text-white"
+        className="flex h-11 items-center gap-2 rounded-full border border-foreground bg-black px-2 text-white"
       >
         <div className="flex items-center gap-2">
           <div className="relative" ref={toolMenuRef}>
             <button
               type="button"
-              className="interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center border border-white/40 bg-black text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/40 bg-black text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-label="New prompt options"
               aria-expanded={isToolMenuOpen}
               aria-controls={isToolMenuOpen ? toolMenuId : undefined}
@@ -1040,7 +1040,7 @@ export function ConversationComposer({
             onClick={() => {
               setIsComposerModalOpen(true);
             }}
-            className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center border border-white/40 bg-black text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center rounded-full border border-white/40 bg-black text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="Open large editor"
           >
             <Maximize className="h-2 w-2" aria-hidden="true" />
@@ -1053,7 +1053,7 @@ export function ConversationComposer({
             ref={modelButtonRef}
             onClick={() => setIsModelMenuOpen((value) => !value)}
             className={cn(
-              "interactive-target inline-flex items-center gap-1 border border-white/40 bg-black px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+              "interactive-target inline-flex h-9 items-center gap-1 border border-white/40 bg-black px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
               isModelMenuOpen ? "bg-white/10 text-white" : null,
             )}
             aria-haspopup="menu"
@@ -1146,7 +1146,7 @@ export function ConversationComposer({
           type="submit"
           disabled={isSendDisabled}
           className={cn(
-            "interactive-target inline-flex h-10 w-10 shrink-0 items-center justify-center border border-white/40 bg-black text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+            "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/40 bg-black text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
             isPending ? "animate-pulse" : "",
           )}
           aria-label="Send message"
@@ -1208,7 +1208,7 @@ export function ConversationComposer({
             {error}
           </p>
         ) : (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-white/70">
             Enter to send · Shift+Enter for line break
           </span>
         )}
