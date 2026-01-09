@@ -6,7 +6,7 @@
 - Fetch only the data needed to paint the current screen. Render what you see; defer hidden panels to focused client islands.
 - Keep the codebase CSP-safe and hydration-safe. Prefer deterministic values, and ensure the client bootstrap script uses the request nonce.
 
-## Core Experience (Scope v3)
+## Core Experience
 - **Branch creation:** Select any assistant message span → “Create Branch”. New branch inherits context up to the selection, optionally capturing the span metadata.
 - **Branch navigation:** Split view (parent left, child right) with resizable panes. Provide tree/breadcrumb navigation, jump-to-root, and deep nesting support.
 - **Conversation management:** CRUD for branches (rename, archive, delete with confirmation), independent composer per branch, and per-branch token/cost tracking.
