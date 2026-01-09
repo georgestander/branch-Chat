@@ -48,6 +48,7 @@ interface BranchColumnProps {
   headerActions?: ReactNode;
   leadingActions?: ReactNode;
   style?: React.CSSProperties;
+  highlightedBranchId?: string | null;
   conversationModel: string;
   reasoningEffort: "low" | "medium" | "high" | null;
   onConversationSettingsChange: (
@@ -124,6 +125,7 @@ export function BranchColumn({
   headerActions,
   leadingActions,
   style,
+  highlightedBranchId,
   conversationModel,
   reasoningEffort,
   onConversationSettingsChange,
@@ -133,6 +135,8 @@ export function BranchColumn({
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const lastHighlightScrollRef = useRef<string | null>(null);
+  const lastStreamAnchorRef = useRef<string | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticEntry[]>([]);
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
@@ -205,6 +209,38 @@ export function BranchColumn({
       window.removeEventListener(START_STREAMING_EVENT, handler as EventListener);
     };
   }, [branch.id, conversationId]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const handleHighlightClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      const highlight = target.closest("mark[data-branch-id]") as HTMLElement | null;
+      if (!highlight) {
+        return;
+      }
+      const targetBranchId = highlight.getAttribute("data-branch-id");
+      if (!targetBranchId) {
+        return;
+      }
+      const params = new URLSearchParams({
+        conversationId,
+        branchId: targetBranchId,
+      });
+      navigate(`/?${params.toString()}`);
+    };
+
+    container.addEventListener("click", handleHighlightClick);
+    return () => {
+      container.removeEventListener("click", handleHighlightClick);
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -292,6 +328,33 @@ export function BranchColumn({
   }, [lastMessage, visibleMessages.length]);
 
   useEffect(() => {
+    if (!highlightedBranchId) {
+      return;
+    }
+    if (lastHighlightScrollRef.current === highlightedBranchId) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+    const safeBranchId =
+      typeof CSS !== "undefined" && "escape" in CSS
+        ? (CSS.escape as (value: string) => string)(highlightedBranchId)
+        : highlightedBranchId;
+    const highlight = container.querySelector<HTMLElement>(
+      `mark[data-branch-id="${safeBranchId}"]`,
+    );
+    if (!highlight) {
+      return;
+    }
+    lastHighlightScrollRef.current = highlightedBranchId;
+    requestAnimationFrame(() => {
+      highlight.scrollIntoView({ block: "center" });
+    });
+  }, [highlightedBranchId, scrollSignature]);
+
+  useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) {
       return;
@@ -332,17 +395,34 @@ export function BranchColumn({
       return;
     }
 
+    if (isStreamingAssistant && lastMessage?.id) {
+      const nextStreamId = lastMessage.id;
+      if (lastStreamAnchorRef.current !== nextStreamId) {
+        lastStreamAnchorRef.current = nextStreamId;
+        const target = container.querySelector<HTMLElement>(
+          `[data-message-id="${nextStreamId}"]`,
+        );
+        if (target) {
+          requestAnimationFrame(() => {
+            target.scrollIntoView({ block: "start", behavior: "auto" });
+          });
+          return;
+        }
+      }
+      return;
+    }
+
+    lastStreamAnchorRef.current = null;
     requestAnimationFrame(() => {
       sentinel.scrollIntoView({
         block: "end",
-        behavior: isStreamingAssistant ? "auto" : "smooth",
+        behavior: "smooth",
       });
     });
-  }, [isActive, isStreamingAssistant, scrollSignature]);
+  }, [isActive, isStreamingAssistant, lastMessage?.id, scrollSignature]);
 
   const stateLabel = isActive ? "Active" : "Parent";
   const referenceText = branch.createdFrom?.excerpt ?? null;
-  const [referenceExpanded, setReferenceExpanded] = useState(false);
 
   const truncatedReference = useMemo(() => {
     if (!referenceText) {
@@ -356,10 +436,6 @@ export function BranchColumn({
     return `${referenceText.slice(0, 20).trimEnd()}…`;
   }, [referenceText]);
 
-  useEffect(() => {
-    setReferenceExpanded(false);
-  }, [referenceText]);
-
   return (
     <section
       className={cn(
@@ -369,38 +445,31 @@ export function BranchColumn({
       )}
       style={style}
     >
-      <header className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm">
+      <header className="flex min-h-[56px] items-center gap-3 border-b border-border px-5 py-3 text-sm">
         {leadingActions ? (
           <div className="flex items-center gap-2">{leadingActions}</div>
         ) : null}
-        <h2 className="text-sm font-semibold text-foreground sm:text-[0.95rem]">
-          {branch.title || "Untitled Branch"}
-        </h2>
-        <span className="hidden h-4 w-px bg-border/70 sm:inline" aria-hidden="true" />
-        <span className="text-[0.65rem] uppercase tracking-[0.2em] text-muted-foreground sm:text-[0.7rem]">
-          {stateLabel} Branch
-        </span>
-        {referenceText ? (
-          <button
-            type="button"
-            onClick={() => setReferenceExpanded((expanded) => !expanded)}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            aria-expanded={referenceExpanded}
-            aria-label={referenceExpanded ? "Hide full reference" : "Show full reference"}
-          >
-            <ChevronDown
-              aria-hidden
-              className={cn(
-                "h-3 w-3 transition-transform",
-                referenceExpanded ? "rotate-180" : "rotate-0",
-              )}
-            />
-            <span className="font-semibold text-foreground">Reference:</span>
-            <span className="text-foreground/85">
-              “{referenceExpanded ? referenceText : truncatedReference}”
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-sm font-semibold text-foreground sm:text-[0.95rem]">
+            {branch.title || "Untitled Branch"}
+          </h2>
+          <span className="hidden h-4 w-px bg-border/70 sm:inline" aria-hidden="true" />
+          <span className="text-[0.65rem] uppercase tracking-[0.2em] text-muted-foreground sm:text-[0.7rem]">
+            {stateLabel} Branch
+          </span>
+          {referenceText ? (
+            <span
+              className="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+              title={`Reference: “${referenceText}”`}
+            >
+              <ChevronDown aria-hidden className="h-3 w-3 opacity-60" />
+              <span className="font-semibold text-foreground">Reference:</span>
+              <span className="truncate text-foreground/85">
+                “{truncatedReference}”
+              </span>
             </span>
-          </button>
-        ) : null}
+          ) : null}
+        </div>
         <span className="grow" aria-hidden="true" />
         {headerActions ? (
           <div className="flex items-center gap-2">{headerActions}</div>
@@ -416,7 +485,7 @@ export function BranchColumn({
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-5 py-6 pb-24"
       >
-        <ol className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+        <ol className="flex w-full flex-col gap-4">
           {visibleMessages.map((message) => (
             <li
               key={message.id}
@@ -424,6 +493,8 @@ export function BranchColumn({
                 "flex w-full",
                 message.role === "user" ? "justify-end" : "justify-start",
               )}
+              data-message-id={message.id}
+              data-message-role={message.role}
             >
               <MessageBubble
                 message={message}
@@ -492,7 +563,7 @@ function MessageBubble({
   }
 
   const highlightClass = message.hasBranchHighlight
-    ? "ring-2 ring-primary/40"
+    ? "ring-2 ring-primary"
     : "";
 
   if (isActive && message.role === "assistant") {
@@ -500,7 +571,7 @@ function MessageBubble({
     return (
       <div
         className={cn(
-          "w-full rounded-2xl bg-card px-4 py-4 shadow-sm transition",
+          "w-full border border-border bg-card px-4 py-4 transition",
           highlightClass,
           "[&_.prose]:mt-0",
         )}
@@ -529,11 +600,11 @@ function MessageBubble({
 
   return (
     <div
-      className={cn(
-        "w-full rounded-2xl bg-muted/40 px-4 py-4 text-sm shadow-sm transition",
-        highlightClass,
-        "[&_.prose]:mt-0",
-      )}
+        className={cn(
+          "w-full border border-border bg-secondary px-4 py-4 text-sm transition",
+          highlightClass,
+          "[&_.prose]:mt-0",
+        )}
     >
       <MarkdownContent
         className="prose prose-sm max-w-none text-foreground"
@@ -610,9 +681,9 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
 
       <div
         className={cn(
-          "rounded-2xl bg-primary/10 px-4 py-3 text-sm shadow-sm transition",
+          "border border-border bg-secondary px-4 py-3 text-sm transition",
           "text-foreground",
-          message.hasBranchHighlight ? "ring-2 ring-primary/50" : "",
+          message.hasBranchHighlight ? "ring-2 ring-primary" : "",
         )}
       >
         {isCollapsible ? (
@@ -664,13 +735,13 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
 function AttachmentCard({ attachment }: { attachment: MessageAttachment }) {
   const Icon = resolveAttachmentIcon(attachment.contentType);
   return (
-    <div className="flex min-w-[180px] items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary shadow-sm">
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+    <div className="flex min-w-[180px] items-center gap-3 border border-border bg-card px-3 py-2 text-sm text-foreground">
+      <span className="inline-flex h-10 w-10 items-center justify-center border border-border bg-background">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <div className="flex min-w-0 flex-col">
-        <span className="truncate font-semibold text-primary">{attachment.name}</span>
-        <span className="text-xs text-primary/70">
+        <span className="truncate font-semibold text-foreground">{attachment.name}</span>
+        <span className="text-xs text-muted-foreground">
           {attachment.contentType} · {formatBytes(attachment.size)}
         </span>
       </div>
