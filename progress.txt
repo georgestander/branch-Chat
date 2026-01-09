@@ -5,3 +5,4 @@
 2026-01-09 — Parent pane auto-opens when branch has a parent to preserve origin context. PRD: PRD-UI-004/005. Files: src/app/components/conversation/ConversationLayout.tsx.
 2026-01-09 — Created scoping-interviewer skill + packaged .skill. PRD: N/A. Decisions: workflow-based interview; scope.state.json single source; no extra resources. Files: /Users/georgestander/.codex/skills/scoping-interviewer/SKILL.md, /Users/georgestander/.codex/skills/scoping-interviewer.skill, progress.txt. Notes: packaging used local venv for pyyaml.
 2026-01-09 — Composer constrained to centered max width again (fixed full-width regression). PRD: PRD-UI-001/011. Files: src/app/components/conversation/BranchColumn.tsx.
+2026-01-09 — Composer bar rounded corners restored. PRD: PRD-UI-011. Files: src/app/components/conversation/ConversationComposer.tsx.

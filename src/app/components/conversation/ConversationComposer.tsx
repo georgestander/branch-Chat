@@ -894,7 +894,7 @@ export function ConversationComposer({
       ) : null}
       <form
         onSubmit={handleSubmit}
-        className="flex h-12 items-center gap-2 border border-foreground bg-black px-2 text-white"
+        className="flex h-12 items-center gap-2 rounded-full border border-foreground bg-black px-2 text-white"
       >
         <div className="flex items-center gap-2">
           <div className="relative" ref={toolMenuRef}>
