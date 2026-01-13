@@ -1,8 +1,9 @@
 "use server";
 
-import { Agent, type AgentInputItem, Runner, withTrace } from "@openai/agents";
+import { Agent, type AgentInputItem, Runner, withTrace, setDefaultOpenAIClient } from "@openai/agents";
 
 import type { ConversationSettings } from "@/lib/conversation";
+import type { OpenAIClient } from "@/lib/openai/client";
 
 interface StudyAgentMessage {
   role: "user" | "assistant";
@@ -16,6 +17,7 @@ interface StudyAndLearnAgentRunOptions {
   temperature: number;
   reasoningEffort?: ConversationSettings["reasoningEffort"];
   traceMetadata?: Record<string, unknown>;
+  openaiClient: OpenAIClient;
 }
 
 interface StudyAndLearnAgentResult {
@@ -47,6 +49,7 @@ export async function runStudyAndLearnAgent(
   options: StudyAndLearnAgentRunOptions,
 ): Promise<StudyAndLearnAgentResult> {
   return await withTrace("Study & Learn Agent", async () => {
+    setDefaultOpenAIClient(options.openaiClient);
     const combinedInstructions = [
       STUDY_AND_LEARN_BASE_PROMPT.trim(),
       options.instructions.trim(),

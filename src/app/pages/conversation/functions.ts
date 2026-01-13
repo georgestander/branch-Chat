@@ -716,6 +716,7 @@ export async function sendMessage(
         model: settings.model,
         temperature: settings.temperature,
         reasoningEffort: settings.reasoningEffort ?? undefined,
+        openaiClient: ctx.getOpenAIClient(),
         traceMetadata: {
           conversationId,
           branchId,
