@@ -795,6 +795,9 @@ export function ConversationComposer({
     if (isPending) {
       return;
     }
+    if (value.trim().length === 0) {
+      return;
+    }
     if (value.trim() !== pending.trim()) {
       autoSendPendingRef.current = null;
       return;
