@@ -152,6 +152,12 @@ export function ConversationComposer({
     "medium",
     "high",
   ];
+  const modelEmojis = {
+    fast: "🚀",
+    low: "🧠",
+    medium: "🧠🧠",
+    high: "🧠🧠🧠",
+  } as const;
   const effortLabels: Record<"low" | "medium" | "high", string> = {
     low: "Low",
     medium: "Medium",
@@ -162,6 +168,8 @@ export function ConversationComposer({
   const currentModelLabel = isReasoningModel
     ? `Reasoning · ${effortLabels[currentReasoningEffort]}`
     : "Fast chat";
+  const modelBadgeClassName =
+    "inline-flex w-10 shrink-0 items-center justify-end text-[10px] leading-none text-current";
   const BASE_TEXTAREA_HEIGHT = 20;
 
   useEffect(() => {
@@ -1150,9 +1158,9 @@ export function ConversationComposer({
                 )}
               >
                 <span className="font-medium">Fast chat</span>
-                {!isReasoningModel ? (
-                  <Check className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
-                ) : null}
+                <span className={modelBadgeClassName} aria-hidden="true">
+                  {modelEmojis.fast}
+                </span>
               </button>
 
               <div className="my-2 border-t border-border/60" aria-hidden="true" />
@@ -1178,9 +1186,9 @@ export function ConversationComposer({
                     )}
                   >
                     <span className="font-medium">{`Reasoning · ${effortLabels[option]}`}</span>
-                    {isSelected ? (
-                      <Check className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
-                    ) : null}
+                    <span className={modelBadgeClassName} aria-hidden="true">
+                      {modelEmojis[option]}
+                    </span>
                   </button>
                 );
               })}
