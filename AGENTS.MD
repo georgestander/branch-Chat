@@ -1,4 +1,4 @@
-# Project Agent Rules — Connexus Branching Chat
+# Project Agent Rules — Branching Chat
 
 ## North Star
 - Build a server-first, non-linear branching chat MVP with RedwoodSDK React Server Components (RSC). UI islands only orchestrate interactions; all branching, persistence, and OpenAI calls run on the server.
