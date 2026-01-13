@@ -24,14 +24,23 @@ export function ConversationEmptyLayout({
   const [isCreating, startTransition] = useTransition();
   const [draft, setDraft] = useState("");
 
-  const handleStartConversation = () => {
+  const handleStartConversation = (initialMessage?: string) => {
     if (isCreating) {
       return;
     }
     setCreationError(null);
     startTransition(async () => {
       try {
+        const trimmedMessage = initialMessage?.trim() ?? "";
         const result: CreateConversationResponse = await createConversation();
+        if (trimmedMessage && typeof window !== "undefined") {
+          try {
+            const storageKey = `connexus:bootstrap:${result.conversationId}`;
+            window.sessionStorage.setItem(storageKey, trimmedMessage);
+          } catch (storageError) {
+            console.warn("[EmptyLayout] unable to persist draft message", storageError);
+          }
+        }
         navigate(`/?conversationId=${encodeURIComponent(result.conversationId)}`);
       } catch (error) {
         console.error("[EmptyLayout] createConversation failed", error);
@@ -42,7 +51,7 @@ export function ConversationEmptyLayout({
 
   const handleDraftSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    handleStartConversation();
+    handleStartConversation(draft);
   };
 
   return (
@@ -50,10 +59,10 @@ export function ConversationEmptyLayout({
       <aside className="panel-surface panel-edge flex w-72 flex-col justify-between border-r border-foreground/15 bg-background/70 p-6 backdrop-blur">
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">Connexus</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Branch-Chat</h2>
             <button
               type="button"
-              onClick={handleStartConversation}
+              onClick={() => handleStartConversation()}
               disabled={isCreating}
               className={cn(
                 "inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background",
@@ -111,7 +120,7 @@ export function ConversationEmptyLayout({
       <main className="flex flex-1 items-center justify-center px-6">
         <div className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Start your first Connexus chat</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Start your first chat</h1>
             <p className="text-sm text-muted-foreground">
               Branch your ideas, compare approaches, and keep every exploration organized.
             </p>
@@ -131,13 +140,12 @@ export function ConversationEmptyLayout({
                 id="empty-composer"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder="Ask Connexus to explore a new direction…"
+                placeholder="Ask to explore a new direction…"
                 className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                 disabled={isCreating}
               />
               <button
                 type="submit"
-                onClick={handleStartConversation}
                 disabled={isCreating}
                 className={cn(
                   "inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90",
@@ -152,7 +160,7 @@ export function ConversationEmptyLayout({
             </div>
           </form>
           <p className="text-xs text-muted-foreground">
-            This creates a new chat; you can send the first message once it opens.
+            We'll start a new chat and send your first message right away.
           </p>
         </div>
       </main>

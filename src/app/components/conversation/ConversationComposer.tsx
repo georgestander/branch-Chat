@@ -105,6 +105,8 @@ interface ConversationComposerProps {
   conversationSettingsSaving: boolean;
   conversationSettingsError: string | null;
   onClearConversationSettingsError: () => void;
+  bootstrapMessage?: string | null;
+  onBootstrapConsumed?: () => void;
 }
 
 export function ConversationComposer({
@@ -118,6 +120,8 @@ export function ConversationComposer({
   conversationSettingsSaving,
   conversationSettingsError,
   onClearConversationSettingsError,
+  bootstrapMessage,
+  onBootstrapConsumed,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +143,8 @@ export function ConversationComposer({
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const autoSendRef = useRef(false);
+  const autoSendPendingRef = useRef<string | null>(null);
   const webSearchSupported = isWebSearchSupportedModel(conversationModel);
   const { notify } = useToast();
   const reasoningOptions: Array<"low" | "medium" | "high"> = [
@@ -187,6 +193,21 @@ export function ConversationComposer({
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  useEffect(() => {
+    if (!bootstrapMessage) {
+      return;
+    }
+    if (autoSendRef.current) {
+      return;
+    }
+    if (value.trim().length > 0) {
+      return;
+    }
+    autoSendRef.current = true;
+    autoSendPendingRef.current = bootstrapMessage;
+    setValue(bootstrapMessage);
+  }, [bootstrapMessage, value]);
 
   useEffect(() => {
     if (webSearchSupported) {
@@ -645,9 +666,9 @@ export function ConversationComposer({
   const canAddMoreAttachments = attachments.length < UPLOAD_MAX_ATTACHMENTS;
   const isSendDisabled = isPending || hasPendingAttachments || hasErroredAttachments;
 
-  const submitMessage = () => {
+  const submitMessage = (): boolean => {
     if (isPending) {
-      return;
+      return false;
     }
 
     if (
@@ -657,18 +678,18 @@ export function ConversationComposer({
       )
     ) {
       setError("Please wait for files to finish uploading before sending.");
-      return;
+      return false;
     }
 
     if (attachments.some((attachment) => attachment.status === "error")) {
       setError("Remove or retry failed uploads before sending.");
-      return;
+      return false;
     }
 
     const content = value.trim();
     if (!content) {
       setError("Enter a message before sending.");
-      return;
+      return false;
     }
 
     setError(null);
@@ -763,7 +784,29 @@ export function ConversationComposer({
         setError("We couldn't send that message. Please try again.");
       }
     });
+    return true;
   };
+
+  useEffect(() => {
+    const pending = autoSendPendingRef.current;
+    if (!pending) {
+      return;
+    }
+    if (isPending) {
+      return;
+    }
+    if (value.trim() !== pending.trim()) {
+      autoSendPendingRef.current = null;
+      return;
+    }
+    const didStart = submitMessage();
+    if (didStart) {
+      autoSendPendingRef.current = null;
+      if (onBootstrapConsumed) {
+        onBootstrapConsumed();
+      }
+    }
+  }, [isPending, onBootstrapConsumed, submitMessage, value]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

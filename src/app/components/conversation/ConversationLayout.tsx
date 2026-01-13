@@ -112,6 +112,7 @@ export function ConversationLayout({
       : PARENT_MIN_WIDTH_PX;
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreatingConversation, startCreateConversation] = useTransition();
+  const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialSidebarCollapsed) {
@@ -129,6 +130,28 @@ export function ConversationLayout({
       }
     }
   }, [activeBranchId, initialParentCollapsed, initialSidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const storageKey = `connexus:bootstrap:${conversationId}`;
+      const pending = window.sessionStorage.getItem(storageKey);
+      if (pending && pending.trim().length > 0) {
+        window.sessionStorage.removeItem(storageKey);
+        setBootstrapMessage(pending);
+      } else {
+        setBootstrapMessage(null);
+      }
+    } catch (storageError) {
+      console.warn(
+        "[ConversationLayout] unable to read bootstrap message",
+        storageError,
+      );
+      setBootstrapMessage(null);
+    }
+  }, [conversationId]);
 
   useEffect(() => {
     if (parentBranch && isParentCollapsed) {
@@ -181,6 +204,10 @@ export function ConversationLayout({
 
   const clearConversationSettingsError = useCallback(() => {
     setSettingsError(null);
+  }, []);
+
+  const handleBootstrapConsumed = useCallback(() => {
+    setBootstrapMessage(null);
   }, []);
 
   const startNewConversation = useCallback(() => {
@@ -453,6 +480,8 @@ export function ConversationLayout({
             messages={activeMessages}
             conversationId={conversationId}
             isActive
+            composerBootstrapMessage={bootstrapMessage}
+            onComposerBootstrapConsumed={handleBootstrapConsumed}
             className={cn(
               "min-h-0 flex-1 min-w-0",
               showParentColumn ? "" : "basis-full border-l-0",

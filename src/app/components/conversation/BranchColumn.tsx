@@ -58,6 +58,8 @@ interface BranchColumnProps {
   conversationSettingsSaving: boolean;
   conversationSettingsError: string | null;
   onClearConversationSettingsError: () => void;
+  composerBootstrapMessage?: string | null;
+  onComposerBootstrapConsumed?: () => void;
 }
 
 function AssistantPendingBubble() {
@@ -132,6 +134,8 @@ export function BranchColumn({
   conversationSettingsSaving,
   conversationSettingsError,
   onClearConversationSettingsError,
+  composerBootstrapMessage,
+  onComposerBootstrapConsumed,
 }: BranchColumnProps) {
   const scrollPaddingClass = isActive ? "pb-44" : "pb-10";
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -533,6 +537,8 @@ export function BranchColumn({
                 conversationSettingsSaving={conversationSettingsSaving}
                 conversationSettingsError={conversationSettingsError}
                 onClearConversationSettingsError={onClearConversationSettingsError}
+                bootstrapMessage={composerBootstrapMessage}
+                onBootstrapConsumed={onComposerBootstrapConsumed}
               />
             </div>
           </div>
