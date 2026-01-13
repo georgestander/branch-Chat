@@ -581,7 +581,7 @@ export function ConversationSidebar({
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            Connexus
+            Branch-Chat
           </h2>
           <div className="flex items-center gap-2">
             <button
