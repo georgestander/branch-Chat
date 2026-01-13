@@ -147,7 +147,7 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
   return (
     <div
       className={cn(
-        "w-full rounded-2xl bg-muted/40 px-4 py-4 text-sm shadow-sm transition",
+        "panel-surface panel-edge w-full rounded-2xl px-5 py-5 text-sm shadow-sm transition",
         className,
       )}
       aria-live="polite"

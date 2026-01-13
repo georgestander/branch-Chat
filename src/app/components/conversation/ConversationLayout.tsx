@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useCallback,
+  useMemo,
   useTransition,
   type CSSProperties,
 } from "react";
@@ -43,6 +44,11 @@ interface ConversationLayoutProps {
   conversations: ConversationDirectoryEntry[];
 }
 
+const PARENT_MIN_WIDTH_PX = 280;
+const ACTIVE_MIN_WIDTH_PX = 680;
+const MAX_PARENT_RATIO = 0.48;
+const RESIZER_WIDTH_PX = 6;
+
 export function ConversationLayout({
   conversation,
   tree,
@@ -74,9 +80,10 @@ export function ConversationLayout({
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   // Resizable split: store current and last-known parent width ratios
-  const [parentWidthRatio, setParentWidthRatio] = useState(0.5);
-  const lastParentWidthRatioRef = useRef<number>(0.5);
+  const [parentWidthRatio, setParentWidthRatio] = useState(0.34);
+  const lastParentWidthRatioRef = useRef<number>(0.34);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartRatioRef = useRef(0.5);
@@ -84,8 +91,25 @@ export function ConversationLayout({
   const containerWidthRef = useRef(0);
   const hasLoggedFirstDragRef = useRef(false);
   const showParentColumn = Boolean(parentBranch) && !isParentCollapsed;
+  const getActiveMinWidth = useCallback((width: number) => {
+    if (width <= 0) {
+      return ACTIVE_MIN_WIDTH_PX;
+    }
+    return Math.min(ACTIVE_MIN_WIDTH_PX, width);
+  }, []);
+  const resizerWidth = showParentColumn ? RESIZER_WIDTH_PX : 0;
+  const usableWidth = Math.max(0, containerWidth - resizerWidth);
+  const effectiveActiveMinWidth = getActiveMinWidth(usableWidth);
+  const hasMeasuredWidth = usableWidth > 0;
   const toggleButtonClass =
-    "inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+    "inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm backdrop-blur transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  const effectiveParentMinWidth =
+    usableWidth > 0
+      ? Math.min(
+          PARENT_MIN_WIDTH_PX,
+          Math.max(0, usableWidth - effectiveActiveMinWidth),
+        )
+      : PARENT_MIN_WIDTH_PX;
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreatingConversation, startCreateConversation] = useTransition();
 
@@ -180,6 +204,38 @@ export function ConversationLayout({
     });
   }, [isCreatingConversation]);
 
+  const clampRatioWithinBounds = useCallback(
+    (ratio: number, widthOverride?: number) => {
+      const container = containerRef.current;
+      const width = widthOverride ?? container?.clientWidth ?? 0;
+      const safeWidth = Math.max(width, 1);
+      const activeMinWidth = getActiveMinWidth(safeWidth);
+      const parentMinWidth = Math.min(
+        PARENT_MIN_WIDTH_PX,
+        Math.max(0, safeWidth - activeMinWidth),
+      );
+      const parentMinRatio = parentMinWidth / safeWidth;
+      const maxRatioFromActiveMin = Math.max(
+        0,
+        (safeWidth - activeMinWidth) / safeWidth,
+      );
+      const maxRatio = Math.min(MAX_PARENT_RATIO, maxRatioFromActiveMin);
+      const minRatio = Math.min(parentMinRatio, maxRatio);
+      return Math.min(maxRatio, Math.max(minRatio, ratio));
+    },
+    [getActiveMinWidth],
+  );
+
+  const { parentWidthPx, activeWidthPx } = useMemo(() => {
+    if (!hasMeasuredWidth) {
+      return { parentWidthPx: 0, activeWidthPx: 0 };
+    }
+    const clampedParentRatio = clampRatioWithinBounds(parentWidthRatio, usableWidth);
+    const parentWidthPx = Math.round(clampedParentRatio * usableWidth);
+    const activeWidthPx = Math.max(0, usableWidth - parentWidthPx);
+    return { parentWidthPx, activeWidthPx };
+  }, [clampRatioWithinBounds, hasMeasuredWidth, parentWidthRatio, usableWidth]);
+
   // When collapsing/expanding the parent column, snapshot/restore the ratio
   useEffect(() => {
     if (!showParentColumn) {
@@ -187,35 +243,44 @@ export function ConversationLayout({
       lastParentWidthRatioRef.current = parentWidthRatio;
     } else {
       // Restore the last ratio when becoming visible
-      setParentWidthRatio((r) => r ?? lastParentWidthRatioRef.current);
+      setParentWidthRatio(
+        clampRatioWithinBounds(lastParentWidthRatioRef.current, usableWidth),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showParentColumn]);
+  }, [clampRatioWithinBounds, showParentColumn, usableWidth]);
 
-  const clampRatioWithinBounds = useCallback((ratio: number) => {
+  useEffect(() => {
     const container = containerRef.current;
-    if (!container) return Math.min(0.75, Math.max(0.25, ratio));
-    const width = container.clientWidth;
-    const parentMin = 360; // px
-    const childMin = 520; // px
-    const minRatio = Math.max(parentMin / Math.max(width, 1), 0);
-    const maxRatio = Math.min(1 - childMin / Math.max(width, 1), 1);
-    // Ensure sensible defaults when extremely small widths
-    const boundedMin = Math.min(minRatio, 0.75);
-    const boundedMax = Math.max(maxRatio, 0.25);
-    return Math.min(boundedMax, Math.max(boundedMin, ratio));
-  }, []);
+    if (!container || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const width = entry?.contentRect.width ?? container.clientWidth;
+      setContainerWidth(width);
+      const usable = Math.max(0, width - (showParentColumn ? RESIZER_WIDTH_PX : 0));
+      setParentWidthRatio((current) => clampRatioWithinBounds(current, usable));
+    });
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+    };
+  }, [clampRatioWithinBounds, showParentColumn]);
 
   const handlePointerMove = useCallback((ev: PointerEvent) => {
     if (!isDraggingRef.current) return;
     const left = containerLeftRef.current;
-    const width = containerWidthRef.current;
+    const width = Math.max(
+      1,
+      containerWidthRef.current - (showParentColumn ? RESIZER_WIDTH_PX : 0),
+    );
     if (width <= 0) return;
     const relativeX = ev.clientX - left;
     const rawRatio = relativeX / width;
-    const nextRatio = clampRatioWithinBounds(rawRatio);
+    const nextRatio = clampRatioWithinBounds(rawRatio, width);
     setParentWidthRatio(nextRatio);
-  }, [clampRatioWithinBounds]);
+  }, [clampRatioWithinBounds, showParentColumn]);
 
   const endDrag = useCallback(() => {
     if (!isDraggingRef.current) return;
@@ -286,7 +351,7 @@ export function ConversationLayout({
 
   return (
     <ToastProvider>
-    <div className="relative flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
+    <div className="app-shell relative flex h-screen min-h-screen w-full overflow-hidden text-foreground">
       {creationError ? (
         <p className="sr-only" role="status" aria-live="polite">
           {creationError}
@@ -319,7 +384,10 @@ export function ConversationLayout({
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={containerRef}
+          className="flex min-h-0 flex-1 overflow-hidden"
+        >
           {showParentColumn && parentBranch ? (
             <BranchColumn
               key={parentBranch.id}
@@ -327,7 +395,7 @@ export function ConversationLayout({
               messages={parentMessages}
               conversationId={conversationId}
               isActive={false}
-              className="min-h-0 w-full shrink-0 bg-background"
+              className="min-h-0 bg-background"
               conversationModel={settingsModel}
               reasoningEffort={settingsEffort}
               onConversationSettingsChange={handleConversationSettingsChange}
@@ -336,11 +404,10 @@ export function ConversationLayout({
               onClearConversationSettingsError={clearConversationSettingsError}
               highlightedBranchId={activeBranch.id}
               // Apply a fixed flex-basis driven by ratio
-              // Keep a reasonable maxWidth via inline style for determinism
               style={{
-                flexBasis: `${Math.round(parentWidthRatio * 1000) / 10}%`,
-                minWidth: 360,
-                maxWidth: "75%",
+                width: hasMeasuredWidth ? parentWidthPx : undefined,
+                minWidth: effectiveParentMinWidth,
+                flex: hasMeasuredWidth ? "0 0 auto" : undefined,
               } as CSSProperties}
               leadingActions={
                 <button
@@ -387,7 +454,7 @@ export function ConversationLayout({
             conversationId={conversationId}
             isActive
             className={cn(
-              "min-h-0 flex-1",
+              "min-h-0 flex-1 min-w-0",
               showParentColumn ? "" : "basis-full border-l-0",
             )}
             conversationModel={settingsModel}
@@ -399,9 +466,11 @@ export function ConversationLayout({
             style={
               showParentColumn
                 ? ({
-                    // Let it grow to take remaining space, but enforce a min width
-                    minWidth: 520,
-                    flexBasis: `calc(100% - ${Math.round(parentWidthRatio * 1000) / 10}%)`,
+                    // Ensure active always fits viewport; parent yields space.
+                    width: hasMeasuredWidth ? activeWidthPx : undefined,
+                    minWidth: 0,
+                    maxWidth: "100%",
+                    flex: hasMeasuredWidth ? "0 0 auto" : undefined,
                   } as CSSProperties)
                 : undefined
             }

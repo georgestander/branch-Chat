@@ -574,20 +574,20 @@ export function ConversationSidebar({
   return (
     <aside
       className={cn(
-        "flex h-full w-72 flex-col border-r border-border bg-muted/30",
+        "panel-surface panel-edge flex h-full w-72 flex-col border-r border-foreground/15 bg-background/70 backdrop-blur",
         className,
       )}
     >
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
             Connexus
           </h2>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onToggleSidebar}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-pressed={!isSidebarCollapsed}
               aria-expanded={!isSidebarCollapsed}
               title={
@@ -607,7 +607,7 @@ export function ConversationSidebar({
               type="button"
               onClick={startNewConversation}
               disabled={isCreating}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-70"
               aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
             >
               <SquarePen className="h-4 w-4" aria-hidden="true" />
@@ -940,10 +940,10 @@ function ConversationCard({
   return (
     <div
       className={cn(
-        "interactive-target flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm transition",
+        "interactive-target flex flex-col gap-2 rounded-xl border px-3 py-2 text-sm shadow-sm transition",
         isActive
-          ? "state-selected border-transparent text-primary-foreground shadow-md hover:bg-[color-mix(in_oklab,var(--primary)_28%,transparent)]"
-          : "border-border/70 bg-card text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_15%,transparent)]",
+          ? "border-foreground/40 bg-foreground text-background shadow-lg hover:bg-foreground/90"
+          : "border-foreground/15 bg-background/80 text-foreground hover:bg-background",
       )}
       data-active={isActive}
     >
@@ -956,7 +956,7 @@ function ConversationCard({
           className={cn(
             "flex min-w-0 items-center gap-2 text-left transition",
             isActive
-              ? "text-primary-foreground"
+              ? "text-background"
               : expanded
                 ? "text-foreground"
                 : "text-foreground/90",
@@ -967,7 +967,7 @@ function ConversationCard({
             <ChevronDown
               className={cn(
                 "h-4 w-4 shrink-0",
-                isActive ? "text-primary-foreground" : "text-muted-foreground",
+                isActive ? "text-background" : "text-muted-foreground",
               )}
               aria-hidden="true"
             />
@@ -975,7 +975,7 @@ function ConversationCard({
             <ChevronRight
               className={cn(
                 "h-4 w-4 shrink-0",
-                isActive ? "text-primary-foreground" : "text-muted-foreground",
+                isActive ? "text-background" : "text-muted-foreground",
               )}
               aria-hidden="true"
             />
@@ -988,7 +988,7 @@ function ConversationCard({
           <span
             className={cn(
               "shrink-0 text-xs text-muted-foreground",
-              isActive && "text-primary-foreground/80",
+              isActive && "text-background/70",
             )}
           >
             {branchCount} branch{branchCount === 1 ? "" : "es"}
@@ -1000,8 +1000,8 @@ function ConversationCard({
               type="button"
               onClick={() => setIsMenuOpen((value) => !value)}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                isActive && "text-primary-foreground/80 hover:text-primary-foreground",
+                "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-foreground/20 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                isActive && "text-background/70 hover:text-background",
                 (archiving || deleting) && "cursor-wait",
               )}
               aria-haspopup="menu"
@@ -1015,7 +1015,7 @@ function ConversationCard({
               <div
                 ref={menuRef}
                 role="menu"
-                className="absolute right-0 top-full z-50 mt-2 w-48 rounded-md border border-border bg-popover p-2 text-foreground shadow-xl"
+                className="absolute right-0 top-full z-50 mt-2 w-48 rounded-md border border-foreground/15 bg-popover p-2 text-foreground shadow-xl"
               >
                 <button
                   type="button"
@@ -1212,11 +1212,11 @@ function BranchTree({
           "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition",
           isConversationSelected
             ? isActive
-              ? "bg-primary/25 text-primary-foreground shadow-sm hover:bg-[color-mix(in_oklab,var(--primary)_35%,transparent)]"
-              : "text-primary-foreground/85 hover:bg-[color-mix(in_oklab,var(--primary)_22%,transparent)]"
+              ? "bg-background/10 text-background shadow-sm hover:bg-background/15"
+              : "text-background/85 hover:bg-background/10"
             : isActive
-              ? "hover:bg-primary/15 bg-primary/10 font-semibold text-primary shadow-sm"
-              : "text-foreground hover:bg-muted/80",
+              ? "bg-primary/10 font-semibold text-primary shadow-sm hover:bg-primary/15"
+              : "text-foreground hover:bg-background/60",
         )}
         data-active={isActive}
         aria-current={isActive ? "page" : undefined}
@@ -1228,8 +1228,8 @@ function BranchTree({
               "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
               isConversationSelected
                 ? isActive
-                  ? "border-primary-foreground bg-primary-foreground"
-                  : "border-primary-foreground/60 bg-primary/40 group-hover:border-primary-foreground"
+                  ? "border-background bg-background"
+                  : "border-background/60 bg-background/40 group-hover:border-background"
                 : isActive
                   ? "border-primary bg-primary"
                   : "bg-muted group-hover:border-foreground/40",
@@ -1239,7 +1239,7 @@ function BranchTree({
           <span
             className={cn(
               "truncate",
-              isConversationSelected ? "text-primary-foreground" : undefined,
+              isConversationSelected ? "text-background" : undefined,
             )}
             title={tree.branch.title?.trim() || UNTITLED_BRANCH}
           >
@@ -1251,7 +1251,7 @@ function BranchTree({
             className={cn(
               "text-[10px] uppercase tracking-[0.2em]",
               isConversationSelected
-                ? "text-primary-foreground/70"
+                ? "text-background/70"
                 : "text-muted-foreground",
             )}
           >
@@ -1266,8 +1266,8 @@ function BranchTree({
             "border-l",
             isConversationSelected
               ? containsActiveDescendant
-                ? "border-primary-foreground/50"
-                : "border-primary-foreground/30"
+                ? "border-background/50"
+                : "border-background/30"
               : containsActiveDescendant
                 ? "border-primary/40"
                 : "border-border/60",

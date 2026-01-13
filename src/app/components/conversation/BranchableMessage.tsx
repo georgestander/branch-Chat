@@ -137,7 +137,7 @@ export function BranchableMessage({
             )
           }
           disabled={isPending}
-          className="interactive-target inline-flex items-center gap-1 rounded-md border border-border/80 bg-background/95 px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55"
+          className="interactive-target inline-flex items-center gap-1 rounded-md border border-foreground/15 bg-background/90 px-3 py-1 text-xs font-medium text-foreground hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55"
         >
           {isPending ? "Creating…" : "Branch Message"}
         </button>
@@ -181,7 +181,7 @@ function SelectionPopover({
   return (
     <div
       style={style}
-      className="rounded-xl border border-border/80 bg-popover/95 px-3 py-2 shadow-xl backdrop-blur-[2px]"
+      className="rounded-xl border border-foreground/15 bg-popover/95 px-3 py-2 shadow-xl backdrop-blur-[2px]"
     >
       <div className="flex flex-col gap-2">
         <span className="max-w-xs text-xs text-muted-foreground">

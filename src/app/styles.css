@@ -43,41 +43,42 @@
 }
 
 :root {
-  --radius: 0.15rem;
-  --font-sans: "Newsreader", "Iowan Old Style", "Times New Roman", serif;
+  --radius: 0.4rem;
+  --font-sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Cormorant Garamond", "Garamond", "Georgia", serif;
   --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --card: #ffffff;
-  --card-foreground: #0a0a0a;
-  --popover: #ffffff;
-  --popover-foreground: #0a0a0a;
-  --primary: #1d4ed8;
-  --primary-foreground: #ffffff;
-  --secondary: #f2f2f2;
-  --secondary-foreground: #0a0a0a;
-  --muted: #f5f5f5;
-  --muted-foreground: #3f3f3f;
-  --accent: #1d4ed8;
-  --accent-foreground: #ffffff;
-  --destructive: #7a0a0a;
-  --destructive-foreground: #ffffff;
-  --border: #1a1a1a;
-  --input: #1a1a1a;
-  --ring: #1d4ed8;
-  --chart-1: #1d4ed8;
-  --chart-2: #1d4ed8;
-  --chart-3: #1d4ed8;
-  --chart-4: #1d4ed8;
-  --chart-5: #1d4ed8;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #0a0a0a;
-  --sidebar-primary: #0a0a0a;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1d4ed8;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1a1a1a;
-  --sidebar-ring: #1d4ed8;
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(0.99 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(0.99 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.55 0.2 255);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.22 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.45 0 0);
+  --accent: oklch(0.62 0.18 35);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.78 0 0);
+  --input: oklch(0.7 0 0);
+  --ring: oklch(0.55 0.2 255);
+  --chart-1: oklch(0.55 0.2 255);
+  --chart-2: oklch(0.62 0.18 35);
+  --chart-3: oklch(0.55 0 0);
+  --chart-4: oklch(0.3 0 0);
+  --chart-5: oklch(0.75 0 0);
+  --sidebar: oklch(0.98 0 0);
+  --sidebar-foreground: oklch(0.18 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.55 0.2 255);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(0.78 0 0);
+  --sidebar-ring: oklch(0.55 0.2 255);
 }
 
 .dark {
@@ -122,11 +123,24 @@
   body {
     font-family: var(--font-sans);
     font-size: 0.95rem;
-    line-height: 1.45;
-    letter-spacing: 0.012em;
+    line-height: 1.55;
+    letter-spacing: 0.01em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(900px 420px at 15% -5%, color-mix(in oklab, var(--primary) 18%, transparent), transparent 70%),
+      radial-gradient(700px 340px at 80% -10%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 70%),
+      linear-gradient(180deg, color-mix(in oklab, var(--background) 92%, white), var(--background));
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
   }
   code,
   kbd,
@@ -140,6 +154,49 @@
 }
 
 @layer components {
+  .app-shell {
+    background-image:
+      radial-gradient(1000px 380px at 12% -8%, color-mix(in oklab, var(--primary) 20%, transparent), transparent 70%),
+      radial-gradient(900px 360px at 85% -12%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 70%),
+      repeating-linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--foreground) 6%, transparent) 0,
+        color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+        transparent 1px,
+        transparent 32px
+      );
+    background-color: var(--background);
+  }
+
+  .panel-surface {
+    background: color-mix(in oklab, var(--card) 92%, white);
+    box-shadow:
+      0 1px 0 color-mix(in oklab, var(--foreground) 10%, transparent),
+      0 10px 30px color-mix(in oklab, var(--foreground) 12%, transparent);
+  }
+
+  .panel-edge {
+    border: 1px solid color-mix(in oklab, var(--foreground) 18%, transparent);
+  }
+
+  .floating-composer {
+    background: color-mix(in oklab, var(--foreground) 92%, transparent);
+    color: var(--background);
+    box-shadow:
+      0 18px 50px color-mix(in oklab, var(--foreground) 18%, transparent),
+      0 2px 0 color-mix(in oklab, var(--foreground) 40%, transparent);
+  }
+
+  .floating-composer input,
+  .floating-composer textarea,
+  .floating-composer button {
+    color: inherit;
+  }
+
+  .halo-border {
+    border: 1px solid color-mix(in oklab, var(--foreground) 25%, transparent);
+  }
+
   .prose {
     --tw-prose-body: var(--foreground);
     --tw-prose-headings: var(--foreground);
@@ -173,7 +230,7 @@
   }
 
   .branch-highlight {
-    @apply border-b-2 border-primary bg-primary/15 px-0.5 font-semibold text-foreground;
+    @apply border-b-2 border-primary bg-primary/10 px-0.5 font-semibold text-foreground;
     cursor: pointer;
   }
 
@@ -214,7 +271,7 @@
     align-items: center;
     justify-content: center;
     cursor: col-resize;
-    background-color: var(--foreground);
+    background-color: color-mix(in oklab, var(--foreground) 70%, transparent);
     transition: background-color 0.15s ease-out;
   }
 
@@ -224,7 +281,7 @@
     width: 2px;
     height: 2.75rem;
     border-radius: 9999px;
-    background-color: color-mix(in oklab, var(--background) 70%, transparent);
+    background-color: color-mix(in oklab, var(--background) 85%, transparent);
     transition: background-color 0.15s ease-out;
   }
 
@@ -233,7 +290,7 @@
   }
 
   .pane-resizer:hover::before {
-    background-color: color-mix(in oklab, var(--background) 85%, transparent);
+    background-color: color-mix(in oklab, var(--background) 92%, transparent);
   }
 
   .pane-resizer:active {

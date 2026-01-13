@@ -63,7 +63,7 @@ interface BranchColumnProps {
 function AssistantPendingBubble() {
   return (
     <div
-      className="w-full rounded-2xl bg-muted/30 px-4 py-4 shadow-sm ring-1 ring-border/30"
+      className="panel-surface panel-edge w-full rounded-2xl px-5 py-5 shadow-sm"
       aria-live="polite"
     >
       <div className="flex flex-col gap-2">
@@ -133,6 +133,7 @@ export function BranchColumn({
   conversationSettingsError,
   onClearConversationSettingsError,
 }: BranchColumnProps) {
+  const scrollPaddingClass = isActive ? "pb-44" : "pb-10";
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const lastHighlightScrollRef = useRef<string | null>(null);
@@ -439,22 +440,22 @@ export function BranchColumn({
   return (
     <section
       className={cn(
-        "flex min-h-0 flex-1 flex-col bg-background",
-        withLeftBorder ? "border-l border-border" : "",
+        "relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent",
+        withLeftBorder ? "border-l border-foreground/15" : "",
         className,
       )}
       style={style}
     >
-      <header className="flex min-h-[56px] items-center gap-3 border-b border-border px-5 py-3 text-sm">
+      <header className="flex min-h-[64px] items-center gap-3 border-b border-foreground/15 bg-background/70 px-6 py-4 text-sm backdrop-blur">
         {leadingActions ? (
           <div className="flex items-center gap-2">{leadingActions}</div>
         ) : null}
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-sm font-semibold text-foreground sm:text-[0.95rem]">
+          <h2 className="truncate text-base font-semibold text-foreground sm:text-[1.05rem]">
             {branch.title || "Untitled Branch"}
           </h2>
-          <span className="hidden h-4 w-px bg-border/70 sm:inline" aria-hidden="true" />
-          <span className="text-[0.65rem] uppercase tracking-[0.2em] text-muted-foreground sm:text-[0.7rem]">
+          <span className="hidden h-4 w-px bg-foreground/15 sm:inline" aria-hidden="true" />
+          <span className="text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
             {stateLabel} Branch
           </span>
           {referenceText ? (
@@ -475,7 +476,7 @@ export function BranchColumn({
           <div className="flex items-center gap-2">{headerActions}</div>
         ) : null}
         <span
-          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? "border-primary/40 bg-primary/15 text-primary" : "border-foreground/15 bg-background/70 text-muted-foreground"}`}
         >
           {isActive ? "Editing" : "View Only"}
         </span>
@@ -483,7 +484,7 @@ export function BranchColumn({
 
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-5 py-6 pb-24"
+        className={cn("flex-1 overflow-y-auto px-6 py-8", scrollPaddingClass)}
       >
         <ol className="flex w-full flex-col gap-4">
           {visibleMessages.map((message) => (
@@ -517,28 +518,26 @@ export function BranchColumn({
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
 
-      <div className="relative border-t border-border bg-black py-2 text-white">
-        <div className="relative z-10 mx-auto w-full max-w-3xl">
-          {isActive ? (
-            <ConversationComposer
-              branchId={branch.id}
-              conversationId={conversationId}
-              autoFocus
-              className=""
-              conversationModel={conversationModel}
-              reasoningEffort={reasoningEffort}
-              onConversationSettingsChange={onConversationSettingsChange}
-              conversationSettingsSaving={conversationSettingsSaving}
-              conversationSettingsError={conversationSettingsError}
-              onClearConversationSettingsError={onClearConversationSettingsError}
-            />
-          ) : (
-            <div className="rounded-lg  px-1 py-1 text-sm text-muted-foreground">
-              Switch to this branch to continue the conversation.
+      {isActive ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
+          <div className="pointer-events-auto w-full max-w-[640px] px-4 sm:px-5">
+            <div className="floating-composer halo-border rounded-[28px] px-4 py-3">
+              <ConversationComposer
+                branchId={branch.id}
+                conversationId={conversationId}
+                autoFocus
+                className=""
+                conversationModel={conversationModel}
+                reasoningEffort={reasoningEffort}
+                onConversationSettingsChange={onConversationSettingsChange}
+                conversationSettingsSaving={conversationSettingsSaving}
+                conversationSettingsError={conversationSettingsError}
+                onClearConversationSettingsError={onClearConversationSettingsError}
+              />
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }
@@ -567,7 +566,7 @@ function MessageBubble({
     return (
       <div
         className={cn(
-          "w-full border border-border bg-card px-4 py-4 transition",
+          "panel-surface panel-edge w-full rounded-2xl px-5 py-5 transition",
           highlightClass,
           "[&_.prose]:mt-0",
         )}
@@ -596,11 +595,11 @@ function MessageBubble({
 
   return (
     <div
-        className={cn(
-          "w-full border border-border bg-secondary px-4 py-4 text-sm transition",
-          highlightClass,
-          "[&_.prose]:mt-0",
-        )}
+      className={cn(
+        "panel-surface panel-edge w-full rounded-2xl px-5 py-5 text-sm transition",
+        highlightClass,
+        "[&_.prose]:mt-0",
+      )}
     >
       <MarkdownContent
         className="prose prose-sm max-w-none text-foreground"
@@ -677,8 +676,7 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
 
       <div
         className={cn(
-          "border border-border bg-secondary px-4 py-3 text-sm transition",
-          "text-foreground",
+          "panel-edge w-full rounded-2xl bg-primary/10 px-4 py-3 text-sm text-foreground transition",
           message.hasBranchHighlight ? "ring-2 ring-primary" : "",
         )}
       >
@@ -719,7 +717,7 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
           {isCollapsible && !isExpanded ? (
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/10 to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/15 to-transparent"
             />
           ) : null}
         </div>
@@ -731,8 +729,8 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
 function AttachmentCard({ attachment }: { attachment: MessageAttachment }) {
   const Icon = resolveAttachmentIcon(attachment.contentType);
   return (
-    <div className="flex min-w-[180px] items-center gap-3 border border-border bg-card px-3 py-2 text-sm text-foreground">
-      <span className="inline-flex h-10 w-10 items-center justify-center border border-border bg-background">
+    <div className="panel-edge flex min-w-[180px] items-center gap-3 rounded-xl bg-background/80 px-3 py-2 text-sm text-foreground">
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-foreground/20 bg-background">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <div className="flex min-w-0 flex-col">

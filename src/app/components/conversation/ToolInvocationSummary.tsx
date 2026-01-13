@@ -70,7 +70,7 @@ export function ToolInvocationSummary({
       return (
         <div
           className={cn(
-            "mt-4 rounded-lg border border-border bg-muted/30 p-4 text-sm text-destructive",
+            "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-destructive",
             className,
           )}
         >
@@ -82,7 +82,7 @@ export function ToolInvocationSummary({
       return (
         <div
           className={cn(
-            "mt-4 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground",
+            "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-muted-foreground",
             className,
           )}
         >
@@ -97,7 +97,7 @@ export function ToolInvocationSummary({
     return (
       <div
         className={cn(
-          "mt-4 border border-border bg-muted/30 p-4 text-sm text-muted-foreground",
+          "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-muted-foreground",
           className,
         )}
       >
@@ -109,7 +109,7 @@ export function ToolInvocationSummary({
   return (
     <div
       className={cn(
-        "mt-4 border border-border bg-muted/30 p-4",
+        "panel-surface panel-edge mt-4 rounded-xl p-4",
         className,
       )}
     >
@@ -137,7 +137,7 @@ export function ToolInvocationSummary({
                 target="_blank"
                 rel="noopener noreferrer"
                 title={externalUrl}
-                className="inline-flex items-center gap-2 border border-border bg-card px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="inline-flex items-center gap-2 rounded-full border border-foreground/15 bg-background px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <ExternalLink
                   className="h-3.5 w-3.5 text-primary"
@@ -151,7 +151,7 @@ export function ToolInvocationSummary({
                 ) : null}
               </a>
 
-              <div className="pointer-events-none absolute left-0 top-full z-50 mt-3 hidden w-80 border border-border bg-popover p-4 text-left shadow-xl transition group-hover:pointer-events-auto group-hover:block group-focus-within:block">
+              <div className="pointer-events-none absolute left-0 top-full z-50 mt-3 hidden w-80 rounded-xl border border-foreground/15 bg-popover p-4 text-left shadow-xl transition group-hover:pointer-events-auto group-hover:block group-focus-within:block">
                 <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
                   <span>Source {index + 1}</span>
                   {result.siteName ? (

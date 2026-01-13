@@ -22,6 +22,7 @@ export function ConversationEmptyLayout({
 }: ConversationEmptyLayoutProps) {
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreating, startTransition] = useTransition();
+  const [draft, setDraft] = useState("");
 
   const handleStartConversation = () => {
     if (isCreating) {
@@ -39,18 +40,23 @@ export function ConversationEmptyLayout({
     });
   };
 
+  const handleDraftSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    handleStartConversation();
+  };
+
   return (
-    <div className="flex h-screen min-h-screen w-full overflow-hidden bg-background text-foreground">
-      <aside className="flex w-72 flex-col justify-between border-r border-border bg-muted/20 p-6">
+    <div className="app-shell flex h-screen min-h-screen w-full overflow-hidden text-foreground">
+      <aside className="panel-surface panel-edge flex w-72 flex-col justify-between border-r border-foreground/15 bg-background/70 p-6 backdrop-blur">
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base font-semibold tracking-tight">Connexus</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Connexus</h2>
             <button
               type="button"
               onClick={handleStartConversation}
               disabled={isCreating}
               className={cn(
-                "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm transition hover:bg-muted",
+                "inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background",
                 isCreating ? "cursor-not-allowed opacity-70" : "",
               )}
               aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
@@ -88,8 +94,13 @@ export function ConversationEmptyLayout({
             </h3>
             <ul className="space-y-1 text-sm text-muted-foreground">
               {conversations.slice(0, 6).map((entry) => (
-                <li key={entry.id} className="truncate opacity-80">
-                  {entry.title || entry.id}
+                <li key={entry.id}>
+                  <a
+                    href={`/?conversationId=${encodeURIComponent(entry.id)}`}
+                    className="block truncate rounded-md px-2 py-1 transition hover:bg-background hover:text-foreground"
+                  >
+                    {entry.title || entry.id}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -98,36 +109,53 @@ export function ConversationEmptyLayout({
       </aside>
 
       <main className="flex flex-1 items-center justify-center px-6">
-        <div className="max-w-xl text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Start your first Connexus chat</h1>
-          <p className="mt-4 text-sm text-muted-foreground">
-            Branch your ideas, compare approaches, and keep every exploration organized. Create a
-            new chat to begin.
-          </p>
-          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-            <button
-              type="button"
-              onClick={handleStartConversation}
-              disabled={isCreating}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90",
-                isCreating ? "cursor-not-allowed opacity-70" : "",
-              )}
-            >
-              {isCreating ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <SquarePen className="h-4 w-4" aria-hidden="true" />
-              )}
-              <span>{isCreating ? "Creating…" : "New chat"}</span>
-            </button>
-            <p className="text-xs text-muted-foreground">
-              Create chats only when you need them. Nothing happens until you click “New chat”.
+        <div className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight">Start your first Connexus chat</h1>
+            <p className="text-sm text-muted-foreground">
+              Branch your ideas, compare approaches, and keep every exploration organized.
             </p>
           </div>
+          <form
+            onSubmit={handleDraftSubmit}
+            className="panel-surface panel-edge w-full rounded-[28px] px-4 py-3"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-foreground/20 bg-background text-foreground">
+                <SquarePen className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <label className="sr-only" htmlFor="empty-composer">
+                Start a new chat
+              </label>
+              <input
+                id="empty-composer"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Ask Connexus to explore a new direction…"
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                disabled={isCreating}
+              />
+              <button
+                type="submit"
+                onClick={handleStartConversation}
+                disabled={isCreating}
+                className={cn(
+                  "inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90",
+                  isCreating ? "cursor-not-allowed opacity-70" : "",
+                )}
+              >
+                {isCreating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : null}
+                <span>{isCreating ? "Creating…" : "Start chat"}</span>
+              </button>
+            </div>
+          </form>
+          <p className="text-xs text-muted-foreground">
+            This creates a new chat; you can send the first message once it opens.
+          </p>
         </div>
       </main>
     </div>
   );
 }
-
