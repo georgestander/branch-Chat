@@ -11,13 +11,20 @@ interface StreamingBubbleProps {
   className?: string;
 }
 
-export function StreamingBubble({ streamId, conversationId, branchId, className }: StreamingBubbleProps) {
+export function StreamingBubble({
+  streamId,
+  conversationId,
+  branchId,
+  className,
+}: StreamingBubbleProps) {
   const [content, setContent] = useState("");
-  const [status, setStatus] = useState<"connecting" | "streaming" | "complete" | "error">(
-    "connecting",
-  );
+  const [status, setStatus] = useState<
+    "connecting" | "streaming" | "complete" | "error"
+  >("connecting");
   const sourceRef = useRef<EventSource | null>(null);
   const [html, setHtml] = useState("");
+  const [reasoningSummary, setReasoningSummary] = useState("");
+  const [toolProgressLabel, setToolProgressLabel] = useState<string | null>(null);
 
   function escapeHtml(value: string): string {
     return value
@@ -39,7 +46,10 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
     // 4) Italic (*text*) — avoid conflict with bold already handled
     text = text.replace(/(^|\W)\*([^\*]+)\*(?=\W|$)/g, "$1<em>$2</em>");
     // 5) Links [text](url)
-    text = text.replace(/\[([^\]]+)\]\((https?:[^\)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1<\/a>');
+    text = text.replace(
+      /\[([^\]]+)\]\((https?:[^\)\s]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1<\/a>',
+    );
 
     // 6) Lists: convert consecutive lines starting with - or * into <ul><li>
     const lines = text.split(/\n/);
@@ -70,7 +80,9 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
 
     // 7) Wrap double-newlines into paragraphs lightly by splitting on <br/><br/>
     const joined = out.join("\n");
-    const paragraphs = joined.split(/(?:<br\/>\s*){2,}/i).map((p) => `<p>${p}</p>`);
+    const paragraphs = joined
+      .split(/(?:<br\/>\s*){2,}/i)
+      .map((p) => `<p>${p}</p>`);
     return paragraphs.join("\n");
   }
 
@@ -87,6 +99,8 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
     const es = new EventSource(url, { withCredentials: false });
     sourceRef.current = es;
     setStatus("connecting");
+    setReasoningSummary("");
+    setToolProgressLabel(null);
 
     const onStart = () => setStatus("streaming");
     const onDelta = (event: MessageEvent) => {
@@ -96,7 +110,43 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
           setContent(data.content);
           setStatus("streaming");
           setHtml(renderMarkdownClient(data.content));
+          return;
         }
+        if (typeof data?.delta === "string" && data.delta.length > 0) {
+          setContent((previous) => {
+            const next = `${previous}${data.delta}`;
+            setHtml(renderMarkdownClient(next));
+            return next;
+          });
+          setStatus("streaming");
+        }
+      } catch {
+        // ignore
+      }
+    };
+    const onReasoningSummary = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (typeof data?.content === "string") {
+          setReasoningSummary(data.content);
+          return;
+        }
+        if (typeof data?.delta === "string" && data.delta.length > 0) {
+          setReasoningSummary((previous) => `${previous}${data.delta}`);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    const onToolProgress = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        const toolLabel = data?.tool === "web_search" ? "Web search" : "Tool";
+        const nextStatus =
+          typeof data?.status === "string"
+            ? data.status.replaceAll("_", " ")
+            : "running";
+        setToolProgressLabel(`${toolLabel}: ${nextStatus}`);
       } catch {
         // ignore
       }
@@ -107,6 +157,9 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
         if (typeof data?.content === "string") {
           setContent(data.content);
           setHtml(renderMarkdownClient(data.content));
+        }
+        if (typeof data?.reasoningSummary === "string") {
+          setReasoningSummary(data.reasoningSummary);
         }
       } catch {}
       setStatus("complete");
@@ -125,6 +178,8 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
 
     es.addEventListener("start", onStart as EventListener);
     es.addEventListener("delta", onDelta as EventListener);
+    es.addEventListener("reasoning_summary", onReasoningSummary as EventListener);
+    es.addEventListener("tool_progress", onToolProgress as EventListener);
     es.addEventListener("complete", onComplete as EventListener);
     es.addEventListener("error", onError as EventListener);
     es.onerror = onError as any;
@@ -135,7 +190,7 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
       } catch {}
       sourceRef.current = null;
     };
-  }, [streamId]);
+  }, [branchId, conversationId, streamId]);
 
   const statusLabel = useMemo(() => {
     if (status === "connecting") return "Connecting…";
@@ -160,7 +215,21 @@ export function StreamingBubble({ streamId, conversationId, branchId, className 
         </span>
         <span>{statusLabel}</span>
       </div>
-      <MarkdownContent className="prose prose-sm max-w-none text-foreground" html={html || escapeHtml(content)} />
+      {toolProgressLabel ? (
+        <p className="mb-2 text-xs text-muted-foreground">{toolProgressLabel}</p>
+      ) : null}
+      {reasoningSummary ? (
+        <details className="mb-3 rounded-md border border-foreground/15 bg-background/50 px-3 py-2 text-xs text-muted-foreground">
+          <summary className="cursor-pointer font-medium text-foreground">
+            Reasoning summary
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap">{reasoningSummary}</p>
+        </details>
+      ) : null}
+      <MarkdownContent
+        className="prose prose-sm max-w-none text-foreground"
+        html={html || escapeHtml(content)}
+      />
     </div>
   );
 }

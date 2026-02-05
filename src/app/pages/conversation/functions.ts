@@ -868,8 +868,9 @@ export async function sendMessage(
   let buffered = "";
   let lastPublishedLength = 0;
   let lastPublishTime = Date.now();
-  const MIN_PUBLISH_CHARS = 64;
-  const MIN_PUBLISH_MS = 500;
+  let latestReasoningSummary = "";
+  const MIN_PUBLISH_CHARS = 16;
+  const MIN_PUBLISH_MS = 120;
 
   const publishPartialUpdate = async (content: string) => {
     assistantState = {
@@ -881,6 +882,30 @@ export async function sendMessage(
       const { sendSSE } = await import("@/app/shared/streaming.server");
       sendSSE(input.streamId, "delta", { content });
     }
+  };
+
+  const publishReasoningSummary = async (delta: string) => {
+    if (!delta) {
+      return;
+    }
+    latestReasoningSummary += delta;
+    if (input.streamId) {
+      const { sendSSE } = await import("@/app/shared/streaming.server");
+      sendSSE(input.streamId, "reasoning_summary", {
+        delta,
+        content: latestReasoningSummary,
+      });
+    }
+  };
+
+  const extractReasoningDelta = (event: any): string => {
+    if (typeof event?.delta === "string") {
+      return event.delta;
+    }
+    if (typeof event?.summary_text_delta === "string") {
+      return event.summary_text_delta;
+    }
+    return "";
   };
 
   const harmonizeStatus = (status: string): ToolInvocationStatus => {
@@ -952,6 +977,14 @@ export async function sendMessage(
       toolInvocations: Array.from(toolInvocationMap.values()),
     };
     await persistAssistantState();
+    if (input.streamId) {
+      const { sendSSE } = await import("@/app/shared/streaming.server");
+      sendSSE(input.streamId, "tool_progress", {
+        tool: WEB_SEARCH_TOOL_NAME,
+        callId,
+        status: nextStatus,
+      });
+    }
   };
 
   try {
@@ -987,6 +1020,14 @@ export async function sendMessage(
             const { sendSSE } = await import("@/app/shared/streaming.server");
             sendSSE(input.streamId, "delta", { content: buffered });
           }
+        }
+        continue;
+      }
+
+      if (event.type === "response.reasoning_summary_text.delta") {
+        const reasoningDelta = extractReasoningDelta(event);
+        if (reasoningDelta) {
+          await publishReasoningSummary(reasoningDelta);
         }
         continue;
       }
@@ -1028,6 +1069,45 @@ export async function sendMessage(
   let promptTokens = 0;
   let completionTokens = 0;
   let finalResponse: any = null;
+  const extractReasoningSummaryFromFinalResponse = (response: any): string => {
+    if (!response || !Array.isArray(response.output)) {
+      return "";
+    }
+    const parts: string[] = [];
+    for (const item of response.output) {
+      if (item?.type !== "reasoning") {
+        continue;
+      }
+      if (typeof item.summary === "string" && item.summary.trim().length > 0) {
+        parts.push(item.summary.trim());
+      }
+      if (Array.isArray(item.summary)) {
+        for (const summaryPart of item.summary) {
+          if (
+            typeof summaryPart === "string" &&
+            summaryPart.trim().length > 0
+          ) {
+            parts.push(summaryPart.trim());
+            continue;
+          }
+          if (
+            typeof summaryPart?.text === "string" &&
+            summaryPart.text.trim().length > 0
+          ) {
+            parts.push(summaryPart.text.trim());
+            continue;
+          }
+          if (
+            typeof summaryPart?.summary_text === "string" &&
+            summaryPart.summary_text.trim().length > 0
+          ) {
+            parts.push(summaryPart.summary_text.trim());
+          }
+        }
+      }
+    }
+    return parts.join("\n").trim();
+  };
 
   try {
     finalResponse = await stream.finalResponse();
@@ -1048,6 +1128,21 @@ export async function sendMessage(
       typeof finalResponse?.response?.output?.[0]?.content?.[0]?.text === "string"
         ? finalResponse.response.output[0].content[0].text
         : buffered;
+    const finalReasoningSummary =
+      extractReasoningSummaryFromFinalResponse(finalResponse);
+    if (finalReasoningSummary) {
+      const delta = finalReasoningSummary.startsWith(latestReasoningSummary)
+        ? finalReasoningSummary.slice(latestReasoningSummary.length)
+        : finalReasoningSummary;
+      latestReasoningSummary = finalReasoningSummary;
+      if (input.streamId) {
+        const { sendSSE } = await import("@/app/shared/streaming.server");
+        sendSSE(input.streamId, "reasoning_summary", {
+          delta,
+          content: latestReasoningSummary,
+        });
+      }
+    }
     ctx.trace("openai:stream:complete", {
       conversationId,
       branchId,
@@ -1140,6 +1235,7 @@ export async function sendMessage(
       content: finalContent,
       promptTokens,
       completionTokens,
+      reasoningSummary: latestReasoningSummary || null,
     });
     closeSSE(input.streamId);
   }
