@@ -77,11 +77,13 @@ function buildResponseOptions(settings: {
   model: string;
   temperature?: number;
   reasoning?: { effort?: "low" | "medium" | "high" };
+  text?: { verbosity: "low" | "medium" | "high" };
 } {
   const request: {
     model: string;
     temperature?: number;
     reasoning?: { effort?: "low" | "medium" | "high" };
+    text?: { verbosity: "low" | "medium" | "high" };
   } = {
     model: settings.model,
   };
@@ -92,6 +94,10 @@ function buildResponseOptions(settings: {
 
   if (isReasoningModel(settings.model) && settings.reasoningEffort) {
     request.reasoning = { effort: settings.reasoningEffort };
+  }
+
+  if (settings.model.startsWith("gpt-5-")) {
+    request.text = { verbosity: "low" };
   }
 
   return request;
