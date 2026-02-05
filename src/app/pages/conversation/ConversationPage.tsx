@@ -109,7 +109,8 @@ export async function ConversationPage({
   );
 
   const tree = buildBranchTree(snapshot);
-  const shouldAutoCollapse = requestUrl.searchParams.get("focus") === "child";
+  const shouldAutoCollapseParent =
+    requestUrl.searchParams.get("focus") === "child";
 
   return (
     <ConversationLayout
@@ -120,8 +121,8 @@ export async function ConversationPage({
       parentBranch={parentBranch}
       parentMessages={parentRenderedMessages}
       conversationId={result.conversationId}
-      initialSidebarCollapsed={shouldAutoCollapse}
-      initialParentCollapsed={shouldAutoCollapse}
+      initialSidebarCollapsed={false}
+      initialParentCollapsed={shouldAutoCollapseParent}
       activeBranchId={activeBranch.id}
       conversations={summaries}
     />

@@ -91,6 +91,30 @@ const TOOL_OPTIONS: ToolOption[] = [
   },
 ];
 
+const COMPOSER_TOOL_STORAGE_PREFIX = "connexus:composer:tools:";
+const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
+  "study-and-learn",
+  "web-search",
+  "file-upload",
+]);
+
+function sanitizeStoredComposerTools(value: unknown): ConversationComposerTool[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const tools: ConversationComposerTool[] = [];
+  for (const item of value) {
+    if (
+      typeof item === "string" &&
+      ALLOWED_COMPOSER_TOOLS.has(item as ConversationComposerTool) &&
+      !tools.includes(item as ConversationComposerTool)
+    ) {
+      tools.push(item as ConversationComposerTool);
+    }
+  }
+  return tools;
+}
+
 interface ConversationComposerProps {
   branchId: string;
   conversationId: string;
@@ -134,6 +158,7 @@ export function ConversationComposer({
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
   const [isBrowser, setIsBrowser] = useState(false);
+  const toolsStorageKey = `${COMPOSER_TOOL_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
@@ -145,6 +170,8 @@ export function ConversationComposer({
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
+  const hasHydratedToolsRef = useRef(false);
+  const skipToolsPersistRef = useRef(false);
   const webSearchSupported = isWebSearchSupportedModel(conversationModel);
   const { notify } = useToast();
   const reasoningOptions: Array<"low" | "medium" | "high"> = [
@@ -201,6 +228,55 @@ export function ConversationComposer({
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    hasHydratedToolsRef.current = false;
+    try {
+      const stored = window.sessionStorage.getItem(toolsStorageKey);
+      const parsed = stored
+        ? sanitizeStoredComposerTools(JSON.parse(stored))
+        : [];
+      skipToolsPersistRef.current = true;
+      setSelectedTools(parsed);
+    } catch (storageError) {
+      console.warn(
+        "[Composer] unable to hydrate persisted tool selections",
+        storageError,
+      );
+      skipToolsPersistRef.current = true;
+      setSelectedTools([]);
+    } finally {
+      hasHydratedToolsRef.current = true;
+    }
+  }, [toolsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasHydratedToolsRef.current) {
+      return;
+    }
+    if (skipToolsPersistRef.current) {
+      skipToolsPersistRef.current = false;
+      return;
+    }
+    try {
+      if (selectedTools.length === 0) {
+        window.sessionStorage.removeItem(toolsStorageKey);
+      } else {
+        window.sessionStorage.setItem(
+          toolsStorageKey,
+          JSON.stringify(selectedTools),
+        );
+      }
+    } catch (storageError) {
+      console.warn(
+        "[Composer] unable to persist tool selections",
+        storageError,
+      );
+    }
+  }, [selectedTools, toolsStorageKey]);
 
   useEffect(() => {
     if (!bootstrapMessage) {

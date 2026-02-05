@@ -115,12 +115,8 @@ export function ConversationLayout({
   const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (initialSidebarCollapsed) {
-      setIsSidebarCollapsed(true);
-    }
-    if (initialParentCollapsed) {
-      setIsParentCollapsed(true);
-    }
+    setIsSidebarCollapsed(initialSidebarCollapsed);
+    setIsParentCollapsed(initialParentCollapsed);
 
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -129,7 +125,7 @@ export function ConversationLayout({
         window.history.replaceState(null, "", url.toString());
       }
     }
-  }, [activeBranchId, initialParentCollapsed, initialSidebarCollapsed]);
+  }, [conversationId, initialParentCollapsed, initialSidebarCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
