@@ -22,6 +22,11 @@ import {
   unarchiveConversationDirectoryEntry,
   deleteConversationDirectoryEntry,
 } from "@/app/shared/conversationDirectory.server";
+import {
+  commitDemoPass,
+  releaseDemoPass,
+  reserveDemoPass,
+} from "@/app/shared/account.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
 import {
   createAttachmentUpload as createAttachmentUploadHelper,
@@ -50,6 +55,7 @@ import type {
   ToolInvocationStatus,
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
+import type { AccountQuotaSnapshot } from "@/lib/durable-objects/Account";
 import {
   WEB_SEARCH_TOOL_NAME,
   type ConversationComposerTool,
@@ -204,6 +210,10 @@ export interface SendMessageInput extends ConversationPayload {
 
 export interface SendMessageResponse extends LoadConversationResponse {
   appendedMessages: Message[];
+  quota: {
+    lane: "demo" | "byok";
+    remainingDemoPasses: number | null;
+  };
 }
 
 export interface CreateBranchInput extends ConversationPayload {
@@ -499,6 +509,10 @@ export async function sendMessage(
 
   let attachmentsToRestore: PendingAttachment[] | null =
     consumedAttachments.length > 0 ? [...consumedAttachments] : null;
+  let quotaSnapshot: AccountQuotaSnapshot | null = null;
+  let quotaReservationId: string | null = null;
+  let quotaCommitted = false;
+  const quotaLane: "demo" | "byok" = "demo";
 
   const toMessageAttachment = (attachment: PendingAttachment) => ({
     id: attachment.id,
@@ -530,6 +544,31 @@ export async function sendMessage(
       tools: selectedTools,
     });
   }
+
+  const reservationId =
+    (typeof input.streamId === "string" && input.streamId.trim().length > 0
+      ? input.streamId.trim()
+      : null) ?? crypto.randomUUID();
+  ctx.trace("quota:reserve:start", {
+    conversationId,
+    branchId,
+    reservationId,
+    lane: quotaLane,
+  });
+  const reservation = await reserveDemoPass(ctx, {
+    reservationId,
+    conversationId,
+    branchId,
+  });
+  quotaReservationId = reservation.reservationId;
+  quotaSnapshot = reservation.snapshot;
+  ctx.trace("quota:reserve:success", {
+    conversationId,
+    branchId,
+    reservationId: quotaReservationId,
+    lane: quotaLane,
+    remainingDemoPasses: quotaSnapshot.remaining,
+  });
 
   const settings = ensured.snapshot.conversation.settings;
   const webSearchToolType = getWebSearchToolTypeForModel(settings.model);
@@ -680,6 +719,7 @@ export async function sendMessage(
     });
 
     let agentOutput = "";
+    let studyGenerationSucceeded = false;
     const allowWebSearchForAgent =
       webSearchSupported &&
       (selectedToolSet.size === 0 ||
@@ -732,6 +772,7 @@ export async function sendMessage(
       });
 
       agentOutput = result.outputText.trim();
+      studyGenerationSucceeded = true;
       ctx.trace("agent:study:success", {
         conversationId,
         branchId,
@@ -808,11 +849,43 @@ export async function sendMessage(
     });
 
     attachmentsToRestore = null;
+    if (quotaReservationId) {
+      if (studyGenerationSucceeded) {
+        quotaSnapshot = await commitDemoPass(ctx, {
+          reservationId: quotaReservationId,
+        });
+        quotaCommitted = true;
+        ctx.trace("quota:commit", {
+          conversationId,
+          branchId,
+          reservationId: quotaReservationId,
+          lane: quotaLane,
+          remainingDemoPasses: quotaSnapshot.remaining,
+        });
+      } else {
+        quotaSnapshot = await releaseDemoPass(ctx, {
+          reservationId: quotaReservationId,
+        });
+        quotaReservationId = null;
+        ctx.trace("quota:release", {
+          conversationId,
+          branchId,
+          reservationId,
+          lane: quotaLane,
+          remainingDemoPasses: quotaSnapshot.remaining,
+          reason: "study-generation-failed",
+        });
+      }
+    }
     return {
       conversationId,
       snapshot: latestResult.snapshot,
       version: latestResult.version,
       appendedMessages: [userMessage, finalAssistantMessage],
+      quota: {
+        lane: quotaLane,
+        remainingDemoPasses: quotaSnapshot?.remaining ?? null,
+      },
     };
   }
 
@@ -1070,6 +1143,7 @@ export async function sendMessage(
   let promptTokens = 0;
   let completionTokens = 0;
   let finalResponse: any = null;
+  let streamingGenerationSucceeded = false;
   const extractReasoningSummaryFromFinalResponse = (response: any): string => {
     if (!response || !Array.isArray(response.output)) {
       return "";
@@ -1152,6 +1226,7 @@ export async function sendMessage(
       characters: finalContent.length,
       streamReply,
     });
+    streamingGenerationSucceeded = true;
   } catch (error) {
     ctx.trace("openai:stream:finalize-error", {
       conversationId,
@@ -1282,13 +1357,70 @@ export async function sendMessage(
   });
 
   attachmentsToRestore = null;
+  if (quotaReservationId) {
+    if (streamingGenerationSucceeded) {
+      quotaSnapshot = await commitDemoPass(ctx, {
+        reservationId: quotaReservationId,
+      });
+      quotaCommitted = true;
+      ctx.trace("quota:commit", {
+        conversationId,
+        branchId,
+        reservationId: quotaReservationId,
+        lane: quotaLane,
+        remainingDemoPasses: quotaSnapshot.remaining,
+      });
+    } else {
+      quotaSnapshot = await releaseDemoPass(ctx, {
+        reservationId: quotaReservationId,
+      });
+      quotaReservationId = null;
+      ctx.trace("quota:release", {
+        conversationId,
+        branchId,
+        reservationId,
+        lane: quotaLane,
+        remainingDemoPasses: quotaSnapshot.remaining,
+        reason: "stream-generation-failed",
+      });
+    }
+  }
   return {
     conversationId,
     snapshot: latestSnapshot,
     version: latestVersion,
     appendedMessages: [userMessage, finalAssistantMessage],
+    quota: {
+      lane: quotaLane,
+      remainingDemoPasses: quotaSnapshot?.remaining ?? null,
+    },
   };
   } catch (error) {
+    if (quotaReservationId && !quotaCommitted) {
+      try {
+        quotaSnapshot = await releaseDemoPass(ctx, {
+          reservationId: quotaReservationId,
+        });
+        ctx.trace("quota:release", {
+          conversationId,
+          branchId,
+          reservationId: quotaReservationId,
+          lane: quotaLane,
+          remainingDemoPasses: quotaSnapshot.remaining,
+          reason: "send-message-error",
+        });
+      } catch (releaseError) {
+        ctx.trace("quota:release:error", {
+          conversationId,
+          branchId,
+          reservationId: quotaReservationId,
+          error:
+            releaseError instanceof Error
+              ? releaseError.message
+              : "unknown",
+        });
+      }
+    }
     if (attachmentsToRestore && attachmentsToRestore.length > 0) {
       for (const attachment of attachmentsToRestore) {
         try {

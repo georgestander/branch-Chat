@@ -21,6 +21,10 @@
       {
         "name": "ConversationDirectoryDO",
         "class_name": "ConversationDirectoryDO"
+      },
+      {
+        "name": "AccountDO",
+        "class_name": "AccountDO"
       }
     ]
   },
@@ -40,6 +44,10 @@
     {
       "tag": "v2-conversation-directory",
       "new_classes": ["ConversationDirectoryDO"]
+    },
+    {
+      "tag": "v3-account-do",
+      "new_classes": ["AccountDO"]
     }
   ],
 

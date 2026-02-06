@@ -15,6 +15,10 @@ import {
   getConversationDirectoryStub,
 } from "@/lib/durable-objects/ConversationDirectory";
 import {
+  AccountClient,
+  getAccountStub,
+} from "@/lib/durable-objects/Account";
+import {
   createOpenAIClient,
   type OpenAIClient,
 } from "@/lib/openai/client";
@@ -36,6 +40,7 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   }
 
   const locals = ctx.locals ?? {};
+  const auth = resolveRequestAuth({ request, response });
   const requestId =
     request.headers.get("cf-ray") ?? crypto.randomUUID();
 
@@ -79,6 +84,18 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
     return client;
   };
 
+  const accountSymbol = Symbol.for("connexus.account-client");
+  const getAccount: AppContext["getAccount"] = () => {
+    const cached = locals[accountSymbol] as AccountClient | undefined;
+    if (cached) {
+      return cached;
+    }
+    const stub = getAccountStub(env.AccountDO, auth.userId);
+    const client = new AccountClient(stub, auth.userId);
+    locals[accountSymbol] = client;
+    return client;
+  };
+
   const getUploadsBucket: AppContext["getUploadsBucket"] = () => {
     if (!env.UploadsBucket) {
       throw new Error("Uploads bucket binding is not configured");
@@ -87,7 +104,6 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   };
 
   const context = ctx as AppContext;
-  const auth = resolveRequestAuth({ request, response });
 
   context.env = env;
   context.locals = locals;
@@ -97,6 +113,7 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   context.getOpenAIClient = getOpenAIClient;
   context.getConversationStore = getConversationStore;
   context.getConversationDirectory = getConversationDirectory;
+  context.getAccount = getAccount;
   context.getUploadsBucket = getUploadsBucket;
 };
 
@@ -125,3 +142,4 @@ export default {
 
 export { ConversationStoreDO } from "@/lib/durable-objects/ConversationStore";
 export { ConversationDirectoryDO } from "@/lib/durable-objects/ConversationDirectory";
+export { AccountDO } from "@/lib/durable-objects/Account";
