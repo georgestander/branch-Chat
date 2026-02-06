@@ -28,6 +28,7 @@ import {
 import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import { START_STREAMING_EVENT, COMPLETE_STREAMING_EVENT, type StartStreamingDetail } from "@/app/components/conversation/streamingEvents";
 import { navigate } from "rwsdk/client";
+import type { OpenRouterModelOption } from "@/lib/openrouter/models";
 
 const SCROLL_EPSILON_PX = 120;
 type OptimisticMessageStatus = "pending" | "resolved";
@@ -51,6 +52,7 @@ interface BranchColumnProps {
   highlightedBranchId?: string | null;
   conversationModel: string;
   reasoningEffort: "low" | "medium" | "high" | null;
+  openRouterModels: OpenRouterModelOption[];
   onConversationSettingsChange: (
     model: string,
     effort: "low" | "medium" | "high" | null,
@@ -130,6 +132,7 @@ export function BranchColumn({
   highlightedBranchId,
   conversationModel,
   reasoningEffort,
+  openRouterModels,
   onConversationSettingsChange,
   conversationSettingsSaving,
   conversationSettingsError,
@@ -531,9 +534,10 @@ export function BranchColumn({
                 conversationId={conversationId}
                 autoFocus
                 className=""
-                conversationModel={conversationModel}
-                reasoningEffort={reasoningEffort}
-                onConversationSettingsChange={onConversationSettingsChange}
+            conversationModel={conversationModel}
+            reasoningEffort={reasoningEffort}
+            openRouterModels={openRouterModels}
+            onConversationSettingsChange={onConversationSettingsChange}
                 conversationSettingsSaving={conversationSettingsSaving}
                 conversationSettingsError={conversationSettingsError}
                 onClearConversationSettingsError={onClearConversationSettingsError}

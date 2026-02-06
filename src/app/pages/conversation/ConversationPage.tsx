@@ -14,6 +14,7 @@ import {
 } from "@/app/shared/conversationDirectory.server";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { ConversationEmptyLayout } from "@/app/components/conversation/ConversationEmptyLayout";
+import { listOpenRouterModels } from "@/app/shared/openrouterModels.server";
 
 interface ConversationPageProps extends AppRequestInfo {
   conversationId?: string;
@@ -114,6 +115,7 @@ export async function ConversationPage({
   const tree = buildBranchTree(snapshot);
   const shouldAutoCollapseParent =
     requestUrl.searchParams.get("focus") === "child";
+  const openRouterModels = await listOpenRouterModels(ctx);
 
   return (
     <ConversationLayout
@@ -128,6 +130,7 @@ export async function ConversationPage({
       initialParentCollapsed={shouldAutoCollapseParent}
       activeBranchId={activeBranch.id}
       conversations={summaries}
+      openRouterModels={openRouterModels}
     />
   );
 }

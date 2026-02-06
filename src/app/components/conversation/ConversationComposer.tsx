@@ -47,8 +47,16 @@ import {
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
-import { isWebSearchSupportedModel } from "@/lib/openai/models";
+import {
+  isWebSearchSupportedModel,
+  supportsReasoningEffortModel,
+} from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
+import {
+  isOpenRouterModel,
+  stripOpenRouterPrefix,
+  type OpenRouterModelOption,
+} from "@/lib/openrouter/models";
 
 type ToolOption = {
   id: ConversationComposerTool;
@@ -122,6 +130,7 @@ interface ConversationComposerProps {
   className?: string;
   conversationModel: string;
   reasoningEffort: "low" | "medium" | "high" | null;
+  openRouterModels: OpenRouterModelOption[];
   onConversationSettingsChange: (
     model: string,
     effort: "low" | "medium" | "high" | null,
@@ -140,6 +149,7 @@ export function ConversationComposer({
   className,
   conversationModel,
   reasoningEffort,
+  openRouterModels,
   onConversationSettingsChange,
   conversationSettingsSaving,
   conversationSettingsError,
@@ -191,10 +201,18 @@ export function ConversationComposer({
     high: "High",
   };
   const currentReasoningEffort = (reasoningEffort ?? "low") as "low" | "medium" | "high";
-  const isReasoningModel = !conversationModel.includes("chat");
-  const currentModelLabel = isReasoningModel
-    ? `Reasoning · ${effortLabels[currentReasoningEffort]}`
-    : "Fast chat";
+  const selectedOpenRouterModel = openRouterModels.find(
+    (model) => model.id === conversationModel,
+  );
+  const openRouterSelected = isOpenRouterModel(conversationModel);
+  const isReasoningModel = supportsReasoningEffortModel(conversationModel);
+  const currentModelLabel = selectedOpenRouterModel
+    ? selectedOpenRouterModel.name
+    : openRouterSelected
+      ? stripOpenRouterPrefix(conversationModel)
+      : isReasoningModel
+        ? `Reasoning · ${effortLabels[currentReasoningEffort]}`
+        : "Fast chat";
   const modelBadgeClassName =
     "inline-flex w-10 shrink-0 items-center justify-end text-[10px] leading-none text-current";
   const BASE_TEXTAREA_HEIGHT = 20;
@@ -723,7 +741,7 @@ export function ConversationComposer({
       const success = await onConversationSettingsChange(nextModel, nextEffort);
       if (success) {
         setIsModelMenuOpen(false);
-        if (!nextModel.includes("chat")) {
+        if (supportsReasoningEffortModel(nextModel)) {
           const effortLabel = effortLabels[(nextEffort ?? "low") as "low" | "medium" | "high"];
           notify({
             variant: "warning",
@@ -1218,7 +1236,7 @@ export function ConversationComposer({
               ref={modelMenuRef}
               id={modelMenuId}
               role="menu"
-              className="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-[2px]"
+              className="absolute bottom-full right-0 z-30 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-[2px]"
             >
               <button
                 type="button"
@@ -1268,6 +1286,46 @@ export function ConversationComposer({
                   </button>
                 );
               })}
+
+              {openRouterModels.length > 0 ? (
+                <>
+                  <div className="my-2 border-t border-border/60" aria-hidden="true" />
+                  <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    OpenRouter models
+                  </div>
+                  {openRouterModels.map((model) => {
+                    const isSelected = conversationModel === model.id;
+                    return (
+                      <button
+                        key={`composer-openrouter-${model.id}`}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={isSelected}
+                        onClick={() => {
+                          void handleModelSelection(model.id, null);
+                        }}
+                        disabled={conversationSettingsSaving}
+                        className={cn(
+                          "interactive-target flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+                          isSelected ? "state-selected font-semibold text-primary-foreground" : "hover:bg-muted/70",
+                        )}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{model.name}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {model.rawId}
+                          </span>
+                        </span>
+                        {model.isFree ? (
+                          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                            Free
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </>
+              ) : null}
             </div>
           ) : null}
         </div>

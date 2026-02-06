@@ -8,6 +8,8 @@ export interface OpenAIClientOptions {
   apiKey: string;
   organization?: string;
   project?: string;
+  baseURL?: string;
+  defaultHeaders?: Record<string, string>;
 }
 
 export function createOpenAIClient(
@@ -17,9 +19,17 @@ export function createOpenAIClient(
     throw new Error("Missing OpenAI API key");
   }
 
-  return new OpenAI({
+  const config: Record<string, unknown> = {
     apiKey: options.apiKey,
     organization: options.organization,
     project: options.project,
-  });
+  };
+  if (options.baseURL) {
+    config.baseURL = options.baseURL;
+  }
+  if (options.defaultHeaders) {
+    config.defaultHeaders = options.defaultHeaders;
+  }
+
+  return new OpenAI(config as any);
 }

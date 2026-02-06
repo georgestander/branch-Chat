@@ -22,6 +22,8 @@ import type { ConversationDirectoryEntry } from "@/lib/durable-objects/Conversat
 import { cn } from "@/lib/utils";
 import { GitBranch, PanelLeftOpen, SquarePen } from "lucide-react";
 import { navigate } from "rwsdk/client";
+import type { OpenRouterModelOption } from "@/lib/openrouter/models";
+import { supportsReasoningEffortModel } from "@/lib/openai/models";
 
 import { BranchColumn } from "./BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
@@ -42,6 +44,7 @@ interface ConversationLayoutProps {
   initialParentCollapsed?: boolean;
   activeBranchId: string;
   conversations: ConversationDirectoryEntry[];
+  openRouterModels: OpenRouterModelOption[];
 }
 
 const PARENT_MIN_WIDTH_PX = 280;
@@ -61,12 +64,13 @@ export function ConversationLayout({
   initialParentCollapsed = false,
   activeBranchId,
   conversations,
+  openRouterModels,
 }: ConversationLayoutProps) {
   const resolvedInitialModel =
     conversation.settings.model || "gpt-5-chat-latest";
-  const resolvedInitialEffort = resolvedInitialModel.includes("chat")
-    ? null
-    : ((conversation.settings as any).reasoningEffort ?? "low");
+  const resolvedInitialEffort = supportsReasoningEffortModel(resolvedInitialModel)
+    ? ((conversation.settings as any).reasoningEffort ?? "low")
+    : null;
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     initialSidebarCollapsed,
   );
@@ -157,9 +161,9 @@ export function ConversationLayout({
 
   useEffect(() => {
     const nextModel = conversation.settings.model || "gpt-5-chat-latest";
-    const nextEffort = nextModel.includes("chat")
-      ? null
-      : ((conversation.settings as any).reasoningEffort ?? "low");
+    const nextEffort = supportsReasoningEffortModel(nextModel)
+      ? ((conversation.settings as any).reasoningEffort ?? "low")
+      : null;
     setSettingsModel(nextModel);
     setSettingsEffort(nextEffort);
   }, [conversation.settings, conversationId]);
@@ -179,7 +183,9 @@ export function ConversationLayout({
         await updateConversationSettings({
           conversationId,
           model: nextModel,
-          reasoningEffort: nextModel.includes("chat") ? null : nextEffort,
+          reasoningEffort: supportsReasoningEffortModel(nextModel)
+            ? nextEffort
+            : null,
         });
         return true;
       } catch (error) {
@@ -421,6 +427,7 @@ export function ConversationLayout({
               className="min-h-0 bg-background"
               conversationModel={settingsModel}
               reasoningEffort={settingsEffort}
+              openRouterModels={openRouterModels}
               onConversationSettingsChange={handleConversationSettingsChange}
               conversationSettingsSaving={isSavingSettings}
               conversationSettingsError={settingsError}
@@ -484,6 +491,7 @@ export function ConversationLayout({
             )}
             conversationModel={settingsModel}
             reasoningEffort={settingsEffort}
+            openRouterModels={openRouterModels}
             onConversationSettingsChange={handleConversationSettingsChange}
             conversationSettingsSaving={isSavingSettings}
             conversationSettingsError={settingsError}

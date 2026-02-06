@@ -15,6 +15,7 @@ export interface AppContext {
     conversationId: ConversationModelId,
   ) => ConversationStoreClient;
   getOpenAIClient: () => OpenAIClient;
+  getOpenRouterClient: () => OpenAIClient;
   getConversationDirectory: () => ConversationDirectoryClient;
   getAccount: () => AccountClient;
   getUploadsBucket: () => R2Bucket;

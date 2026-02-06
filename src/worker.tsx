@@ -27,6 +27,7 @@ export type AppRequestInfo = RequestInfo<any, AppContext>;
 
 const envStorage = new AsyncLocalStorage<Env>();
 const openAIClientSymbol = Symbol.for("connexus.openai-client");
+const openRouterClientSymbol = Symbol.for("connexus.openrouter-client");
 
 const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) => {
   const { ctx, request, response } = requestInfo;
@@ -65,6 +66,29 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
       apiKey: env.OPENAI_API_KEY,
     });
     locals[openAIClientSymbol] = client;
+    return client;
+  };
+
+  const getOpenRouterClient = (): OpenAIClient => {
+    const cached = locals[openRouterClientSymbol] as OpenAIClient | undefined;
+    if (cached) {
+      return cached;
+    }
+    if (!env.OPENROUTER_API_KEY) {
+      throw new Error("Missing OpenRouter API key");
+    }
+    const requestUrl = new URL(request.url);
+    const referer = env.OPENROUTER_SITE_URL ?? requestUrl.origin;
+    const title = env.OPENROUTER_APP_NAME ?? "Branch Chat";
+    const client = createOpenAIClient({
+      apiKey: env.OPENROUTER_API_KEY,
+      baseURL: env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": referer,
+        "X-Title": title,
+      },
+    });
+    locals[openRouterClientSymbol] = client;
     return client;
   };
 
@@ -111,6 +135,7 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   context.auth = auth;
   context.trace = trace;
   context.getOpenAIClient = getOpenAIClient;
+  context.getOpenRouterClient = getOpenRouterClient;
   context.getConversationStore = getConversationStore;
   context.getConversationDirectory = getConversationDirectory;
   context.getAccount = getAccount;

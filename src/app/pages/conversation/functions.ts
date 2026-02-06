@@ -65,15 +65,15 @@ import {
 import {
   getWebSearchToolTypeForModel,
   isWebSearchSupportedModel,
+  supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import type { AppRequestInfo } from "@/worker";
+import {
+  isOpenRouterModel,
+  stripOpenRouterPrefix,
+} from "@/lib/openrouter/models";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
-
-function isReasoningModel(model: string): boolean {
-  // Heuristics: treat non-chat variants of gpt-5 as reasoning models
-  return model.startsWith("gpt-5-") && !model.includes("chat");
-}
 
 function buildResponseOptions(settings: {
   model: string;
@@ -98,7 +98,7 @@ function buildResponseOptions(settings: {
     request.temperature = settings.temperature;
   }
 
-  if (isReasoningModel(settings.model) && settings.reasoningEffort) {
+  if (supportsReasoningEffortModel(settings.model) && settings.reasoningEffort) {
     request.reasoning = { effort: settings.reasoningEffort };
   }
 
@@ -571,6 +571,31 @@ export async function sendMessage(
   });
 
   const settings = ensured.snapshot.conversation.settings;
+  const usingOpenRouter = isOpenRouterModel(settings.model);
+  const requestModel = usingOpenRouter
+    ? stripOpenRouterPrefix(settings.model)
+    : settings.model;
+  const modelRequestSettings = {
+    ...settings,
+    model: requestModel,
+  };
+  const modelClient = (() => {
+    if (!usingOpenRouter) {
+      return ctx.getOpenAIClient();
+    }
+    try {
+      return ctx.getOpenRouterClient();
+    } catch (error) {
+      ctx.trace("openrouter:client:error", {
+        conversationId,
+        branchId,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+      throw new Error(
+        "OpenRouter is not configured for this environment. Add OPENROUTER_API_KEY to enable OpenRouter models.",
+      );
+    }
+  })();
   const webSearchToolType = getWebSearchToolTypeForModel(settings.model);
   const webSearchSupported = webSearchToolType !== null;
 
@@ -716,6 +741,8 @@ export async function sendMessage(
       conversationId,
       branchId,
       assistantMessageId: assistantMessage.id,
+      provider: usingOpenRouter ? "openrouter" : "openai",
+      model: modelRequestSettings.model,
     });
 
     let agentOutput = "";
@@ -760,10 +787,12 @@ export async function sendMessage(
       const result = await runStudyAndLearnAgent({
         instructions: studyAgentInput.instructions,
         history: agentHistory,
-        model: settings.model,
+        model: modelRequestSettings.model,
         temperature: settings.temperature,
-        reasoningEffort: settings.reasoningEffort ?? undefined,
-        openaiClient: ctx.getOpenAIClient(),
+        reasoningEffort: supportsReasoningEffortModel(modelRequestSettings.model)
+          ? settings.reasoningEffort ?? undefined
+          : undefined,
+        openaiClient: modelClient,
         traceMetadata: {
           conversationId,
           branchId,
@@ -904,14 +933,15 @@ export async function sendMessage(
     });
   }
 
-  const openai = ctx.getOpenAIClient();
+  const openai = modelClient;
 
   const streamStart = Date.now();
   let firstDeltaAt: number | null = null;
   ctx.trace("openai:stream:start", {
     conversationId,
     branchId,
-    model: settings.model,
+    provider: usingOpenRouter ? "openrouter" : "openai",
+    model: modelRequestSettings.model,
     temperature: settings.temperature,
     messageCount: openaiInput.length,
     reasoningEffort: settings.reasoningEffort ?? null,
@@ -932,7 +962,7 @@ export async function sendMessage(
       : null;
 
   const stream = await openai.responses.stream({
-    ...buildResponseOptions(settings),
+    ...buildResponseOptions(modelRequestSettings),
     input: openaiInput,
     ...(responseTools.length > 0 ? { tools: responseTools } : {}),
     ...(webSearchToolChoice ? { tool_choice: webSearchToolChoice } : {}),
