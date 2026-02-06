@@ -4,7 +4,6 @@ import { getRequestInfo } from "rwsdk/worker";
 
 import type { AppContext } from "@/app/context";
 import {
-  DEFAULT_CONVERSATION_ID,
   applyConversationUpdates,
   ensureConversationSnapshot,
   buildResponseInputFromBranch,
@@ -15,6 +14,7 @@ import {
   maybeAutoSummarizeRootBranchTitle,
   sanitizeBranchTitle,
   invalidateConversationCache,
+  resolveConversationId,
 } from "@/app/shared/conversation.server";
 import {
   touchConversationDirectoryEntry,
@@ -139,8 +139,7 @@ export async function createAttachmentUploadAction(
 ): Promise<CreateAttachmentUploadActionOutput> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
-  const storeClient = ctx.getConversationStore(conversationId);
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   const result = await createAttachmentUploadHelper(ctx, {
     ...input,
@@ -164,7 +163,7 @@ export async function finalizeAttachmentUploadAction(
 ): Promise<PendingAttachment> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   return finalizeAttachmentUploadHelper(ctx, {
     conversationId,
@@ -181,7 +180,7 @@ export async function removeAttachmentUploadAction(
 ): Promise<PendingAttachment | null> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   return removeStagedAttachmentHelper(ctx, {
     conversationId,
@@ -271,7 +270,7 @@ export async function updateConversationSettings(
 ): Promise<UpdateConversationSettingsResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const current = ensured.snapshot.conversation;
@@ -419,7 +418,7 @@ export async function loadConversation(
 ): Promise<LoadConversationResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   const result = await ensureConversationSnapshot(ctx, conversationId);
   const rootBranch =
@@ -437,7 +436,9 @@ export async function createConversation(
 ): Promise<CreateConversationResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? generateConversationId();
+  const conversationId = input.conversationId
+    ? resolveConversationId(ctx, input.conversationId)
+    : generateConversationId();
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const rootBranch =
@@ -458,7 +459,7 @@ export async function sendMessage(
 ): Promise<SendMessageResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
   const storeClient = ctx.getConversationStore(conversationId);
 
   if (!input.content || input.content.trim().length === 0) {
@@ -1327,7 +1328,7 @@ export async function createBranchFromSelection(
 ): Promise<CreateBranchResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const draft = draftBranchFromSelection({
@@ -1365,7 +1366,7 @@ export async function getConversationSummary(
 ): Promise<ConversationSummary> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const snapshot = ensured.snapshot;
@@ -1387,7 +1388,7 @@ export async function renameBranch(
 ): Promise<RenameBranchResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
 
   if (!input.branchId) {
     throw new Error("Branch ID is required");
@@ -1443,7 +1444,8 @@ export async function archiveConversation(
 ): Promise<ArchiveConversationResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
 
   const entry = await archiveConversationDirectoryEntry(ctx, {
     id: conversationId,
@@ -1462,7 +1464,8 @@ export async function unarchiveConversation(
 ): Promise<UnarchiveConversationResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
 
   const entry = await unarchiveConversationDirectoryEntry(ctx, {
     id: conversationId,
@@ -1480,7 +1483,8 @@ export async function deleteConversation(
 ): Promise<DeleteConversationResponse> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
 
   const store = ctx.getConversationStore(conversationId);
   await store.reset().catch((error) => {

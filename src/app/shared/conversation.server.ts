@@ -17,6 +17,7 @@ import {
   touchConversationDirectoryEntry,
 } from "./conversationDirectory.server";
 import { buildAgentInstructions } from "@/lib/openai/agentPrompt";
+import { getDefaultConversationIdForUser } from "@/app/shared/auth.server";
 
 const DEFAULT_MODEL = "gpt-5-chat-latest";
 const DEFAULT_TEMPERATURE = 0.1;
@@ -45,6 +46,45 @@ const PLAN_SECONDARY_PATTERNS: Array<(value: string) => boolean> = [
   (value) => value.includes("give me") && value.includes("steps"),
   (value) => value.includes("what is the approach"),
 ];
+
+export class ConversationAccessError extends Error {
+  readonly conversationId: ConversationModelId;
+  readonly userId: string;
+
+  constructor(options: { conversationId: ConversationModelId; userId: string }) {
+    super("Conversation access denied");
+    this.name = "ConversationAccessError";
+    this.conversationId = options.conversationId;
+    this.userId = options.userId;
+  }
+}
+
+function normalizeConversationId(
+  input: ConversationModelId | string | null | undefined,
+): ConversationModelId | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed as ConversationModelId;
+}
+
+export function resolveConversationId(
+  ctx: Pick<AppContext, "auth">,
+  input?: ConversationModelId | string | null,
+): ConversationModelId {
+  const provided = normalizeConversationId(input);
+  if (provided) {
+    if (provided !== DEFAULT_CONVERSATION_ID) {
+      return provided;
+    }
+    return getDefaultConversationIdForUser(ctx.auth.userId);
+  }
+  return getDefaultConversationIdForUser(ctx.auth.userId);
+}
 
 export function generateConversationId(): ConversationModelId {
   const random = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
@@ -89,46 +129,154 @@ export interface BranchTreeNode {
   depth: number;
 }
 
+function normalizeOwnerId(ownerId: string | null | undefined): string | null {
+  if (typeof ownerId !== "string") {
+    return null;
+  }
+  const trimmed = ownerId.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function assertConversationAccess(options: {
+  ctx: AppContext;
+  conversationId: ConversationModelId;
+  snapshot: ConversationGraphSnapshot;
+}): void {
+  const { ctx, conversationId, snapshot } = options;
+  const ownerId = normalizeOwnerId(snapshot.conversation.ownerId ?? null);
+  const userId = ctx.auth.userId;
+  if (ownerId && ownerId !== userId) {
+    ctx.trace("conversation:access:denied", {
+      conversationId,
+      ownerId,
+      userId,
+    });
+    throw new ConversationAccessError({
+      conversationId,
+      userId,
+    });
+  }
+}
+
+async function ensureConversationOwnership(options: {
+  ctx: AppContext;
+  conversationId: ConversationModelId;
+  snapshot: ConversationGraphSnapshot;
+  version: number;
+}): Promise<ConversationLoadResult> {
+  const { ctx, conversationId, snapshot, version } = options;
+  assertConversationAccess({
+    ctx,
+    conversationId,
+    snapshot,
+  });
+
+  const currentOwnerId = normalizeOwnerId(snapshot.conversation.ownerId ?? null);
+  if (currentOwnerId) {
+    return {
+      conversationId,
+      snapshot,
+      version,
+    };
+  }
+
+  const claimedConversation = {
+    ...snapshot.conversation,
+    ownerId: ctx.auth.userId,
+  };
+  const client = getConversationStoreClient(ctx, conversationId);
+  const claimed = await client.apply([
+    {
+      type: "conversation:update",
+      conversation: claimedConversation,
+    },
+  ]);
+
+  if (!claimed.snapshot) {
+    throw new Error("Failed to claim conversation ownership");
+  }
+
+  const branchCount = Object.keys(claimed.snapshot.branches).length;
+  const rootBranch = claimed.snapshot.branches[claimed.snapshot.conversation.rootBranchId];
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title: rootBranch?.title ?? conversationId,
+    branchCount,
+  });
+
+  ctx.trace("conversation:owner:claimed", {
+    conversationId,
+    ownerId: ctx.auth.userId,
+  });
+
+  return {
+    conversationId,
+    snapshot: claimed.snapshot,
+    version: claimed.version,
+  };
+}
+
 export async function ensureConversationSnapshot(
   ctx: AppContext,
   conversationId: ConversationModelId = DEFAULT_CONVERSATION_ID,
 ): Promise<ConversationLoadResult> {
-  const cached = getCachedSnapshot(conversationId);
+  const resolvedConversationId = resolveConversationId(ctx, conversationId);
+  const cached = getCachedSnapshot(resolvedConversationId);
   if (cached) {
-    ctx.trace("conversation:cache:hit", {
-      conversationId,
-      version: cached.version,
-    });
-    return {
-      conversationId,
+    const owned = await ensureConversationOwnership({
+      ctx,
+      conversationId: resolvedConversationId,
       snapshot: cached.snapshot,
       version: cached.version,
+    });
+    setCachedSnapshot(resolvedConversationId, {
+      snapshot: owned.snapshot,
+      version: owned.version,
+    });
+    ctx.trace("conversation:cache:hit", {
+      conversationId: resolvedConversationId,
+      version: owned.version,
+    });
+    return {
+      conversationId: resolvedConversationId,
+      snapshot: owned.snapshot,
+      version: owned.version,
     };
   }
 
-  const client = getConversationStoreClient(ctx, conversationId);
+  const client = getConversationStoreClient(ctx, resolvedConversationId);
   const result = await client.read();
 
   if (result.snapshot) {
-    ctx.trace("conversation:load", {
-      conversationId,
-      version: result.version,
-      payloadBytes: JSON.stringify(result.snapshot).length,
-    });
-
-    setCachedSnapshot(conversationId, {
+    const owned = await ensureConversationOwnership({
+      ctx,
+      conversationId: resolvedConversationId,
       snapshot: result.snapshot,
       version: result.version,
+    });
+    ctx.trace("conversation:load", {
+      conversationId: resolvedConversationId,
+      version: owned.version,
+      payloadBytes: JSON.stringify(owned.snapshot).length,
+    });
+
+    setCachedSnapshot(resolvedConversationId, {
+      snapshot: owned.snapshot,
+      version: owned.version,
     });
 
     return {
-      conversationId,
-      snapshot: result.snapshot,
-      version: result.version,
+      conversationId: resolvedConversationId,
+      snapshot: owned.snapshot,
+      version: owned.version,
     };
   }
 
-  const initialized = await initializeConversation(ctx, client, conversationId);
+  const initialized = await initializeConversation(
+    ctx,
+    client,
+    resolvedConversationId,
+  );
   return initialized;
 }
 
@@ -263,7 +411,10 @@ export async function applyConversationUpdates(
   updates: ConversationGraphUpdate[],
   options: { touchDirectory?: boolean } = {},
 ): Promise<ConversationLoadResult> {
-  const client = getConversationStoreClient(ctx, conversationId);
+  const resolvedConversationId = resolveConversationId(ctx, conversationId);
+  await ensureConversationSnapshot(ctx, resolvedConversationId);
+
+  const client = getConversationStoreClient(ctx, resolvedConversationId);
   const applied = await client.apply(updates);
 
   if (!applied.snapshot) {
@@ -271,12 +422,12 @@ export async function applyConversationUpdates(
   }
 
   ctx.trace("conversation:apply", {
-    conversationId,
+    conversationId: resolvedConversationId,
     version: applied.version,
     updateCount: updates.length,
   });
 
-  setCachedSnapshot(conversationId, {
+  setCachedSnapshot(resolvedConversationId, {
     version: applied.version,
     snapshot: applied.snapshot,
   });
@@ -287,14 +438,14 @@ export async function applyConversationUpdates(
     const rootBranch =
       applied.snapshot.branches[applied.snapshot.conversation.rootBranchId];
     await touchConversationDirectoryEntry(ctx, {
-      id: conversationId,
+      id: resolvedConversationId,
       branchCount,
-      title: rootBranch?.title ?? conversationId,
+      title: rootBranch?.title ?? resolvedConversationId,
     });
   }
 
   return {
-    conversationId,
+    conversationId: resolvedConversationId,
     snapshot: applied.snapshot,
     version: applied.version,
   };
@@ -824,6 +975,7 @@ async function initializeConversation(
 
   const snapshot = createConversationSnapshot({
     id: conversationId,
+    ownerId: ctx.auth.userId,
     createdAt: now,
     settings: getDefaultConversationSettings(),
     rootBranch: {

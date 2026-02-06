@@ -1,6 +1,9 @@
 "use server";
 
-import { DEFAULT_CONVERSATION_ID } from "@/app/shared/conversation.server";
+import {
+  ensureConversationSnapshot,
+  resolveConversationId,
+} from "@/app/shared/conversation.server";
 import type { AppContext } from "@/app/context";
 import { UPLOAD_MAX_SIZE_BYTES } from "@/app/shared/uploads.config";
 import type { AppRequestInfo } from "@/worker";
@@ -19,13 +22,17 @@ export async function handleDirectUploadRequest(
 
   const appCtx = ctx as AppContext;
   const url = new URL(request.url);
-  const conversationId =
-    url.searchParams.get("conversationId") ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(
+    appCtx,
+    url.searchParams.get("conversationId"),
+  );
   const attachmentId = url.searchParams.get("attachmentId");
 
   if (!attachmentId) {
     return new Response("Missing attachmentId", { status: 400 });
   }
+
+  await ensureConversationSnapshot(appCtx, conversationId);
 
   const store = appCtx.getConversationStore(conversationId);
   const staged = await store.getAttachment(attachmentId);

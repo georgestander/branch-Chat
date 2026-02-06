@@ -1,8 +1,8 @@
 import {
-  DEFAULT_CONVERSATION_ID,
   buildBranchTree,
   ensureConversationSnapshot,
   getBranchMessages,
+  resolveConversationId,
 } from "@/app/shared/conversation.server";
 import { enrichMessagesWithHtml } from "@/app/shared/markdown.server";
 import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
@@ -22,11 +22,14 @@ interface ConversationPageProps extends AppRequestInfo {
 export async function ConversationPage({
   ctx,
   request,
-  conversationId = DEFAULT_CONVERSATION_ID,
+  conversationId,
 }: ConversationPageProps) {
   const requestUrl = new URL(request.url);
-  const requestedConversationId =
-    requestUrl.searchParams.get("conversationId") ?? conversationId;
+  const requestedConversationIdParam =
+    requestUrl.searchParams.get("conversationId") ?? conversationId ?? null;
+  const requestedConversationId = requestedConversationIdParam
+    ? resolveConversationId(ctx, requestedConversationIdParam)
+    : null;
   const requestedBranchId = requestUrl.searchParams.get("branchId");
 
   const directoryEntries = await listConversationDirectoryEntries(ctx);
@@ -46,7 +49,7 @@ export async function ConversationPage({
         conversations={directoryEntries}
         missingConversationId={
           requestedConversationId && !directoryById.has(requestedConversationId)
-            ? requestedConversationId
+            ? requestedConversationIdParam
             : null
         }
       />

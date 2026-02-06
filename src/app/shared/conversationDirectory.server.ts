@@ -12,7 +12,9 @@ export async function listConversationDirectoryEntries(
   ctx: AppContext,
 ): Promise<ConversationDirectoryEntry[]> {
   const client = getClient(ctx);
-  return client.list();
+  return client.list({
+    ownerId: ctx.auth.userId,
+  });
 }
 
 export async function ensureConversationDirectoryEntry(
@@ -26,7 +28,10 @@ export async function ensureConversationDirectoryEntry(
   },
 ): Promise<ConversationDirectoryEntry> {
   const client = getClient(ctx);
-  return client.create(entry);
+  return client.create({
+    ...entry,
+    ownerId: ctx.auth.userId,
+  });
 }
 
 export async function touchConversationDirectoryEntry(
@@ -40,7 +45,10 @@ export async function touchConversationDirectoryEntry(
   },
 ): Promise<ConversationDirectoryEntry> {
   const client = getClient(ctx);
-  return client.touch(entry);
+  return client.touch({
+    ...entry,
+    ownerId: ctx.auth.userId,
+  });
 }
 
 export async function archiveConversationDirectoryEntry(
@@ -48,7 +56,10 @@ export async function archiveConversationDirectoryEntry(
   entry: { id: ConversationDirectoryEntry["id"]; archivedAt?: string },
 ): Promise<ConversationDirectoryEntry> {
   const client = getClient(ctx);
-  return client.archive(entry);
+  return client.archive({
+    ...entry,
+    ownerId: ctx.auth.userId,
+  });
 }
 
 export async function unarchiveConversationDirectoryEntry(
@@ -56,7 +67,10 @@ export async function unarchiveConversationDirectoryEntry(
   entry: { id: ConversationDirectoryEntry["id"] },
 ): Promise<ConversationDirectoryEntry> {
   const client = getClient(ctx);
-  return client.unarchive(entry);
+  return client.unarchive({
+    ...entry,
+    ownerId: ctx.auth.userId,
+  });
 }
 
 export async function deleteConversationDirectoryEntry(
@@ -64,5 +78,8 @@ export async function deleteConversationDirectoryEntry(
   entry: { id: ConversationDirectoryEntry["id"] },
 ): Promise<void> {
   const client = getClient(ctx);
-  await client.delete(entry);
+  await client.delete({
+    ...entry,
+    ownerId: ctx.auth.userId,
+  });
 }

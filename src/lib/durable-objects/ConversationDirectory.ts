@@ -2,6 +2,7 @@ import { type ConversationModelId } from "@/lib/conversation";
 
 export interface ConversationDirectoryEntry {
   id: ConversationModelId;
+  ownerId?: string | null;
   title: string;
   createdAt: string;
   lastActiveAt: string;
@@ -34,6 +35,10 @@ function sortEntries(entries: ConversationDirectoryEntry[]): ConversationDirecto
 function normalizeEntry(entry: ConversationDirectoryEntry): ConversationDirectoryEntry {
   return {
     ...entry,
+    ownerId:
+      typeof entry.ownerId === "string" && entry.ownerId.trim().length > 0
+        ? entry.ownerId.trim()
+        : null,
     archivedAt: entry.archivedAt ?? null,
   };
 }
@@ -50,7 +55,10 @@ function normalizeState(stored: DirectoryState | null): {
   const normalizedEntries = Object.fromEntries(
     Object.entries(stored.conversations).map(([id, entry]) => {
       const normalized = normalizeEntry(entry);
-      if (normalized.archivedAt !== entry.archivedAt) {
+      if (
+        normalized.archivedAt !== entry.archivedAt ||
+        normalized.ownerId !== (entry.ownerId ?? null)
+      ) {
         dirty = true;
       }
       return [id, normalized] as const;
@@ -61,6 +69,17 @@ function normalizeState(stored: DirectoryState | null): {
     state: { conversations: normalizedEntries },
     dirty,
   };
+}
+
+function sanitizeOwnerId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError("ownerId is required");
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new TypeError("ownerId is required");
+  }
+  return normalized;
 }
 
 export class ConversationDirectoryDO implements DurableObject {
@@ -85,7 +104,12 @@ export class ConversationDirectoryDO implements DurableObject {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/entries") {
-      return this.handleList();
+      const ownerIdParam = url.searchParams.get("ownerId");
+      const ownerId =
+        ownerIdParam && ownerIdParam.trim().length > 0
+          ? ownerIdParam.trim()
+          : null;
+      return this.handleList(ownerId);
     }
 
     if (request.method === "POST" && url.pathname === "/entries") {
@@ -143,9 +167,16 @@ export class ConversationDirectoryDO implements DurableObject {
     return next;
   }
 
-  private async handleList(): Promise<Response> {
+  private async handleList(ownerId: string | null): Promise<Response> {
     const state = await this.getState();
-    const entries = sortEntries(Object.values(state.conversations));
+    const entries = sortEntries(
+      Object.values(state.conversations).filter((entry) => {
+        if (!ownerId) {
+          return false;
+        }
+        return entry.ownerId === ownerId;
+      }),
+    );
     return jsonResponse({ entries });
   }
 
@@ -155,11 +186,15 @@ export class ConversationDirectoryDO implements DurableObject {
         throw new TypeError("Payload must be an object");
       }
 
-      const { id, title, branchCount, lastActiveAt } = payload as Record<string, unknown>;
+      const { id, title, branchCount, lastActiveAt, ownerId } = payload as Record<
+        string,
+        unknown
+      >;
 
       if (!id || typeof id !== "string") {
         throw new TypeError("Conversation id is required");
       }
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
 
       const normalizedTitle =
         typeof title === "string" && title.trim().length > 0 ? title.trim() : "Untitled Conversation";
@@ -176,8 +211,15 @@ export class ConversationDirectoryDO implements DurableObject {
 
       const nextState = await this.updateState((state) => {
         const existing = state.conversations[id as ConversationModelId];
+        if (
+          existing?.ownerId &&
+          existing.ownerId !== normalizedOwnerId
+        ) {
+          throw new Error(`Conversation ${id as string} is owned by another user`);
+        }
         const entry: ConversationDirectoryEntry = {
           id: id as ConversationModelId,
+          ownerId: existing?.ownerId ?? normalizedOwnerId,
           title: existing?.title ?? normalizedTitle,
           createdAt: existing?.createdAt ?? createdAt,
           lastActiveAt: timestamp,
@@ -210,11 +252,15 @@ export class ConversationDirectoryDO implements DurableObject {
         throw new TypeError("Payload must be an object");
       }
 
-      const { id, title, branchCount, lastActiveAt } = payload as Record<string, unknown>;
+      const { id, title, branchCount, lastActiveAt, ownerId } = payload as Record<
+        string,
+        unknown
+      >;
 
       if (!id || typeof id !== "string") {
         throw new TypeError("Conversation id is required");
       }
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
 
       const timestamp =
         typeof lastActiveAt === "string" && lastActiveAt.trim().length > 0
@@ -231,15 +277,20 @@ export class ConversationDirectoryDO implements DurableObject {
 
       const nextState = await this.updateState((state) => {
         const existing = state.conversations[id as ConversationModelId];
+        if (existing?.ownerId && existing.ownerId !== normalizedOwnerId) {
+          throw new Error(`Conversation ${id as string} is owned by another user`);
+        }
         const entry: ConversationDirectoryEntry = existing
           ? {
               ...existing,
+              ownerId: existing.ownerId ?? normalizedOwnerId,
               title: normalizedTitle ?? existing.title,
               lastActiveAt: timestamp,
               branchCount: normalizedBranchCount ?? existing.branchCount,
             }
           : {
               id: id as ConversationModelId,
+              ownerId: normalizedOwnerId,
               title: normalizedTitle ?? "Untitled Conversation",
               createdAt: timestamp,
               lastActiveAt: timestamp,
@@ -273,11 +324,12 @@ export class ConversationDirectoryDO implements DurableObject {
         throw new TypeError("Payload must be an object");
       }
 
-      const { id, archivedAt } = payload as Record<string, unknown>;
+      const { id, archivedAt, ownerId } = payload as Record<string, unknown>;
 
       if (!id || typeof id !== "string") {
         throw new TypeError("Conversation id is required");
       }
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
 
       const timestamp =
         typeof archivedAt === "string" && archivedAt.trim().length > 0
@@ -289,9 +341,13 @@ export class ConversationDirectoryDO implements DurableObject {
         if (!existing) {
           throw new Error(`Conversation ${id as string} not found`);
         }
+        if (existing.ownerId && existing.ownerId !== normalizedOwnerId) {
+          throw new Error(`Conversation ${id as string} is owned by another user`);
+        }
 
         const entry: ConversationDirectoryEntry = {
           ...existing,
+          ownerId: existing.ownerId ?? normalizedOwnerId,
           archivedAt: timestamp,
         };
 
@@ -321,20 +377,25 @@ export class ConversationDirectoryDO implements DurableObject {
         throw new TypeError("Payload must be an object");
       }
 
-      const { id } = payload as Record<string, unknown>;
+      const { id, ownerId } = payload as Record<string, unknown>;
 
       if (!id || typeof id !== "string") {
         throw new TypeError("Conversation id is required");
       }
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
 
       const nextState = await this.updateState((state) => {
         const existing = state.conversations[id as ConversationModelId];
         if (!existing) {
           throw new Error(`Conversation ${id as string} not found`);
         }
+        if (existing.ownerId && existing.ownerId !== normalizedOwnerId) {
+          throw new Error(`Conversation ${id as string} is owned by another user`);
+        }
 
         const entry: ConversationDirectoryEntry = {
           ...existing,
+          ownerId: existing.ownerId ?? normalizedOwnerId,
           archivedAt: null,
         };
 
@@ -364,15 +425,20 @@ export class ConversationDirectoryDO implements DurableObject {
         throw new TypeError("Payload must be an object");
       }
 
-      const { id } = payload as Record<string, unknown>;
+      const { id, ownerId } = payload as Record<string, unknown>;
 
       if (!id || typeof id !== "string") {
         throw new TypeError("Conversation id is required");
       }
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
 
       const nextState = await this.updateState((state) => {
-        if (!state.conversations[id as ConversationModelId]) {
+        const existing = state.conversations[id as ConversationModelId];
+        if (!existing) {
           return state;
+        }
+        if (existing.ownerId && existing.ownerId !== normalizedOwnerId) {
+          throw new Error(`Conversation ${id as string} is owned by another user`);
         }
 
         const next = { ...state.conversations };
@@ -399,8 +465,13 @@ export class ConversationDirectoryDO implements DurableObject {
 export class ConversationDirectoryClient {
   constructor(private readonly stub: DurableObjectStub) {}
 
-  async list(): Promise<ConversationDirectoryEntry[]> {
-    const response = await this.stub.fetch("https://conversation-directory/entries");
+  async list(options: { ownerId: string }): Promise<ConversationDirectoryEntry[]> {
+    const params = new URLSearchParams({
+      ownerId: options.ownerId,
+    });
+    const response = await this.stub.fetch(
+      `https://conversation-directory/entries?${params.toString()}`,
+    );
     if (!response.ok) {
       throw new Error(`Failed to list conversations: ${response.status}`);
     }
@@ -410,6 +481,7 @@ export class ConversationDirectoryClient {
 
   async create(entry: {
     id: ConversationModelId;
+    ownerId: string;
     title?: string;
     branchCount?: number;
     lastActiveAt?: string;
@@ -429,6 +501,7 @@ export class ConversationDirectoryClient {
 
   async touch(entry: {
     id: ConversationModelId;
+    ownerId: string;
     title?: string;
     branchCount?: number;
     lastActiveAt?: string;
@@ -448,6 +521,7 @@ export class ConversationDirectoryClient {
 
   async archive(entry: {
     id: ConversationModelId;
+    ownerId: string;
     archivedAt?: string;
   }): Promise<ConversationDirectoryEntry> {
     const response = await this.stub.fetch("https://conversation-directory/entries/archive", {
@@ -463,7 +537,10 @@ export class ConversationDirectoryClient {
     return data.entry;
   }
 
-  async unarchive(entry: { id: ConversationModelId }): Promise<ConversationDirectoryEntry> {
+  async unarchive(entry: {
+    id: ConversationModelId;
+    ownerId: string;
+  }): Promise<ConversationDirectoryEntry> {
     const response = await this.stub.fetch("https://conversation-directory/entries/unarchive", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -477,7 +554,7 @@ export class ConversationDirectoryClient {
     return data.entry;
   }
 
-  async delete(entry: { id: ConversationModelId }): Promise<void> {
+  async delete(entry: { id: ConversationModelId; ownerId: string }): Promise<void> {
     const response = await this.stub.fetch("https://conversation-directory/entries", {
       method: "DELETE",
       headers: { "content-type": "application/json" },

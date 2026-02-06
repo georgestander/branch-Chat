@@ -269,8 +269,14 @@ function validateConversationSettings(
 
 function validateConversation(value: unknown): Conversation {
   assert(isObject(value), "conversation must be an object");
-  const { id, rootBranchId, createdAt, settings } = value;
+  const { id, ownerId, rootBranchId, createdAt, settings } = value;
   assert(typeof id === "string" && id.length > 0, "conversation.id invalid");
+  assert(
+    ownerId === undefined ||
+      ownerId === null ||
+      (typeof ownerId === "string" && ownerId.trim().length > 0),
+    "conversation.ownerId invalid",
+  );
   assert(
     typeof rootBranchId === "string" && rootBranchId.length > 0,
     "conversation.rootBranchId invalid",
@@ -278,6 +284,7 @@ function validateConversation(value: unknown): Conversation {
   assert(isIsoDate(createdAt), "conversation.createdAt invalid");
   return {
     id: id as ConversationModelId,
+    ownerId: ownerId ?? undefined,
     rootBranchId: rootBranchId as BranchId,
     createdAt,
     settings: validateConversationSettings(settings),

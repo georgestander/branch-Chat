@@ -6,6 +6,7 @@ import { Document } from "@/app/Document";
 import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
+import { resolveRequestAuth } from "@/app/shared/auth.server";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
 import { handleDirectUploadRequest } from "@/app/shared/uploadsProxy.server";
 import { createSSEStream } from "@/app/shared/streaming.server";
@@ -24,7 +25,7 @@ const envStorage = new AsyncLocalStorage<Env>();
 const openAIClientSymbol = Symbol.for("connexus.openai-client");
 
 const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) => {
-  const { ctx, request } = requestInfo;
+  const { ctx, request, response } = requestInfo;
   if ((ctx as Partial<AppContext>).env) {
     return;
   }
@@ -86,9 +87,12 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   };
 
   const context = ctx as AppContext;
+  const auth = resolveRequestAuth({ request, response });
+
   context.env = env;
   context.locals = locals;
   context.requestId = requestId;
+  context.auth = auth;
   context.trace = trace;
   context.getOpenAIClient = getOpenAIClient;
   context.getConversationStore = getConversationStore;

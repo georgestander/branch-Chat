@@ -16,6 +16,7 @@ export interface ConversationSettings {
 
 export interface Conversation {
   id: ConversationModelId;
+  ownerId?: string | null;
   rootBranchId: BranchId;
   createdAt: ISODateTimeString;
   settings: ConversationSettings;
@@ -208,6 +209,7 @@ export type ConversationGraphUpdate =
 
 export function createConversationSnapshot(input: {
   id: ConversationModelId;
+  ownerId?: string | null;
   createdAt?: ISODateTimeString;
   settings: ConversationSettings;
   rootBranch: Pick<Branch, "id" | "title" | "createdFrom" | "createdAt">;
@@ -229,6 +231,7 @@ export function createConversationSnapshot(input: {
   const snapshot: ConversationGraphSnapshot = {
     conversation: {
       id: input.id,
+      ownerId: input.ownerId ?? null,
       rootBranchId: rootBranch.id,
       createdAt,
       settings: input.settings,

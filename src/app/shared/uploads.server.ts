@@ -1,6 +1,9 @@
 "use server";
 
-import { DEFAULT_CONVERSATION_ID } from "@/app/shared/conversation.server";
+import {
+  ensureConversationSnapshot,
+  resolveConversationId,
+} from "@/app/shared/conversation.server";
 import type { AppContext } from "@/app/context";
 import type { PendingAttachment } from "@/lib/conversation";
 import {
@@ -51,7 +54,8 @@ export async function createAttachmentUpload(
   ctx: AppContext,
   input: CreateAttachmentUploadInput,
 ): Promise<CreateAttachmentUploadResult> {
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
 
   if (!input.fileName || typeof input.fileName !== "string") {
     throw new Error("File name is required");
@@ -145,7 +149,8 @@ export async function finalizeAttachmentUpload(
   ctx: AppContext,
   input: FinalizeAttachmentInput,
 ): Promise<PendingAttachment> {
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
   const store = ctx.getConversationStore(conversationId);
   const uploadsBucket = ctx.getUploadsBucket();
 
@@ -194,7 +199,8 @@ export async function removeStagedAttachment(
   ctx: AppContext,
   input: RemoveAttachmentInput,
 ): Promise<PendingAttachment | null> {
-  const conversationId = input.conversationId ?? DEFAULT_CONVERSATION_ID;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
   const store = ctx.getConversationStore(conversationId);
   const uploadsBucket = ctx.getUploadsBucket();
 
