@@ -6,7 +6,10 @@ import { Document } from "@/app/Document";
 import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
-import { resolveRequestAuth } from "@/app/shared/auth.server";
+import {
+  isAuthRequiredEnabled,
+  resolveRequestAuth,
+} from "@/app/shared/auth.server";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
 import { handleDirectUploadRequest } from "@/app/shared/uploadsProxy.server";
 import { createSSEStream } from "@/app/shared/streaming.server";
@@ -28,6 +31,17 @@ export type AppRequestInfo = RequestInfo<any, AppContext>;
 const envStorage = new AsyncLocalStorage<Env>();
 const openAIClientSymbol = Symbol.for("connexus.openai-client");
 const openRouterClientSymbol = Symbol.for("connexus.openrouter-client");
+const AUTH_OPTIONAL_PATH_PREFIXES = ["/events", "/_uploads"] as const;
+
+function isAuthOptionalPath(pathname: string): boolean {
+  return AUTH_OPTIONAL_PATH_PREFIXES.some((prefix) => {
+    return (
+      pathname === prefix ||
+      pathname === `${prefix}/` ||
+      pathname.startsWith(`${prefix}/`)
+    );
+  });
+}
 
 const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) => {
   const { ctx, request, response } = requestInfo;
@@ -41,9 +55,29 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
   }
 
   const locals = ctx.locals ?? {};
-  const auth = resolveRequestAuth({ request, response });
+  const requestUrl = new URL(request.url);
+  const requestPath = requestUrl.pathname;
+  const authRequired =
+    isAuthRequiredEnabled(env.AUTH_REQUIRED) && !isAuthOptionalPath(requestPath);
   const requestId =
     request.headers.get("cf-ray") ?? crypto.randomUUID();
+  const auth = resolveRequestAuth({
+    request,
+    response,
+    authRequired,
+  });
+
+  if (!auth) {
+    console.log(
+      "[TRACE] auth.required.denied",
+      JSON.stringify({
+        requestId,
+        path: requestPath,
+        method: request.method,
+      }),
+    );
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   const trace: AppContext["trace"] = (event, data = {}) => {
     const payload = {
@@ -77,7 +111,6 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
     if (!env.OPENROUTER_API_KEY) {
       throw new Error("Missing OpenRouter API key");
     }
-    const requestUrl = new URL(request.url);
     const referer = env.OPENROUTER_SITE_URL ?? requestUrl.origin;
     const title = env.OPENROUTER_APP_NAME ?? "Branch Chat";
     const client = createOpenAIClient({

@@ -6,6 +6,7 @@ declare global {
     ConversationDirectoryDO: DurableObjectNamespace;
     AccountDO: DurableObjectNamespace;
     OPENAI_API_KEY: string;
+    AUTH_REQUIRED?: string;
     BYOK_ENCRYPTION_SECRET: string;
     OPENROUTER_API_KEY?: string;
     OPENROUTER_BASE_URL?: string;

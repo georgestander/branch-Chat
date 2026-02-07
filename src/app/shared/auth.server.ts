@@ -8,6 +8,20 @@ export interface AppAuth {
   email?: string | null;
 }
 
+const AUTH_REQUIRED_TRUTHY_VALUES = new Set(["1", "true", "yes", "on"]);
+
+function isGuestUserId(userId: string): boolean {
+  return userId.startsWith("guest-");
+}
+
+export function isAuthRequiredEnabled(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return AUTH_REQUIRED_TRUTHY_VALUES.has(value.trim().toLowerCase());
+}
+
 function parseCookies(cookieHeader: string | null): Map<string, string> {
   const cookies = new Map<string, string>();
   if (!cookieHeader) {
@@ -130,8 +144,9 @@ function writeAuthCookie(options: {
 export function resolveRequestAuth(options: {
   request: Request;
   response: { headers: Headers };
-}): AppAuth {
-  const { request, response } = options;
+  authRequired?: boolean;
+}): AppAuth | null {
+  const { request, response, authRequired = false } = options;
 
   const headerAuth = parseAuthFromHeaders(request);
   if (headerAuth) {
@@ -139,8 +154,12 @@ export function resolveRequestAuth(options: {
   }
 
   const cookieAuth = parseAuthFromCookie(request);
-  if (cookieAuth) {
+  if (cookieAuth && (!authRequired || !isGuestUserId(cookieAuth.userId))) {
     return cookieAuth;
+  }
+
+  if (authRequired) {
+    return null;
   }
 
   const fallbackUserId = `guest-${crypto.randomUUID()}`;
