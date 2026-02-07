@@ -12,6 +12,15 @@ interface PassReservation {
   status: ReservationStatus;
 }
 
+export interface AccountByokCredential {
+  provider: string;
+  ciphertext: string;
+  iv: string;
+  version: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface AccountState {
   ownerId: string;
   demo: {
@@ -19,6 +28,7 @@ interface AccountState {
     used: number;
     reserved: number;
   };
+  byok: AccountByokCredential | null;
   reservations: Record<string, PassReservation>;
   updatedAt: string;
 }
@@ -91,6 +101,73 @@ function sanitizeCount(value: unknown): number {
   return Math.floor(numeric);
 }
 
+function sanitizeByokProvider(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError("provider is required");
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new TypeError("provider is required");
+  }
+  return normalized;
+}
+
+function sanitizeByokField(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${label} is required`);
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new TypeError(`${label} is required`);
+  }
+  return normalized;
+}
+
+function normalizeByokCredential(
+  value: unknown,
+  now: string,
+): AccountByokCredential | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const provider =
+    typeof record.provider === "string" && record.provider.trim().length > 0
+      ? record.provider.trim()
+      : null;
+  const ciphertext =
+    typeof record.ciphertext === "string" && record.ciphertext.trim().length > 0
+      ? record.ciphertext.trim()
+      : null;
+  const iv =
+    typeof record.iv === "string" && record.iv.trim().length > 0
+      ? record.iv.trim()
+      : null;
+  const version =
+    typeof record.version === "string" && record.version.trim().length > 0
+      ? record.version.trim()
+      : null;
+  if (!provider || !ciphertext || !iv || !version) {
+    return null;
+  }
+  const createdAt =
+    typeof record.createdAt === "string" && record.createdAt.trim().length > 0
+      ? record.createdAt
+      : now;
+  const updatedAt =
+    typeof record.updatedAt === "string" && record.updatedAt.trim().length > 0
+      ? record.updatedAt
+      : createdAt;
+  return {
+    provider,
+    ciphertext,
+    iv,
+    version,
+    createdAt,
+    updatedAt,
+  };
+}
+
 function normalizeState(stored: AccountState | null, ownerId: string): AccountState {
   const now = new Date().toISOString();
   if (!stored) {
@@ -101,6 +178,7 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
         used: 0,
         reserved: 0,
       },
+      byok: null,
       reservations: {},
       updatedAt: now,
     };
@@ -163,6 +241,10 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
     Number.isFinite(usedCandidate) && usedCandidate >= 0
       ? Math.floor(usedCandidate)
       : 0;
+  const byok = normalizeByokCredential(
+    (stored as Partial<AccountState>).byok ?? null,
+    now,
+  );
 
   return {
     ownerId: normalizedOwnerId,
@@ -171,6 +253,7 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
       used,
       reserved: recalculatedReserved,
     },
+    byok,
     reservations,
     updatedAt:
       typeof stored.updatedAt === "string" && stored.updatedAt.trim().length > 0
@@ -219,6 +302,20 @@ export class AccountDO implements DurableObject {
       return this.handleRelease(payload);
     }
 
+    if (request.method === "GET" && url.pathname === "/byok") {
+      return this.handleGetByok(url.searchParams.get("ownerId"));
+    }
+
+    if (request.method === "POST" && url.pathname === "/byok") {
+      const payload = await request.json().catch(() => null);
+      return this.handleSetByok(payload);
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/byok") {
+      const payload = await request.json().catch(() => null);
+      return this.handleDeleteByok(payload);
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -246,6 +343,7 @@ export class AccountDO implements DurableObject {
       const next = mutator({
         ...current,
         demo: { ...current.demo },
+        byok: current.byok ? { ...current.byok } : null,
         reservations: { ...current.reservations },
       });
       this.cache = next;
@@ -499,6 +597,137 @@ export class AccountDO implements DurableObject {
       );
     }
   }
+
+  private async handleGetByok(ownerId: unknown): Promise<Response> {
+    try {
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
+      const state = await this.getState(normalizedOwnerId);
+      console.log(
+        "[TRACE] account:byok:get",
+        JSON.stringify({
+          ownerId: normalizedOwnerId,
+          connected: Boolean(state.byok),
+          provider: state.byok?.provider ?? null,
+          updatedAt: state.byok?.updatedAt ?? null,
+        }),
+      );
+      return jsonResponse({
+        byok: state.byok,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      if (message === "owner mismatch") {
+        return jsonResponse(
+          { error: "owner-mismatch" },
+          { status: 403 },
+        );
+      }
+      console.error("[ERROR] account:byok:get failed", error);
+      return jsonResponse(
+        { error: "invalid-owner" },
+        { status: 400 },
+      );
+    }
+  }
+
+  private async handleSetByok(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const record = payload as Record<string, unknown>;
+      const ownerId = sanitizeOwnerId(record.ownerId);
+      const provider = sanitizeByokProvider(record.provider);
+      const ciphertext = sanitizeByokField(record.ciphertext, "ciphertext");
+      const iv = sanitizeByokField(record.iv, "iv");
+      const version = sanitizeByokField(record.version, "version");
+      const now = new Date().toISOString();
+
+      const next = await this.updateState(ownerId, (state) => {
+        state.byok = {
+          provider,
+          ciphertext,
+          iv,
+          version,
+          createdAt: state.byok?.createdAt ?? now,
+          updatedAt: now,
+        };
+        state.updatedAt = now;
+        return state;
+      });
+
+      console.log(
+        "[TRACE] account:byok:set",
+        JSON.stringify({
+          ownerId,
+          provider,
+          updatedAt: next.byok?.updatedAt ?? now,
+        }),
+      );
+
+      return jsonResponse({
+        byok: next.byok,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      if (message === "owner mismatch") {
+        return jsonResponse(
+          { error: "owner-mismatch" },
+          { status: 403 },
+        );
+      }
+      console.error("[ERROR] account:byok:set failed", error);
+      return jsonResponse(
+        { error: "invalid-byok-request" },
+        { status: 400 },
+      );
+    }
+  }
+
+  private async handleDeleteByok(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const record = payload as Record<string, unknown>;
+      const ownerId = sanitizeOwnerId(record.ownerId);
+      const now = new Date().toISOString();
+      let cleared = false;
+      const next = await this.updateState(ownerId, (state) => {
+        if (!state.byok) {
+          return state;
+        }
+        cleared = true;
+        state.byok = null;
+        state.updatedAt = now;
+        return state;
+      });
+      console.log(
+        "[TRACE] account:byok:delete",
+        JSON.stringify({
+          ownerId,
+          cleared,
+          connected: Boolean(next.byok),
+        }),
+      );
+      return jsonResponse({
+        cleared,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      if (message === "owner mismatch") {
+        return jsonResponse(
+          { error: "owner-mismatch" },
+          { status: 403 },
+        );
+      }
+      console.error("[ERROR] account:byok:delete failed", error);
+      return jsonResponse(
+        { error: "invalid-byok-delete-request" },
+        { status: 400 },
+      );
+    }
+  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -593,6 +822,68 @@ export class AccountClient {
     }
     const data = await parseJsonResponse<{ snapshot: AccountQuotaSnapshot }>(response);
     return data.snapshot;
+  }
+
+  async getByokKey(): Promise<AccountByokCredential | null> {
+    const params = new URLSearchParams({ ownerId: this.ownerId });
+    const response = await this.stub.fetch(`https://account/byok?${params.toString()}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new AccountClientError({
+        message: "Failed to fetch BYOK key",
+        status: response.status,
+        body,
+      });
+    }
+    const data = await parseJsonResponse<{ byok: AccountByokCredential | null }>(response);
+    return data.byok;
+  }
+
+  async setByokKey(input: {
+    provider: string;
+    ciphertext: string;
+    iv: string;
+    version: string;
+  }): Promise<AccountByokCredential> {
+    const response = await this.stub.fetch("https://account/byok", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ownerId: this.ownerId,
+        provider: input.provider,
+        ciphertext: input.ciphertext,
+        iv: input.iv,
+        version: input.version,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new AccountClientError({
+        message: "Failed to save BYOK key",
+        status: response.status,
+        body,
+      });
+    }
+    const data = await parseJsonResponse<{ byok: AccountByokCredential }>(response);
+    return data.byok;
+  }
+
+  async clearByokKey(): Promise<void> {
+    const response = await this.stub.fetch("https://account/byok", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ownerId: this.ownerId,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new AccountClientError({
+        message: "Failed to clear BYOK key",
+        status: response.status,
+        body,
+      });
+    }
   }
 }
 
