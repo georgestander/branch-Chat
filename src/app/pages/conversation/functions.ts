@@ -618,6 +618,20 @@ export async function sendMessage(
   const requestModel = usingOpenRouter
     ? stripOpenRouterPrefix(settings.model)
     : settings.model;
+  const normalizeOpenRouterDemoModel = (value: unknown): string | null => {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const normalized = stripOpenRouterPrefix(value.trim());
+    return normalized.length > 0 ? normalized : null;
+  };
+  const envRecord = ctx.env as unknown as Record<string, unknown>;
+  const demoOpenRouterPrimaryModel = normalizeOpenRouterDemoModel(
+    envRecord.OPENROUTER_DEMO_PRIMARY_MODEL,
+  );
+  const demoOpenRouterBackupModel = normalizeOpenRouterDemoModel(
+    envRecord.OPENROUTER_DEMO_BACKUP_MODEL,
+  );
   const modelRequestSettings = {
     ...settings,
     model: requestModel,
@@ -692,6 +706,17 @@ export async function sendMessage(
       provider: modelProvider,
       model: settings.model,
     });
+    if (quotaLane === "demo" && usingOpenRouter) {
+      modelRequestSettings.model = demoOpenRouterPrimaryModel ?? requestModel;
+      ctx.trace("openrouter:demo:model-route", {
+        conversationId,
+        branchId,
+        requestedModel: requestModel,
+        routedModel: modelRequestSettings.model,
+        configuredPrimaryModel: demoOpenRouterPrimaryModel,
+        configuredBackupModel: demoOpenRouterBackupModel,
+      });
+    }
 
     const selectedTools = Array.isArray(input.tools)
       ? input.tools.filter((tool): tool is ConversationComposerTool => {
@@ -1159,13 +1184,68 @@ export async function sendMessage(
       ? { type: webSearchToolType }
       : null;
 
-  const stream = await openai.responses.stream({
-    ...buildResponseOptions(modelRequestSettings),
-    input: openaiInput,
-    ...(responseTools.length > 0 ? { tools: responseTools } : {}),
-    ...(webSearchToolChoice ? { tool_choice: webSearchToolChoice } : {}),
-    ...(streamInclude.length > 0 ? { include: streamInclude } : {}),
-  });
+  const demoOpenRouterFallbackModel =
+    quotaLane === "demo" &&
+    usingOpenRouter &&
+    demoOpenRouterBackupModel &&
+    demoOpenRouterBackupModel !== modelRequestSettings.model
+      ? demoOpenRouterBackupModel
+      : null;
+  const startResponseStream = (model: string) =>
+    openai.responses.stream({
+      ...buildResponseOptions({
+        ...modelRequestSettings,
+        model,
+      }),
+      input: openaiInput,
+      ...(responseTools.length > 0 ? { tools: responseTools } : {}),
+      ...(webSearchToolChoice ? { tool_choice: webSearchToolChoice } : {}),
+      ...(streamInclude.length > 0 ? { include: streamInclude } : {}),
+    });
+
+  const stream = await (async () => {
+    const primaryStreamModel = modelRequestSettings.model;
+    try {
+      return await startResponseStream(primaryStreamModel);
+    } catch (primaryError) {
+      if (!demoOpenRouterFallbackModel) {
+        throw primaryError;
+      }
+
+      ctx.trace("openrouter:demo:fallback:attempt", {
+        conversationId,
+        branchId,
+        primaryModel: primaryStreamModel,
+        backupModel: demoOpenRouterFallbackModel,
+        error:
+          primaryError instanceof Error ? primaryError.message : "unknown",
+      });
+
+      try {
+        const backupStream = await startResponseStream(demoOpenRouterFallbackModel);
+        modelRequestSettings.model = demoOpenRouterFallbackModel;
+        ctx.trace("openrouter:demo:fallback:success", {
+          conversationId,
+          branchId,
+          primaryModel: primaryStreamModel,
+          activeModel: modelRequestSettings.model,
+        });
+        return backupStream;
+      } catch (backupError) {
+        ctx.trace("openrouter:demo:fallback:failure", {
+          conversationId,
+          branchId,
+          primaryModel: primaryStreamModel,
+          backupModel: demoOpenRouterFallbackModel,
+          primaryError:
+            primaryError instanceof Error ? primaryError.message : "unknown",
+          backupError:
+            backupError instanceof Error ? backupError.message : "unknown",
+        });
+        throw backupError;
+      }
+    }
+  })();
 
   let buffered = "";
   let lastPublishedLength = 0;
