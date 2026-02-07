@@ -108,7 +108,10 @@ function buildResponseOptions(settings: {
     request.reasoning = { effort: settings.reasoningEffort };
   }
 
-  if (settings.model.startsWith("gpt-5-")) {
+  // gpt-5-chat currently rejects `low` verbosity and only accepts `medium`.
+  if (settings.model.startsWith("gpt-5-chat")) {
+    request.text = { verbosity: "medium" };
+  } else if (settings.model.startsWith("gpt-5-")) {
     request.text = { verbosity: "low" };
   }
 
@@ -1165,7 +1168,9 @@ export async function sendMessage(
     model: modelRequestSettings.model,
     temperature: settings.temperature,
     messageCount: openaiInput.length,
-    reasoningEffort: settings.reasoningEffort ?? null,
+    reasoningEffort: supportsReasoningEffortModel(modelRequestSettings.model)
+      ? (settings.reasoningEffort ?? null)
+      : null,
   });
   const responseTools = getDefaultResponseTools({
     enableWebSearchTool,

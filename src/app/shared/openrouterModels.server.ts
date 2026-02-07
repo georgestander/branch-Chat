@@ -125,10 +125,12 @@ export async function listOpenRouterModels(
   ctx: AppContext,
 ): Promise<OpenRouterModelOption[]> {
   if (!ctx.env.OPENROUTER_API_KEY) {
-    ctx.trace("openrouter:models:disabled", {
+    // Allow BYOK flows to still select OpenRouter models even if demo key is unset.
+    ctx.trace("openrouter:models:fallback", {
       reason: "missing-openrouter-api-key",
+      fallbackCount: FALLBACK_MODELS.length,
     });
-    return [];
+    return FALLBACK_MODELS;
   }
 
   const now = Date.now();
