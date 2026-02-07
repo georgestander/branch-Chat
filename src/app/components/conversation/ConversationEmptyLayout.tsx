@@ -265,7 +265,13 @@ export function ConversationEmptyLayout({
         navigate(`/?conversationId=${encodeURIComponent(result.conversationId)}`);
       } catch (error) {
         console.error("[EmptyLayout] createConversation failed", error);
-        setCreationError("Unable to start a new chat. Please try again.");
+        const errorMessage =
+          error instanceof Error ? error.message.toLowerCase() : "";
+        if (errorMessage.includes("unauthorized") || errorMessage.includes("401")) {
+          setCreationError("Sign in to start your free beta chat.");
+        } else {
+          setCreationError("Unable to start a new chat. Please try again.");
+        }
       }
     });
   };
@@ -415,11 +421,36 @@ export function ConversationEmptyLayout({
       <main className="flex flex-1 items-center justify-center px-6">
         <div className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Start your first chat</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Start free with 10 demo passes</h1>
             <p className="text-sm text-muted-foreground">
-              Branch your ideas, compare approaches, and keep every exploration organized.
+              Sign in, choose a start mode, and launch a branching chat in seconds.
             </p>
           </div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleStartConversation()}
+              disabled={isCreating}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-xs font-semibold uppercase tracking-[0.16em] text-primary-foreground transition hover:bg-primary/90",
+                isCreating ? "cursor-not-allowed opacity-70" : "",
+              )}
+            >
+              {isCreating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : null}
+              <span>{isCreating ? "Creating…" : "Start Free"}</span>
+            </button>
+            <a
+              href="/sign-in"
+              className="inline-flex h-9 items-center rounded-full border border-foreground/20 bg-background/70 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-background"
+            >
+              Sign In
+            </a>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Demo lane includes 10 completed replies. Connect BYOK later for unlimited usage.
+          </p>
           <form
             onSubmit={handleDraftSubmit}
             className="panel-surface panel-edge w-full rounded-[28px] px-4 py-4 text-left"

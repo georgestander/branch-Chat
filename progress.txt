@@ -84,3 +84,7 @@
 - Decisions: add `connexus:message:persisted` event payload from composer send success; BranchColumn now merges server-persisted messages into local render state and clears optimistic entries using replacement IDs, so final assistant output appears without navigation reload.
 - Files: src/app/components/conversation/messageEvents.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: preserves SSE streaming UX and branch highlight navigation behavior.
+2026-02-07 — Phase3 conversion copy pass: empty-state landing now surfaces explicit “Start free (10 passes)” and “Sign in” CTAs with auth-aware create error copy, while preserving start-mode controls. Ref: Docs/public-beta-launch-plan.md Phase3 item 2 + Success Criteria 8.
+- Decisions: keep CTA behavior non-blocking (start action still uses createConversation flow); map unauthorized create failures to clear sign-in guidance instead of generic failure text.
+- Files: src/app/components/conversation/ConversationEmptyLayout.tsx, progress.txt.
+- Notes: no backend routing changes required.
