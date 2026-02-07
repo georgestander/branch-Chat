@@ -1247,6 +1247,7 @@ export async function sendMessage(
         assistantMessageId: assistantMessage.id,
         ms: Date.now() - agentStart,
         characters: agentOutput.length,
+        guardrails: result.guardrails,
       });
     } catch (error) {
       ctx.trace("agent:study:error", {

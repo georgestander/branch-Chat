@@ -22,6 +22,11 @@ interface StudyAndLearnAgentRunOptions {
 
 interface StudyAndLearnAgentResult {
   outputText: string;
+  guardrails: {
+    normalized: boolean;
+    blockedAnswerDump: boolean;
+    reasons: string[];
+  };
 }
 
 function supportsReasoningEffort(model: string): boolean {
@@ -45,6 +50,223 @@ Be warm, patient, and plain-spoken; don't use too many exclamation marks or emoj
 IMPORTANT
 DO NOT GIVE ANSWERS OR DO HOMEWORK FOR THE USER. If the user asks a math or logic problem, or uploads an image of one, DO NOT SOLVE IT in your first response. Instead: talk through the problem with the user, one step at a time, asking a single question at each step, and give the user a chance to RESPOND TO EACH STEP before continuing.`;
 
+const STUDY_MODE_CONTRACT = `STUDY MODE CONTRACT (MANDATORY)
+1) Socratic one-step guidance only: advance exactly one small learning step per assistant turn.
+2) Never dump full solutions, final answers, or completed homework/test responses.
+3) Include a comprehension check each turn so the user can restate or apply the step.
+4) Include a short recap each turn that reinforces what was just learned.
+5) Ask exactly one learner-facing question per turn and wait for the user's response before continuing.
+6) Keep responses concise and action-oriented; no long lectures.
+
+ANTI-ANSWER-DUMP POLICY
+- If the user asks for direct answers ("just give me the answer", "solve it for me", "final answer only"), refuse answer-dumping and pivot to one guided step.
+- If a response draft accidentally contains a direct final answer for homework-like prompts, replace it with guidance and one question.
+
+OUTPUT RUBRIC (EVERY TURN)
+- Line 1: Next step: <single guided step, no final answer>
+- Line 2: Comprehension check: <how user shows understanding>
+- Line 3: Recap: <one-sentence takeaway>
+- Line 4: Your turn: <exactly one question>`;
+
+const HOMEWORK_LIKE_PROMPT_PATTERN =
+  /\b(homework|worksheet|quiz|test|exam|assignment|problem set|show work|solve|calculate|derive|proof|equation|integral|derivative|factor|simplify|find x|final answer|multiple choice)\b/i;
+const ANSWER_DUMP_PATTERN =
+  /\b(final answer|the answer is|therefore the answer|correct answer|solution:\s|result:\s)\b/i;
+
+interface StudyOutputNormalizationResult {
+  text: string;
+  normalized: boolean;
+  blockedAnswerDump: boolean;
+  reasons: string[];
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+}
+
+function stripLeadingLabel(value: string): string {
+  return value.replace(/^[A-Za-z ]{2,40}:\s*/i, "").trim();
+}
+
+function toSingleLine(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function toDeclarativeLine(value: string, fallback: string): string {
+  const normalized = toSingleLine(stripLeadingLabel(value))
+    .replace(/\?/g, ".")
+    .replace(/[.!?]+$/g, "")
+    .trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function extractFirstQuestion(value: string): string | null {
+  const match = value.match(/([^?\n]{4,}\?)/);
+  return match ? toSingleLine(match[1]) : null;
+}
+
+function ensureQuestion(value: string, fallback: string): string {
+  const normalized = toSingleLine(stripLeadingLabel(value))
+    .replace(/\?/g, "")
+    .replace(/[.!]+$/g, "")
+    .trim();
+  const candidate = normalized.length > 0 ? normalized : fallback;
+  return candidate.endsWith("?") ? candidate : `${candidate}?`;
+}
+
+function extractLabeledLine(source: string, labels: string[]): string | null {
+  const lines = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    for (const label of labels) {
+      const normalizedLabel = `${label.toLowerCase()}:`;
+      if (lower.startsWith(normalizedLabel)) {
+        return line.slice(normalizedLabel.length).trim();
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractFirstStatement(source: string): string {
+  const firstLine = source
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) {
+    return "";
+  }
+  return firstLine;
+}
+
+function countQuestionMarks(value: string): number {
+  return (value.match(/\?/g) ?? []).length;
+}
+
+function looksLikeAnswerDump(value: string): boolean {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return false;
+  }
+  if (ANSWER_DUMP_PATTERN.test(normalized)) {
+    return true;
+  }
+  const sentences = normalized
+    .split(/[.!?]\s+/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  return countQuestionMarks(normalized) === 0 && sentences.length >= 4;
+}
+
+function isHomeworkLikePrompt(messages: StudyAgentMessage[]): boolean {
+  const latestUser = [...messages].reverse().find((message) => message.role === "user");
+  if (!latestUser) {
+    return false;
+  }
+  return HOMEWORK_LIKE_PROMPT_PATTERN.test(latestUser.content);
+}
+
+function buildGuardedFallbackQuestion(messages: StudyAgentMessage[]): string {
+  const latestUser = [...messages].reverse().find((message) => message.role === "user");
+  const rawSnippet = latestUser?.content?.trim() ?? "";
+  const snippet = toSingleLine(rawSnippet)
+    .replace(/["'?]/g, "")
+    .slice(0, 72);
+  if (snippet.length > 0) {
+    return `What part of "${snippet}" do you already feel confident about?`;
+  }
+  return "What is the first small part you can identify on your own?";
+}
+
+function normalizeStudyOutput(options: {
+  rawOutput: string;
+  history: StudyAgentMessage[];
+}): StudyOutputNormalizationResult {
+  const reasons: string[] = [];
+  const normalizedSource = normalizeWhitespace(options.rawOutput);
+  const fallbackQuestion = buildGuardedFallbackQuestion(options.history);
+  const homeworkLike = isHomeworkLikePrompt(options.history);
+  const answerDumpDetected = homeworkLike && looksLikeAnswerDump(normalizedSource);
+
+  if (!normalizedSource) {
+    reasons.push("empty-output");
+  }
+  if (answerDumpDetected) {
+    reasons.push("answer-dump-blocked");
+  }
+
+  if (!normalizedSource || answerDumpDetected) {
+    return {
+      text: [
+        "Next step: Let's work this out one small step at a time instead of jumping to the final answer.",
+        "Comprehension check: Name the key concept this question is testing in your own words.",
+        "Recap: We focus on process first, then build to the solution together.",
+        `Your turn: ${ensureQuestion(fallbackQuestion, fallbackQuestion)}`,
+      ].join("\n"),
+      normalized: true,
+      blockedAnswerDump: answerDumpDetected,
+      reasons,
+    };
+  }
+
+  const nextStep = toDeclarativeLine(
+    extractLabeledLine(normalizedSource, ["next step", "step"]) ??
+      extractFirstStatement(normalizedSource),
+    "Take one small step by identifying what the question is asking and what information is given",
+  );
+  const comprehensionCheck = toDeclarativeLine(
+    extractLabeledLine(normalizedSource, ["comprehension check", "check"]) ??
+      "Explain why this step makes sense in your own words",
+    "Explain why this step makes sense in your own words",
+  );
+  const recap = toDeclarativeLine(
+    extractLabeledLine(normalizedSource, ["recap", "summary"]) ??
+      "One focused step at a time builds understanding",
+    "One focused step at a time builds understanding",
+  );
+  const question = ensureQuestion(
+    extractLabeledLine(normalizedSource, ["your turn"]) ??
+      extractFirstQuestion(normalizedSource) ??
+      fallbackQuestion,
+    fallbackQuestion,
+  );
+
+  if (
+    !extractLabeledLine(normalizedSource, ["next step"]) ||
+    !extractLabeledLine(normalizedSource, ["comprehension check"]) ||
+    !extractLabeledLine(normalizedSource, ["recap"]) ||
+    !extractLabeledLine(normalizedSource, ["your turn"]) ||
+    countQuestionMarks(normalizedSource) !== 1
+  ) {
+    reasons.push("rubric-normalized");
+  }
+
+  const normalizedText = [
+    `Next step: ${nextStep}`,
+    `Comprehension check: ${comprehensionCheck}`,
+    `Recap: ${recap}`,
+    `Your turn: ${question}`,
+  ].join("\n");
+
+  const contentChanged =
+    normalizeWhitespace(normalizedText) !== normalizeWhitespace(normalizedSource);
+  if (contentChanged && reasons.length === 0) {
+    reasons.push("format-rebuilt");
+  }
+
+  return {
+    text: normalizedText,
+    normalized: reasons.length > 0,
+    blockedAnswerDump: false,
+    reasons,
+  };
+}
+
 export async function runStudyAndLearnAgent(
   options: StudyAndLearnAgentRunOptions,
 ): Promise<StudyAndLearnAgentResult> {
@@ -52,6 +274,7 @@ export async function runStudyAndLearnAgent(
     setDefaultOpenAIClient(options.openaiClient);
     const combinedInstructions = [
       STUDY_AND_LEARN_BASE_PROMPT.trim(),
+      STUDY_MODE_CONTRACT.trim(),
       options.instructions.trim(),
     ]
       .filter((value) => value.length > 0)
@@ -117,8 +340,18 @@ export async function runStudyAndLearnAgent(
       throw new Error("Study & Learn agent result is undefined");
     }
 
+    const normalized = normalizeStudyOutput({
+      rawOutput: result.finalOutput,
+      history: options.history,
+    });
+
     return {
-      outputText: result.finalOutput,
+      outputText: normalized.text,
+      guardrails: {
+        normalized: normalized.normalized,
+        blockedAnswerDump: normalized.blockedAnswerDump,
+        reasons: normalized.reasons,
+      },
     };
   });
 }

@@ -72,3 +72,7 @@
 - Decisions: enforce deterministic preset map (`fast/reasoning/study`) at create time; `custom` preserves explicit advanced selections; move composer tool defaults from session-only storage to `updateConversationSettings` (`preset + tools`) with optimistic layout state/rollback.
 - Files: src/app/components/conversation/ConversationEmptyLayout.tsx, src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationComposer.tsx, progress.txt.
 - Notes: no blockers. Validation run: `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-07 — Phase4 study-mode contract: refactored Study & Learn prompt and runtime guardrails to enforce Socratic one-step responses with comprehension checks + recap blocks; answer-dump outputs are normalized/blocked for homework-like prompts. Ref: Docs/public-beta-launch-plan.md Phase4 items 1-2.
+- Decisions: encode explicit output rubric (Next step / Comprehension check / Recap / Your turn); add normalization pass to guarantee shape even when model drifts; attach guardrail telemetry to `agent:study:success` trace for observability.
+- Files: src/app/shared/openai/studyAndLearnAgent.server.ts, src/app/pages/conversation/functions.ts, progress.txt.
+- Notes: validation commands still pass (`pnpm types`, `npm run test`, `npm run lint`).
