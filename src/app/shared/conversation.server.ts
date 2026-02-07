@@ -947,6 +947,10 @@ function getDefaultConversationSettings(): ConversationSettings {
     model: DEFAULT_MODEL,
     temperature: DEFAULT_TEMPERATURE,
     reasoningEffort: "low",
+    composerDefaults: {
+      preset: "fast",
+      tools: [],
+    },
     systemPrompt:
       "You are Connexus, a branching conversation assistant. Provide concise, structured replies to help users explore alternatives.",
   };

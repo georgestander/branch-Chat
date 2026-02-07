@@ -1,3 +1,5 @@
+import type { ConversationComposerTool } from "./tools";
+
 export type ISODateTimeString = string;
 
 export type ConversationModelId = string;
@@ -6,12 +8,20 @@ export type MessageId = string;
 
 export type ConversationRole = "user" | "assistant" | "system";
 
+export type ComposerPreset = "fast" | "reasoning" | "study" | "custom";
+
+export interface ComposerDefaults {
+  preset: ComposerPreset;
+  tools: ConversationComposerTool[];
+}
+
 export interface ConversationSettings {
   model: string;
   temperature: number;
   systemPrompt?: string | null;
   // Optional: applies only to reasoning models; ignored for chat-tuned models
   reasoningEffort?: "low" | "medium" | "high" | null;
+  composerDefaults: ComposerDefaults;
 }
 
 export interface Conversation {

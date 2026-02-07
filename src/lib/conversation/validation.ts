@@ -3,6 +3,7 @@ import type {
   BranchId,
   BranchSpan,
   Conversation,
+  ComposerDefaults,
   ConversationGraphSnapshot,
   ConversationModelId,
   ConversationSettings,
@@ -17,6 +18,12 @@ import type {
 type RecordLike = Record<string, unknown>;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
+const ALLOWED_COMPOSER_PRESETS = new Set(["fast", "reasoning", "study", "custom"]);
+const ALLOWED_COMPOSER_TOOLS = new Set([
+  "study-and-learn",
+  "web-search",
+  "file-upload",
+]);
 
 export function isIsoDate(value: unknown): value is string {
   return (
@@ -235,7 +242,7 @@ function validateConversationSettings(
   value: unknown,
 ): ConversationSettings {
   assert(isObject(value), "settings must be an object");
-  const { model, temperature, systemPrompt } = value;
+  const { model, temperature, systemPrompt, composerDefaults } = value;
   assert(typeof model === "string" && model.length > 0, "settings.model invalid");
   assert(typeof temperature === "number", "settings.temperature invalid");
   assert(
@@ -259,11 +266,64 @@ function validateConversationSettings(
     throw new Error("settings.reasoningEffort invalid");
   }
 
+  const inferLegacyPreset = (): ConversationSettings["composerDefaults"]["preset"] => {
+    const normalizedModel = model.toLowerCase();
+    if (normalizedModel.startsWith("gpt-5-chat")) {
+      return "fast";
+    }
+    if (normalizedModel.startsWith("gpt-5-")) {
+      return "reasoning";
+    }
+    return "custom";
+  };
+
+  let normalizedComposerDefaults: ComposerDefaults = {
+    preset: inferLegacyPreset(),
+    tools: [],
+  };
+  if (composerDefaults !== undefined && composerDefaults !== null) {
+    assert(
+      isObject(composerDefaults),
+      "settings.composerDefaults must be an object",
+    );
+    const composerRecord = composerDefaults as RecordLike;
+    const presetValue = composerRecord.preset;
+    const toolsValue = composerRecord.tools;
+
+    const preset =
+      typeof presetValue === "string" && ALLOWED_COMPOSER_PRESETS.has(presetValue)
+        ? (presetValue as ComposerDefaults["preset"])
+        : inferLegacyPreset();
+
+    const tools: ComposerDefaults["tools"] = [];
+    if (toolsValue !== undefined && toolsValue !== null) {
+      assert(
+        Array.isArray(toolsValue),
+        "settings.composerDefaults.tools must be an array",
+      );
+      for (const item of toolsValue) {
+        assert(
+          typeof item === "string" && ALLOWED_COMPOSER_TOOLS.has(item),
+          "settings.composerDefaults.tools contains an invalid value",
+        );
+        if (!tools.includes(item as (typeof tools)[number])) {
+          tools.push(item as (typeof tools)[number]);
+        }
+      }
+    }
+
+    normalizedComposerDefaults = {
+      preset,
+      tools,
+    };
+  }
+
   return {
     model,
     temperature,
     systemPrompt: systemPrompt ?? undefined,
     reasoningEffort,
+    composerDefaults: normalizedComposerDefaults,
   };
 }
 

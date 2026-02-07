@@ -51,8 +51,10 @@ import type {
   Branch,
   BranchId,
   BranchSpan,
+  ComposerPreset,
   ConversationGraphSnapshot,
   ConversationModelId,
+  ConversationSettings,
   Message,
   MessageAttachment,
   PendingAttachment,
@@ -81,6 +83,17 @@ import {
 } from "@/lib/openrouter/models";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
+const ALLOWED_COMPOSER_PRESETS = new Set<ComposerPreset>([
+  "fast",
+  "reasoning",
+  "study",
+  "custom",
+]);
+const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
+  "study-and-learn",
+  "web-search",
+  "file-upload",
+]);
 
 function buildResponseOptions(settings: {
   model: string;
@@ -117,6 +130,136 @@ function buildResponseOptions(settings: {
   }
 
   return request;
+}
+
+function normalizeComposerPreset(
+  value: unknown,
+  fallback: ComposerPreset = "custom",
+): ComposerPreset {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  return ALLOWED_COMPOSER_PRESETS.has(normalized as ComposerPreset)
+    ? (normalized as ComposerPreset)
+    : fallback;
+}
+
+function normalizeComposerTools(value: unknown): ConversationComposerTool[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const tools: ConversationComposerTool[] = [];
+  for (const item of value) {
+    if (
+      typeof item === "string" &&
+      ALLOWED_COMPOSER_TOOLS.has(item as ConversationComposerTool) &&
+      !tools.includes(item as ConversationComposerTool)
+    ) {
+      tools.push(item as ConversationComposerTool);
+    }
+  }
+  return tools;
+}
+
+function inferComposerPresetFromSettings(
+  settings: Pick<ConversationSettings, "model" | "reasoningEffort">,
+): ComposerPreset {
+  const normalizedModel = settings.model.toLowerCase();
+  if (normalizedModel.startsWith("gpt-5-chat")) {
+    return "fast";
+  }
+  if (supportsReasoningEffortModel(settings.model) || settings.reasoningEffort) {
+    return "reasoning";
+  }
+  return "custom";
+}
+
+function normalizeReasoningEffortForModel(
+  model: string,
+  effort: ConversationSettings["reasoningEffort"] | undefined,
+): ConversationSettings["reasoningEffort"] {
+  if (!supportsReasoningEffortModel(model)) {
+    return null;
+  }
+  if (effort === "low" || effort === "medium" || effort === "high") {
+    return effort;
+  }
+  return "low";
+}
+
+function normalizeConversationComposerDefaults(
+  settings: ConversationSettings,
+  overrides?: { preset?: unknown; tools?: unknown },
+): ConversationSettings["composerDefaults"] {
+  const fallbackPreset = inferComposerPresetFromSettings(settings);
+  const existingDefaults = settings.composerDefaults ?? {
+    preset: fallbackPreset,
+    tools: [],
+  };
+  const hasToolOverride =
+    Boolean(overrides) && Object.prototype.hasOwnProperty.call(overrides, "tools");
+
+  return {
+    preset: normalizeComposerPreset(
+      overrides?.preset ?? existingDefaults.preset,
+      fallbackPreset,
+    ),
+    tools: hasToolOverride
+      ? normalizeComposerTools(overrides?.tools)
+      : normalizeComposerTools(existingDefaults.tools),
+  };
+}
+
+function buildNextConversationSettings(options: {
+  settings: ConversationSettings;
+  model?: string;
+  temperature?: number;
+  reasoningEffort?: ConversationSettings["reasoningEffort"];
+  preset?: unknown;
+  tools?: unknown;
+}): ConversationSettings {
+  const nextModel =
+    typeof options.model === "string" && options.model.trim().length > 0
+      ? options.model.trim()
+      : options.settings.model;
+  const nextTemperature =
+    typeof options.temperature === "number"
+      ? options.temperature
+      : options.settings.temperature;
+  const requestedEffort =
+    options.reasoningEffort !== undefined
+      ? options.reasoningEffort
+      : options.settings.reasoningEffort;
+  const nextReasoningEffort = normalizeReasoningEffortForModel(
+    nextModel,
+    requestedEffort,
+  );
+
+  const composerOverride: { preset?: unknown; tools?: unknown } = {};
+  if (options.preset !== undefined) {
+    composerOverride.preset = options.preset;
+  }
+  if (options.tools !== undefined) {
+    composerOverride.tools = options.tools;
+  }
+  const composerDefaults = normalizeConversationComposerDefaults(
+    {
+      ...options.settings,
+      model: nextModel,
+      temperature: nextTemperature,
+      reasoningEffort: nextReasoningEffort,
+    },
+    Object.keys(composerOverride).length > 0 ? composerOverride : undefined,
+  );
+
+  return {
+    ...options.settings,
+    model: nextModel,
+    temperature: nextTemperature,
+    reasoningEffort: nextReasoningEffort,
+    composerDefaults,
+  };
 }
 
 export interface ConversationPayload {
@@ -241,6 +384,11 @@ export interface CreateBranchResponse extends LoadConversationResponse {
 
 export interface CreateConversationInput extends ConversationPayload {
   title?: string;
+  initialMessage?: string;
+  preset?: ComposerPreset;
+  model?: string;
+  reasoningEffort?: "low" | "medium" | "high" | null;
+  tools?: ConversationComposerTool[];
 }
 
 export type CreateConversationResponse = LoadConversationResponse;
@@ -282,6 +430,8 @@ export interface UpdateConversationSettingsInput extends ConversationPayload {
   model?: string;
   temperature?: number;
   reasoningEffort?: "low" | "medium" | "high" | null;
+  preset?: ComposerPreset;
+  tools?: ConversationComposerTool[];
 }
 
 export type UpdateConversationSettingsResponse = LoadConversationResponse;
@@ -413,16 +563,21 @@ export async function updateConversationSettings(
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const current = ensured.snapshot.conversation;
-  const nextSettings = {
-    ...current.settings,
-    ...(input.model ? { model: input.model } : {}),
-    ...(typeof input.temperature === "number"
-      ? { temperature: input.temperature }
-      : {}),
-    ...(input.reasoningEffort !== undefined
-      ? { reasoningEffort: input.reasoningEffort }
-      : {}),
-  };
+  const nextSettings = buildNextConversationSettings({
+    settings: current.settings,
+    model: input.model,
+    temperature: input.temperature,
+    reasoningEffort: input.reasoningEffort,
+    preset: input.preset,
+    tools: input.tools,
+  });
+  if (JSON.stringify(nextSettings) === JSON.stringify(current.settings)) {
+    return {
+      conversationId,
+      snapshot: ensured.snapshot,
+      version: ensured.version,
+    };
+  }
 
   const applied = await applyConversationUpdates(ctx, conversationId, [
     {
@@ -580,17 +735,48 @@ export async function createConversation(
     : generateConversationId();
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const currentConversation = ensured.snapshot.conversation;
+  const nextSettings = buildNextConversationSettings({
+    settings: currentConversation.settings,
+    model: input.model,
+    reasoningEffort: input.reasoningEffort,
+    preset: input.preset,
+    tools: input.tools,
+  });
+  const needsSettingsUpdate =
+    JSON.stringify(nextSettings) !== JSON.stringify(currentConversation.settings);
+  const withUpdatedSettings = needsSettingsUpdate
+    ? await applyConversationUpdates(ctx, conversationId, [
+        {
+          type: "conversation:update",
+          conversation: {
+            ...currentConversation,
+            settings: nextSettings,
+          },
+        },
+      ])
+    : ensured;
+
+  if (typeof input.initialMessage === "string" && input.initialMessage.trim()) {
+    ctx.trace("conversation:create:initial-message:deferred", {
+      conversationId,
+      length: input.initialMessage.trim().length,
+    });
+  }
+
   const rootBranch =
-    ensured.snapshot.branches[ensured.snapshot.conversation.rootBranchId];
+    withUpdatedSettings.snapshot.branches[
+      withUpdatedSettings.snapshot.conversation.rootBranchId
+    ];
   const title = input.title?.trim() || rootBranch?.title || conversationId;
 
   await touchConversationDirectoryEntry(ctx, {
     id: conversationId,
     title,
-    branchCount: Object.keys(ensured.snapshot.branches).length,
+    branchCount: Object.keys(withUpdatedSettings.snapshot.branches).length,
   });
 
-  return ensured;
+  return withUpdatedSettings;
 }
 
 export async function sendMessage(
