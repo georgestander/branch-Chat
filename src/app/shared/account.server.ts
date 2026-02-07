@@ -23,6 +23,13 @@ function getClient(ctx: AppContext) {
   return ctx.getAccount();
 }
 
+export function isByokConfigured(ctx: AppContext): boolean {
+  return (
+    typeof ctx.env.BYOK_ENCRYPTION_SECRET === "string" &&
+    ctx.env.BYOK_ENCRYPTION_SECRET.trim().length > 0
+  );
+}
+
 export interface ResolvedByokCredential {
   provider: string;
   apiKey: string;
@@ -139,6 +146,12 @@ export async function saveByokKey(
   connected: boolean;
   updatedAt: string | null;
 }> {
+  if (!isByokConfigured(ctx)) {
+    throw new Error(
+      "BYOK is not configured in this environment. Add BYOK_ENCRYPTION_SECRET to your worker/.dev.vars.",
+    );
+  }
+
   const provider = normalizeByokProvider(input.provider);
   const apiKey = normalizeByokApiKey(input.apiKey);
 
@@ -214,6 +227,12 @@ export async function resolveByokKey(
 export async function resolveByokCredential(
   ctx: AppContext,
 ): Promise<ResolvedByokCredential | null> {
+  if (!isByokConfigured(ctx)) {
+    throw new Error(
+      "BYOK is not configured in this environment. Add BYOK_ENCRYPTION_SECRET to your worker/.dev.vars.",
+    );
+  }
+
   try {
     const byok = await getClient(ctx).getByokKey();
     if (!byok) {

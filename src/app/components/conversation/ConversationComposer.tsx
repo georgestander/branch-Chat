@@ -443,6 +443,16 @@ export function ConversationComposer({
     if (isByokSaving) {
       return;
     }
+    const nextByokEnabled = accountState?.byok.enabled ?? false;
+    const nextByokUnavailableReason = accountState?.byok.unavailableReason ?? null;
+    if (!nextByokEnabled) {
+      setError(
+        nextByokUnavailableReason ||
+          "BYOK is disabled for this environment.",
+      );
+      setIsByokPanelOpen(true);
+      return;
+    }
     const normalizedKey = byokApiKey.trim();
     if (!normalizedKey) {
       setError("Enter an API key before connecting BYOK.");
@@ -476,7 +486,13 @@ export function ConversationComposer({
     } finally {
       setIsByokSaving(false);
     }
-  }, [byokApiKey, byokProvider, isByokSaving, loadComposerAccountState]);
+  }, [
+    accountState,
+    byokApiKey,
+    byokProvider,
+    isByokSaving,
+    loadComposerAccountState,
+  ]);
 
   const handleDeleteByokKey = useCallback(async () => {
     if (isByokSaving) {
@@ -494,6 +510,8 @@ export function ConversationComposer({
                 provider: null,
                 connected: false,
                 updatedAt: null,
+                enabled: previous.byok.enabled,
+                unavailableReason: previous.byok.unavailableReason,
               },
             }
           : previous,
@@ -957,7 +975,9 @@ export function ConversationComposer({
     (attachment) => attachment.status === "error",
   );
   const canAddMoreAttachments = attachments.length < UPLOAD_MAX_ATTACHMENTS;
-  const byokConnected = accountState?.byok.connected ?? false;
+  const byokEnabled = accountState?.byok.enabled ?? false;
+  const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
+  const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
   const byokProviderLabel =
     accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
   const demoRemainingPasses = accountState?.quota.remaining ?? null;
@@ -1123,11 +1143,18 @@ export function ConversationComposer({
                 }
               : previous,
           );
-          setByokProvider(getProviderForModel(conversationModel));
-          setIsByokPanelOpen(true);
-          setError(
-            "Demo passes are exhausted. Connect a BYOK key below, then switch to the BYOK lane to continue.",
-          );
+          if (byokEnabled) {
+            setByokProvider(getProviderForModel(conversationModel));
+            setIsByokPanelOpen(true);
+            setError(
+              "Demo passes are exhausted. Connect a BYOK key below, then switch to the BYOK lane to continue.",
+            );
+          } else {
+            setError(
+              byokUnavailableReason ||
+                "Demo passes are exhausted and BYOK is disabled in this environment.",
+            );
+          }
           return;
         }
         setError(errorMessage || "We couldn't send that message. Please try again.");
@@ -1200,7 +1227,7 @@ export function ConversationComposer({
             type="button"
             onClick={() => setSelectedLane("byok")}
             aria-pressed={selectedLane === "byok"}
-            disabled={!byokConnected}
+            disabled={!byokEnabled || !byokConnected}
             className={cn(
               "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
               selectedLane === "byok"
@@ -1213,10 +1240,24 @@ export function ConversationComposer({
         </div>
         <button
           type="button"
-          onClick={() => setIsByokPanelOpen((previous) => !previous)}
+          onClick={() => {
+            if (!byokEnabled) {
+              setError(
+                byokUnavailableReason ||
+                  "BYOK is disabled for this environment.",
+              );
+              return;
+            }
+            setIsByokPanelOpen((previous) => !previous);
+          }}
+          disabled={!byokEnabled}
           className="interactive-target inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          {byokConnected ? "Manage BYOK" : "Connect BYOK"}
+          {!byokEnabled
+            ? "BYOK Disabled"
+            : byokConnected
+              ? "Manage BYOK"
+              : "Connect BYOK"}
         </button>
       </div>
       {isByokPanelOpen ? (
@@ -1235,7 +1276,7 @@ export function ConversationComposer({
                 onChange={(event) =>
                   setByokProvider(event.target.value as ComposerByokProvider)
                 }
-                disabled={isByokSaving}
+                disabled={isByokSaving || !byokEnabled}
                 className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="openai">OpenAI</option>
@@ -1255,7 +1296,7 @@ export function ConversationComposer({
                 value={byokApiKey}
                 onChange={(event) => setByokApiKey(event.target.value)}
                 placeholder="sk-..."
-                disabled={isByokSaving}
+                disabled={isByokSaving || !byokEnabled}
                 autoComplete="off"
                 className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               />
@@ -1263,10 +1304,16 @@ export function ConversationComposer({
             <button
               type="button"
               onClick={() => void handleSaveByokKey()}
-              disabled={isByokSaving}
+              disabled={isByokSaving || !byokEnabled}
               className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isByokSaving ? "Saving..." : byokConnected ? "Update key" : "Connect"}
+              {!byokEnabled
+                ? "Unavailable"
+                : isByokSaving
+                  ? "Saving..."
+                  : byokConnected
+                    ? "Update key"
+                    : "Connect"}
             </button>
             {byokConnected ? (
               <button
@@ -1287,7 +1334,10 @@ export function ConversationComposer({
             </button>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            {byokConnected
+            {!byokEnabled
+              ? byokUnavailableReason ||
+                "BYOK is disabled for this environment."
+              : byokConnected
               ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.`
               : "Connect your API key, then switch lanes to BYOK for unlimited sends via your key."}
           </p>

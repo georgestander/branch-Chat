@@ -27,6 +27,7 @@ import {
   deleteByokKey,
   getAccountQuotaSnapshot,
   getByokStatus,
+  isByokConfigured,
   releaseDemoPass,
   reserveDemoPass,
   resolveByokCredential,
@@ -291,6 +292,8 @@ export interface ComposerByokStatus {
   provider: ComposerByokProvider | null;
   connected: boolean;
   updatedAt: string | null;
+  enabled: boolean;
+  unavailableReason: string | null;
 }
 
 export interface ComposerAccountState {
@@ -310,7 +313,19 @@ export interface SaveComposerByokKeyInput {
 
 function normalizeComposerByokStatus(
   input: Awaited<ReturnType<typeof getByokStatus>>,
+  enabled: boolean,
 ): ComposerByokStatus {
+  if (!enabled) {
+    return {
+      provider: null,
+      connected: false,
+      updatedAt: null,
+      enabled: false,
+      unavailableReason:
+        "BYOK is disabled for this environment. Set BYOK_ENCRYPTION_SECRET on the server.",
+    };
+  }
+
   const normalizedProvider = input.provider?.trim().toLowerCase();
   const provider: ComposerByokProvider | null =
     normalizedProvider === "openrouter"
@@ -322,6 +337,8 @@ function normalizeComposerByokStatus(
     provider,
     connected: provider ? input.connected : false,
     updatedAt: provider ? input.updatedAt : null,
+    enabled: true,
+    unavailableReason: null,
   };
 }
 
@@ -337,7 +354,14 @@ export async function getComposerAccountState(): Promise<ComposerAccountState> {
   const ctx = requestInfo.ctx as AppContext;
 
   const quota = await getAccountQuotaSnapshot(ctx);
-  const byokStatus = await getByokStatus(ctx);
+  const byokEnabled = isByokConfigured(ctx);
+  const byokStatus: Awaited<ReturnType<typeof getByokStatus>> = byokEnabled
+    ? await getByokStatus(ctx)
+    : {
+        provider: null,
+        connected: false,
+        updatedAt: null,
+      };
 
   return {
     quota: {
@@ -346,7 +370,7 @@ export async function getComposerAccountState(): Promise<ComposerAccountState> {
       reserved: quota.reserved,
       remaining: quota.remaining,
     },
-    byok: normalizeComposerByokStatus(byokStatus),
+    byok: normalizeComposerByokStatus(byokStatus, byokEnabled),
   };
 }
 
@@ -361,17 +385,22 @@ export async function saveComposerByokKey(
     provider,
     apiKey: input.apiKey,
   });
-  return normalizeComposerByokStatus(status);
+  return normalizeComposerByokStatus(status, isByokConfigured(ctx));
 }
 
 export async function deleteComposerByokKey(): Promise<ComposerByokStatus> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
+  const byokEnabled = isByokConfigured(ctx);
   await deleteByokKey(ctx);
   return {
     provider: null,
     connected: false,
     updatedAt: null,
+    enabled: byokEnabled,
+    unavailableReason: byokEnabled
+      ? null
+      : "BYOK is disabled for this environment. Set BYOK_ENCRYPTION_SECRET on the server.",
   };
 }
 
