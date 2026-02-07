@@ -80,3 +80,7 @@
 - Decisions: keep scripts low-risk with existing toolchain (`node --test`, `tsc`-backed lint) to satisfy real gate requirement without introducing dependency churn; document Cloudflare bindings + local env expectations explicitly for forkability.
 - Files: README.md, package.json, LICENSE, CONTRIBUTING.md, SECURITY.md, Docs/architecture.md, Docs/setup.md, Docs/env-vars.md, progress.txt.
 - Notes: adjusted docs URLs/examples to localhost:5174 to match Vite strictPort config.
+2026-02-07 — Phase1 reliability follow-up: removed forced page refresh on stream completion by reconciling persisted branch messages client-side via message events. Ref: Docs/public-beta-launch-plan.md Success Criteria 4.
+- Decisions: add `connexus:message:persisted` event payload from composer send success; BranchColumn now merges server-persisted messages into local render state and clears optimistic entries using replacement IDs, so final assistant output appears without navigation reload.
+- Files: src/app/components/conversation/messageEvents.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: preserves SSE streaming UX and branch highlight navigation behavior.

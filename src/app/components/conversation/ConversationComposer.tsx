@@ -48,6 +48,7 @@ import { emitDirectoryUpdate } from "@/app/components/conversation/directoryEven
 import {
   emitOptimisticUserMessage,
   emitOptimisticMessageClear,
+  emitPersistedMessages,
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
 import type { ComposerPreset } from "@/lib/conversation";
@@ -1190,6 +1191,31 @@ export function ConversationComposer({
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
           result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+        const persistedBranchMessages = result.appendedMessages.filter(
+          (
+            message,
+          ): message is (typeof result.appendedMessages)[number] & {
+            role: "user" | "assistant";
+          } =>
+            message.branchId === branchId &&
+            (message.role === "user" || message.role === "assistant"),
+        );
+        if (persistedBranchMessages.length > 0) {
+          emitPersistedMessages({
+            conversationId,
+            branchId,
+            messages: persistedBranchMessages.map((message) => ({
+              id: message.id,
+              branchId: message.branchId,
+              role: message.role,
+              content: message.content,
+              createdAt: message.createdAt,
+              tokenUsage: message.tokenUsage ?? null,
+              attachments: message.attachments ?? null,
+              toolInvocations: message.toolInvocations ?? null,
+            })),
+          });
+        }
         const persistedUserMessage = result.appendedMessages.find(
           (message) => message.role === "user" && message.branchId === branchId,
         );

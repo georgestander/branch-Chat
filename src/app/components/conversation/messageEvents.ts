@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import type {
+  MessageAttachment,
+  ToolInvocation,
+} from "@/lib/conversation";
 
 export const OPTIMISTIC_MESSAGE_EVENT = "connexus:message:optimistic";
 export const CLEAR_OPTIMISTIC_MESSAGE_EVENT =
   "connexus:message:optimistic:clear";
+export const PERSISTED_MESSAGES_EVENT = "connexus:message:persisted";
 
 export interface OptimisticMessageDetail {
   conversationId: string;
@@ -20,6 +25,27 @@ export interface ClearOptimisticMessageDetail {
   messageId: string;
   reason: "resolved" | "failed";
   replacementMessageId?: string | null;
+}
+
+export interface PersistedBranchMessage {
+  id: string;
+  branchId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  tokenUsage?: {
+    prompt: number;
+    completion: number;
+    cost: number;
+  } | null;
+  attachments?: MessageAttachment[] | null;
+  toolInvocations?: ToolInvocation[] | null;
+}
+
+export interface PersistedMessagesDetail {
+  conversationId: string;
+  branchId: string;
+  messages: PersistedBranchMessage[];
 }
 
 export function emitOptimisticUserMessage(detail: OptimisticMessageDetail) {
@@ -46,6 +72,17 @@ export function emitOptimisticMessageClear(
         detail,
       },
     ),
+  );
+}
+
+export function emitPersistedMessages(detail: PersistedMessagesDetail) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent<PersistedMessagesDetail>(PERSISTED_MESSAGES_EVENT, {
+      detail,
+    }),
   );
 }
 

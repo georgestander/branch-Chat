@@ -30,9 +30,14 @@ import {
   useOptimisticMessageEvents,
   type OptimisticMessageDetail,
   type ClearOptimisticMessageDetail,
+  PERSISTED_MESSAGES_EVENT,
+  type PersistedMessagesDetail,
 } from "@/app/components/conversation/messageEvents";
 import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
-import { START_STREAMING_EVENT, COMPLETE_STREAMING_EVENT, type StartStreamingDetail } from "@/app/components/conversation/streamingEvents";
+import {
+  START_STREAMING_EVENT,
+  type StartStreamingDetail,
+} from "@/app/components/conversation/streamingEvents";
 import { navigate } from "rwsdk/client";
 import type { OpenRouterModelOption } from "@/lib/openrouter/models";
 
@@ -118,6 +123,23 @@ function createOptimisticRenderedMessage(
   };
 }
 
+function createPersistedRenderedMessage(
+  detail: PersistedMessagesDetail["messages"][number],
+): RenderedMessage {
+  return {
+    id: detail.id,
+    branchId: detail.branchId,
+    role: detail.role,
+    content: detail.content,
+    createdAt: detail.createdAt,
+    tokenUsage: detail.tokenUsage ?? null,
+    attachments: detail.attachments ?? null,
+    toolInvocations: detail.toolInvocations ?? null,
+    hasBranchHighlight: false,
+    renderedHtml: formatOptimisticHtml(detail.content),
+  };
+}
+
 function formatOptimisticHtml(content: string): string {
   return escapeHtml(content).replace(/\n/g, "<br />");
 }
@@ -161,6 +183,9 @@ export function BranchColumn({
   const lastStreamAnchorRef = useRef<string | null>(null);
   const shouldRespectUserScrollRef = useRef(false);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticEntry[]>([]);
+  const [persistedMessages, setPersistedMessages] = useState<RenderedMessage[]>(
+    [],
+  );
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
 
   const handleOptimisticAppend = useCallback(
@@ -233,6 +258,40 @@ export function BranchColumn({
   }, [branch.id, conversationId]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<PersistedMessagesDetail>;
+      const detail = custom.detail;
+      if (!detail) return;
+      if (detail.conversationId !== conversationId || detail.branchId !== branch.id) {
+        return;
+      }
+      setPersistedMessages((current) => {
+        const merged = new Map<string, RenderedMessage>();
+        for (const message of current) {
+          merged.set(message.id, message);
+        }
+        for (const message of detail.messages) {
+          merged.set(message.id, createPersistedRenderedMessage(message));
+        }
+        return [...merged.values()].sort((left, right) => {
+          if (left.createdAt === right.createdAt) {
+            return left.id.localeCompare(right.id);
+          }
+          return left.createdAt.localeCompare(right.createdAt);
+        });
+      });
+      if (detail.messages.some((message) => message.role === "assistant")) {
+        setActiveStreamId(null);
+      }
+    };
+    window.addEventListener(PERSISTED_MESSAGES_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(PERSISTED_MESSAGES_EVENT, handler as EventListener);
+    };
+  }, [branch.id, conversationId]);
+
+  useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) {
       return;
@@ -265,36 +324,17 @@ export function BranchColumn({
   }, [conversationId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleComplete = (event: Event) => {
-      const custom = event as CustomEvent<{ conversationId: string; branchId: string; streamId: string }>;
-      const detail = custom.detail;
-      if (!detail) return;
-      if (detail.conversationId !== conversationId || detail.branchId !== branch.id) return;
-      setActiveStreamId(null);
-      // Soft refresh to get server-rendered, sanitized markdown for the final message
-      try {
-        navigate(window.location.href);
-      } catch {
-        window.location.reload();
-      }
-    };
-    window.addEventListener(COMPLETE_STREAMING_EVENT, handleComplete as EventListener);
-    return () => {
-      window.removeEventListener(COMPLETE_STREAMING_EVENT, handleComplete as EventListener);
-    };
-  }, [branch.id, conversationId]);
-
-  useEffect(() => {
     setOptimisticMessages((current) => {
       if (current.length === 0) {
         return current;
       }
 
+      const materializedMessages = [...messages, ...persistedMessages];
+
       const next = current.filter((entry) => {
         if (entry.status === "resolved") {
           if (entry.replacementMessageId) {
-            const replacementExists = messages.some(
+            const replacementExists = materializedMessages.some(
               (message) => message.id === entry.replacementMessageId,
             );
             if (replacementExists) {
@@ -302,7 +342,7 @@ export function BranchColumn({
             }
           }
 
-          const hasContentMatch = messages.some(
+          const hasContentMatch = materializedMessages.some(
             (message) =>
               message.role === "user" &&
               message.content.trim() === entry.message.content.trim(),
@@ -318,12 +358,41 @@ export function BranchColumn({
 
       return next.length === current.length ? current : next;
     });
-  }, [messages]);
+  }, [messages, persistedMessages]);
 
-  const combinedMessages = useMemo(
-    () => [...messages, ...optimisticMessages.map((entry) => entry.message)],
-    [messages, optimisticMessages],
-  );
+  useEffect(() => {
+    if (persistedMessages.length === 0) {
+      return;
+    }
+    const serverMessageIds = new Set(messages.map((message) => message.id));
+    setPersistedMessages((current) => {
+      const next = current.filter((message) => !serverMessageIds.has(message.id));
+      return next.length === current.length ? current : next;
+    });
+  }, [messages, persistedMessages.length]);
+
+  const combinedMessages = useMemo(() => {
+    const merged = new Map<string, RenderedMessage>();
+    for (const message of messages) {
+      merged.set(message.id, message);
+    }
+    for (const message of persistedMessages) {
+      if (!merged.has(message.id)) {
+        merged.set(message.id, message);
+      }
+    }
+    for (const entry of optimisticMessages) {
+      if (!merged.has(entry.message.id)) {
+        merged.set(entry.message.id, entry.message);
+      }
+    }
+    return [...merged.values()].sort((left, right) => {
+      if (left.createdAt === right.createdAt) {
+        return left.id.localeCompare(right.id);
+      }
+      return left.createdAt.localeCompare(right.createdAt);
+    });
+  }, [messages, optimisticMessages, persistedMessages]);
 
   const visibleMessages = useMemo(
     () => combinedMessages.filter((message) => message.role !== "system"),
