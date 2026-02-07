@@ -88,3 +88,7 @@
 - Decisions: keep CTA behavior non-blocking (start action still uses createConversation flow); map unauthorized create failures to clear sign-in guidance instead of generic failure text.
 - Files: src/app/components/conversation/ConversationEmptyLayout.tsx, progress.txt.
 - Notes: no backend routing changes required.
+2026-02-07 — Plan sync: updated `Docs/public-beta-launch-plan.md` execution status with completed P1/P3/P4 slices and implementation notes. Ref: tracking hygiene.
+- Decisions: record completion at task granularity (`P1-T4`, `P3-T2/3/4`, `P4-T1/2/3/4`) to keep remaining scope explicit for future iterations.
+- Files: Docs/public-beta-launch-plan.md, progress.txt.
+- Notes: no runtime behavior change.

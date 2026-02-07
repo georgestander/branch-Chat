@@ -45,6 +45,30 @@ Primary objective: stability and UX quality first, then auth/quota/BYOK, then de
   Work log: Added one-time fallback on stream initialization failure for demo lane OpenRouter requests; routes to configured primary model then retries once with backup model if configured and distinct.
   Files: `src/app/pages/conversation/functions.ts`
   Notes: BYOK lane unchanged; trace logs added for route/fallback attempt/success/failure.
+- [x] `P1-T4` Stream completion without forced page refresh (`depends_on: [P1-T3]`)
+  Work log: Replaced hard navigation refresh on `stream:complete` with persisted message reconciliation events (`connexus:message:persisted`) so final assistant output appears in-place.
+  Files: `src/app/components/conversation/messageEvents.ts`, `src/app/components/conversation/ConversationComposer.tsx`, `src/app/components/conversation/BranchColumn.tsx`
+  Notes: optimistic user messages now resolve against client-persisted message IDs; no reload on normal completion.
+- [x] `P3-T2` Landing conversion path copy + CTA (`depends_on: []`)
+  Work log: Empty-state hero now surfaces “Start free with 10 demo passes” and explicit sign-in CTA while preserving start-mode onboarding controls.
+  Files: `src/app/components/conversation/ConversationEmptyLayout.tsx`
+  Notes: unauthorized create errors now return sign-in specific guidance.
+- [x] `P3-T3` Start mode presets + advanced drawer (`depends_on: [P3-T4]`)
+  Work log: Added deterministic start presets (`fast`, `reasoning`, `study`, `custom`) and advanced model/reasoning/tool controls in landing flow.
+  Files: `src/app/components/conversation/ConversationEmptyLayout.tsx`
+  Notes: presets map to deterministic model/reasoning/tool combinations before first message.
+- [x] `P3-T4` Persist preset/model/reasoning/tools as composer defaults (`depends_on: []`)
+  Work log: Extended conversation settings schema + validation with `composerDefaults`; wired create/update settings APIs and composer persistence path.
+  Files: `src/lib/conversation/model.ts`, `src/lib/conversation/validation.ts`, `src/app/shared/conversation.server.ts`, `src/app/pages/conversation/functions.ts`, `src/app/components/conversation/ConversationLayout.tsx`, `src/app/components/conversation/ConversationComposer.tsx`, `src/app/components/conversation/BranchColumn.tsx`
+  Notes: legacy snapshots auto-migrate with inferred presets.
+- [x] `P4-T1/T2` Study mode Socratic contract + rubric guardrails (`depends_on: []`)
+  Work log: Introduced explicit study contract and output rubric normalization (`Next step`, `Comprehension check`, `Recap`, `Your turn`) with anti-answer-dump fallback for homework-like prompts.
+  Files: `src/app/shared/openai/studyAndLearnAgent.server.ts`, `src/app/pages/conversation/functions.ts`
+  Notes: success traces now include guardrail metadata.
+- [x] `P4-T3/T4` OSS docs + basic real lint/test scripts (`depends_on: []`)
+  Work log: Replaced starter README, added architecture/setup/env references plus `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`; replaced placeholder `test`/`lint` scripts with executable checks.
+  Files: `README.md`, `package.json`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `Docs/architecture.md`, `Docs/setup.md`, `Docs/env-vars.md`
+  Notes: local dev docs aligned to strict port `5174`.
 
 ## Important API / Interface / Type Changes
 1. Extend conversation ownership and defaults in `src/lib/conversation/model.ts`.
