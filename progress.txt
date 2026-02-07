@@ -116,3 +116,13 @@
 - Decisions: reuse existing auth cookie model (no new auth provider dependency) to unblock end-to-end sign-in path; disable guest-cookie persistence on `/sign-in` to avoid duplicate guest+user Set-Cookie on submit.
 - Files: src/app/pages/sign-in/SignInPage.tsx, src/worker.tsx, src/app/shared/auth.server.ts, progress.txt.
 - Notes: manual curl smoke verified `GET /sign-in` 200 and `POST /sign-in` 303 with user cookie set.
+2026-02-07 — Landing showcase spec draft (planning-only) for world-class marketing/front-door experience. Ref: Docs/public-beta-launch-plan.md Phase3 item 2 (landing conversion) + Success Criteria 8/10.
+- Task: authored approval-gated frontend spec for dedicated landing flow with branching demo, hosted vs OSS CTAs, and donations surface.
+- Decisions: keep scope front-end only; propose deterministic client-island demo (no backend calls), new `/landing` route first (do not repoint `/` yet), and explicit open-decision list for URLs + donation provider stack.
+- Files: designs/landing-showcase-v1.md, progress.txt.
+- Notes: awaiting user approval before any implementation PRs.
+2026-02-07 — Landing showcase implementation (`/landing`) shipped from approved spec. Ref: Docs/public-beta-launch-plan.md Phase3 item 2 + Success Criteria 8/10.
+- Task: built dedicated marketing/education landing route with deterministic branching demo, hosted/OSS conversion paths, and donation CTAs.
+- Decisions: keep `/` as product chat flow; add `/landing` as auth-optional route for top-of-funnel; use env-driven landing link config (`LANDING_*`) with safe defaults; instrument manual observability via `[TRACE] landing_*` console events + server `landing:render` trace.
+- Files: src/worker.tsx, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/{LandingShell.tsx,TopBarClient.tsx,HeroSection.tsx,BranchingDemoIsland.tsx,ValueStrip.tsx,PathCards.tsx,DonateSection.tsx,LandingFooter.tsx,LandingTrackedLink.tsx,types.ts}, types/env.d.ts, Docs/env-vars.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; manual smoke verified `GET /landing` 200 and rendered sections via local dev boot (`npm run dev` + curl).

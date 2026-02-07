@@ -1,0 +1,83 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { LandingTrackedLink } from "@/app/components/landing/LandingTrackedLink";
+import type { LandingLinks } from "@/app/components/landing/types";
+import { cn } from "@/lib/utils";
+
+interface TopBarClientProps {
+  links: LandingLinks;
+}
+
+export function TopBarClient({ links }: TopBarClientProps) {
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    console.info("[TRACE] landing_view", JSON.stringify({ event: "landing_view" }));
+
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 18);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  return (
+    <header
+      className={cn(
+        "sticky top-0 z-50 border-b transition-colors",
+        isScrolled
+          ? "border-foreground/20 bg-background/95 backdrop-blur"
+          : "border-transparent bg-background/0",
+      )}
+    >
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
+        <a
+          href="/landing"
+          className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-foreground"
+        >
+          <span className="inline-flex h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+          Branch-Chat
+        </a>
+
+        <nav className="flex items-center gap-2" aria-label="Primary">
+          <LandingTrackedLink
+            href={links.hostedHref}
+            eventName="landing_cta_click"
+            eventData={{ cta: "hosted", location: "topbar" }}
+            className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
+          >
+            Try Hosted
+          </LandingTrackedLink>
+          <LandingTrackedLink
+            href={links.repoHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            eventName="landing_cta_click"
+            eventData={{ cta: "repo", location: "topbar" }}
+            className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
+          >
+            View Source
+          </LandingTrackedLink>
+          <LandingTrackedLink
+            href="#donate"
+            eventName="landing_cta_click"
+            eventData={{ cta: "donate", location: "topbar" }}
+            className="rounded-full bg-primary px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-foreground transition hover:bg-primary/90"
+          >
+            Donate
+          </LandingTrackedLink>
+        </nav>
+      </div>
+    </header>
+  );
+}

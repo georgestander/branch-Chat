@@ -6,6 +6,7 @@ import { Document } from "@/app/Document";
 import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
+import { LandingPage } from "@/app/pages/landing/LandingPage";
 import { SignInPage } from "@/app/pages/sign-in/SignInPage";
 import {
   isAuthRequiredEnabled,
@@ -32,7 +33,7 @@ export type AppRequestInfo = RequestInfo<any, AppContext>;
 const envStorage = new AsyncLocalStorage<Env>();
 const openAIClientSymbol = Symbol.for("connexus.openai-client");
 const openRouterClientSymbol = Symbol.for("connexus.openrouter-client");
-const AUTH_OPTIONAL_PATH_PREFIXES = ["/events", "/_uploads", "/sign-in"] as const;
+const AUTH_OPTIONAL_PATH_PREFIXES = ["/events", "/_uploads", "/sign-in", "/landing"] as const;
 
 function isAuthOptionalPath(pathname: string): boolean {
   return AUTH_OPTIONAL_PATH_PREFIXES.some((prefix) => {
@@ -183,6 +184,7 @@ const app = defineApp<AppRequestInfo>([
   route("/_uploads", handleDirectUploadRequest),
   render(Document, [
     route("/", Home),
+    route("/landing", LandingPage),
     route("/sign-in", SignInPage),
     route("/events", async ({ request }) => {
       const url = new URL(request.url);

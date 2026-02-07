@@ -13,6 +13,11 @@ Branch Chat uses Cloudflare bindings plus runtime vars in local `.dev.vars` and 
 | `OPENROUTER_BASE_URL` | No | Base URL for OpenRouter client | `https://openrouter.ai/api/v1` |
 | `OPENROUTER_SITE_URL` | No | Referer header for OpenRouter requests | Request origin |
 | `OPENROUTER_APP_NAME` | No | Title header for OpenRouter requests | `Branch Chat` |
+| `LANDING_HOSTED_URL` | No | Hosted CTA target for `/landing` | `/sign-in?redirectTo=/` |
+| `LANDING_REPO_URL` | No | Source repo URL for landing OSS CTAs | `https://github.com/georgestander/Branch-Chat` |
+| `LANDING_DONATE_URL` | No | Primary donation CTA URL on landing | `https://github.com/sponsors` |
+| `LANDING_DONATE_SECONDARY_URL` | No | Secondary donation CTA URL on landing | `https://www.paypal.com/donate` |
+| `LANDING_COMPANY_SPONSOR_URL` | No | Company sponsorship CTA URL on landing | `mailto:hello@branch-chat.dev` |
 | `STUDY_LEARN_WORKFLOW_ID` | No | Reserved workflow identifier for study/learn flows | Unset |
 
 ## Cloudflare Bindings
@@ -37,6 +42,11 @@ OPENAI_API_KEY="sk-your-openai-key"
 # OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
 # OPENROUTER_SITE_URL="http://localhost:5174"
 # OPENROUTER_APP_NAME="Branch Chat (Local)"
+# LANDING_HOSTED_URL="/sign-in?redirectTo=/"
+# LANDING_REPO_URL="https://github.com/georgestander/Branch-Chat"
+# LANDING_DONATE_URL="https://github.com/sponsors/your-account"
+# LANDING_DONATE_SECONDARY_URL="https://www.paypal.com/donate?hosted_button_id=..."
+# LANDING_COMPANY_SPONSOR_URL="mailto:hello@branch-chat.dev"
 ```
 
 Do not commit `.dev.vars` or live secrets.
