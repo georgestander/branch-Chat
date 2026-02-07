@@ -92,3 +92,27 @@
 - Decisions: record completion at task granularity (`P1-T4`, `P3-T2/3/4`, `P4-T1/2/3/4`) to keep remaining scope explicit for future iterations.
 - Files: Docs/public-beta-launch-plan.md, progress.txt.
 - Notes: no runtime behavior change.
+2026-02-07 — Acceptance checks added for landing CTA + sign-in gating (PRD: Docs/public-beta-launch-plan.md Phase2 item 1 + Phase3 item 2).
+- Task: document AUTH_REQUIRED edge cases, landing CTA failure modes, and sign-in smoke scenarios to close the plan gap.
+- Decisions: focus on server auth gating + cookie lifecycle triggers; accept manual sign-in path verification until `/sign-in` handler is confirmed.
+- Files: progress.txt.
+- Notes: Need to confirm actual `/sign-in` handler and gating behavior before automating tests.
+2026-02-07 — Acceptance check coverage for landing CTA + sign-in gating (PRD: Docs/public-beta-launch-plan.md Phase2 item 1 + Phase3 item 2).
+- Task: document AUTH_REQUIRED edge cases, landing CTA failure modes, and sign-in smoke scenarios to close the plan gap.
+- Decisions: focus on server auth gating + cookie lifecycle triggers; accept manual sign-in path verification until `/sign-in` target is confirmed.
+- Files: progress.txt.
+- Notes: Need to confirm actual `/sign-in` handler and gating behavior before automating tests.
+2026-02-07 — Sign-in proposal (PRD: Docs/public-beta-launch-plan.md auth gate + onboarding).
+- Task: define minimal `/sign-in` route that reuses the auth cookie helper, keeps landing CTA working, and surfaces a server-first form for identity capture.
+- Decisions: keep `/sign-in` auth-optional, add a server action to sanitize user identifiers and set the cookie before redirecting, and rely on existing UI shell so we can land auth without extra state clients; reasoning: this keeps middleware gating consistent when `AUTH_REQUIRED` is true while avoiding a heavyweight auth provider until later.
+- Files: progress.txt.
+- Notes: Implementation follow-up needs SignIn page + functions, worker route/middleware tweak, and helper export for cookie writes.
+2026-02-07 — Sign-in proposal (PRD: Docs/public-beta-launch-plan.md auth gate + onboarding).
+- Task: define minimal `/sign-in` route that reuses the auth cookie helper, keeps landing CTA working, and surfaces a server-first form for identity capture.
+- Decisions: keep `/sign-in` auth-optional, add a server action to sanitize user identifiers and set the cookie before redirecting, and rely on existing UI shell so we can land auth without extra state clients; reasoning: this keeps middleware gating consistent when `AUTH_REQUIRED` is true while avoiding a heavyweight auth provider until later.
+- Files: progress.txt.
+- Notes: Implementation follow-up needs SignIn page + functions, worker route/middleware tweak, and helper export for cookie writes.
+2026-02-07 — Auth landing fix: implemented real `/sign-in` route + POST flow that writes `connexus_uid` and redirects, and made `/sign-in` auth-optional under middleware so CTA no longer 404/401 loops. Ref: Docs/public-beta-launch-plan.md landing/auth gap closure.
+- Decisions: reuse existing auth cookie model (no new auth provider dependency) to unblock end-to-end sign-in path; disable guest-cookie persistence on `/sign-in` to avoid duplicate guest+user Set-Cookie on submit.
+- Files: src/app/pages/sign-in/SignInPage.tsx, src/worker.tsx, src/app/shared/auth.server.ts, progress.txt.
+- Notes: manual curl smoke verified `GET /sign-in` 200 and `POST /sign-in` 303 with user cookie set.

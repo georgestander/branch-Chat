@@ -57,6 +57,11 @@ function sanitizeUserId(value: string): string {
     .slice(0, 96);
 }
 
+export function normalizeAuthUserId(value: string): string | null {
+  const normalized = sanitizeUserId(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
 function parseAuthFromHeaders(request: Request): AppAuth | null {
   const userIdHeaders = [
     "x-connexus-user-id",
@@ -124,15 +129,21 @@ function writeAuthCookie(options: {
   request: Request;
   response: { headers: Headers };
   userId: string;
+  maxAgeSeconds?: number;
 }): void {
-  const { request, response, userId } = options;
+  const {
+    request,
+    response,
+    userId,
+    maxAgeSeconds = AUTH_COOKIE_MAX_AGE_SECONDS,
+  } = options;
   const secure = new URL(request.url).protocol === "https:";
   const cookie = [
     `${AUTH_COOKIE_NAME}=${encodeURIComponent(userId)}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
-    `Max-Age=${AUTH_COOKIE_MAX_AGE_SECONDS}`,
+    `Max-Age=${maxAgeSeconds}`,
     secure ? "Secure" : null,
   ]
     .filter((part): part is string => Boolean(part))
@@ -141,12 +152,46 @@ function writeAuthCookie(options: {
   response.headers.append("Set-Cookie", cookie);
 }
 
+export function setAuthCookie(options: {
+  request: Request;
+  response: { headers: Headers };
+  userId: string;
+}): void {
+  const normalized = normalizeAuthUserId(options.userId);
+  if (!normalized) {
+    throw new Error("Invalid auth user id.");
+  }
+  writeAuthCookie({
+    request: options.request,
+    response: options.response,
+    userId: normalized,
+  });
+}
+
+export function clearAuthCookie(options: {
+  request: Request;
+  response: { headers: Headers };
+}): void {
+  writeAuthCookie({
+    request: options.request,
+    response: options.response,
+    userId: "guest-expired",
+    maxAgeSeconds: 0,
+  });
+}
+
 export function resolveRequestAuth(options: {
   request: Request;
   response: { headers: Headers };
   authRequired?: boolean;
+  persistGuestCookie?: boolean;
 }): AppAuth | null {
-  const { request, response, authRequired = false } = options;
+  const {
+    request,
+    response,
+    authRequired = false,
+    persistGuestCookie = true,
+  } = options;
 
   const headerAuth = parseAuthFromHeaders(request);
   if (headerAuth) {
@@ -163,11 +208,13 @@ export function resolveRequestAuth(options: {
   }
 
   const fallbackUserId = `guest-${crypto.randomUUID()}`;
-  writeAuthCookie({
-    request,
-    response,
-    userId: fallbackUserId,
-  });
+  if (persistGuestCookie) {
+    writeAuthCookie({
+      request,
+      response,
+      userId: fallbackUserId,
+    });
+  }
 
   return {
     userId: fallbackUserId,

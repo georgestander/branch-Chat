@@ -6,6 +6,7 @@ import { Document } from "@/app/Document";
 import type { AppContext } from "@/app/context";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/Home";
+import { SignInPage } from "@/app/pages/sign-in/SignInPage";
 import {
   isAuthRequiredEnabled,
   resolveRequestAuth,
@@ -31,7 +32,7 @@ export type AppRequestInfo = RequestInfo<any, AppContext>;
 const envStorage = new AsyncLocalStorage<Env>();
 const openAIClientSymbol = Symbol.for("connexus.openai-client");
 const openRouterClientSymbol = Symbol.for("connexus.openrouter-client");
-const AUTH_OPTIONAL_PATH_PREFIXES = ["/events", "/_uploads"] as const;
+const AUTH_OPTIONAL_PATH_PREFIXES = ["/events", "/_uploads", "/sign-in"] as const;
 
 function isAuthOptionalPath(pathname: string): boolean {
   return AUTH_OPTIONAL_PATH_PREFIXES.some((prefix) => {
@@ -65,6 +66,7 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
     request,
     response,
     authRequired,
+    persistGuestCookie: requestPath !== "/sign-in",
   });
 
   if (!auth) {
@@ -181,6 +183,7 @@ const app = defineApp<AppRequestInfo>([
   route("/_uploads", handleDirectUploadRequest),
   render(Document, [
     route("/", Home),
+    route("/sign-in", SignInPage),
     route("/events", async ({ request }) => {
       const url = new URL(request.url);
       const streamId = url.searchParams.get("streamId");

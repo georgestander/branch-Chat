@@ -53,6 +53,10 @@ Primary objective: stability and UX quality first, then auth/quota/BYOK, then de
   Work log: Empty-state hero now surfaces “Start free with 10 demo passes” and explicit sign-in CTA while preserving start-mode onboarding controls.
   Files: `src/app/components/conversation/ConversationEmptyLayout.tsx`
   Notes: unauthorized create errors now return sign-in specific guidance.
+- [x] `P2-T1b` Sign-in route implementation for landing CTA (`depends_on: [P2-T1]`)
+  Work log: Added `/sign-in` Redwood route and server-rendered POST flow that sets `connexus_uid` then redirects; middleware now treats `/sign-in` as auth-optional and skips guest cookie persistence there.
+  Files: `src/app/pages/sign-in/SignInPage.tsx`, `src/worker.tsx`, `src/app/shared/auth.server.ts`
+  Notes: closes prior CTA 404 gap and removes duplicate guest+user cookie writes during sign-in.
 - [x] `P3-T3` Start mode presets + advanced drawer (`depends_on: [P3-T4]`)
   Work log: Added deterministic start presets (`fast`, `reasoning`, `study`, `custom`) and advanced model/reasoning/tool controls in landing flow.
   Files: `src/app/components/conversation/ConversationEmptyLayout.tsx`
