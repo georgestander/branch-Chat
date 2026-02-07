@@ -23,6 +23,11 @@ function getClient(ctx: AppContext) {
   return ctx.getAccount();
 }
 
+export interface ResolvedByokCredential {
+  provider: string;
+  apiKey: string;
+}
+
 function normalizeByokProvider(value: unknown): string {
   if (typeof value !== "string") {
     throw new TypeError("provider is required");
@@ -196,6 +201,13 @@ export async function deleteByokKey(ctx: AppContext): Promise<void> {
 export async function resolveByokKey(
   ctx: AppContext,
 ): Promise<string | null> {
+  const credential = await resolveByokCredential(ctx);
+  return credential?.apiKey ?? null;
+}
+
+export async function resolveByokCredential(
+  ctx: AppContext,
+): Promise<ResolvedByokCredential | null> {
   try {
     const byok = await getClient(ctx).getByokKey();
     if (!byok) {
@@ -223,7 +235,10 @@ export async function resolveByokKey(
         updatedAt: byok.updatedAt,
       }),
     );
-    return apiKey;
+    return {
+      provider: byok.provider,
+      apiKey,
+    };
   } catch (error) {
     console.error(
       "[ERROR] account:byok:resolve failed",

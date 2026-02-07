@@ -26,6 +26,7 @@ import {
   commitDemoPass,
   releaseDemoPass,
   reserveDemoPass,
+  resolveByokCredential,
 } from "@/app/shared/account.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
 import {
@@ -67,6 +68,7 @@ import {
   isWebSearchSupportedModel,
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
+import { createOpenAIClient } from "@/lib/openai/client";
 import type { AppRequestInfo } from "@/worker";
 import {
   isOpenRouterModel,
@@ -204,6 +206,7 @@ export interface SendMessageInput extends ConversationPayload {
   branchId?: BranchId;
   content: string;
   streamId?: string;
+  lane?: "demo" | "byok";
   tools?: ConversationComposerTool[];
   attachmentIds?: string[];
 }
@@ -512,7 +515,22 @@ export async function sendMessage(
   let quotaSnapshot: AccountQuotaSnapshot | null = null;
   let quotaReservationId: string | null = null;
   let quotaCommitted = false;
-  const quotaLane: "demo" | "byok" = "demo";
+  const settings = ensured.snapshot.conversation.settings;
+  const usingOpenRouter = isOpenRouterModel(settings.model);
+  const modelProvider: "openai" | "openrouter" = usingOpenRouter
+    ? "openrouter"
+    : "openai";
+  const providerLabel = modelProvider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const requestModel = usingOpenRouter
+    ? stripOpenRouterPrefix(settings.model)
+    : settings.model;
+  const modelRequestSettings = {
+    ...settings,
+    model: requestModel,
+  };
+  const requestedLane: "demo" | "byok" = input.lane === "byok" ? "byok" : "demo";
+  let quotaLane: "demo" | "byok" = "demo";
+  let byokCredential: Awaited<ReturnType<typeof resolveByokCredential>> = null;
 
   const toMessageAttachment = (attachment: PendingAttachment) => ({
     id: attachment.id,
@@ -527,128 +545,214 @@ export async function sendMessage(
   });
 
   try {
-    const selectedTools = Array.isArray(input.tools)
-    ? input.tools.filter((tool): tool is ConversationComposerTool => {
-        return (
-          tool === "study-and-learn" ||
-          tool === "web-search" ||
-          tool === "file-upload"
+    if (requestedLane === "byok") {
+      try {
+        byokCredential = await resolveByokCredential(ctx);
+      } catch (error) {
+        ctx.trace("quota:lane:byok:resolve-error", {
+          conversationId,
+          branchId,
+          model: settings.model,
+          provider: modelProvider,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+        throw new Error(
+          `Unable to load your ${providerLabel} BYOK credentials. Reconnect your key and try again.`,
         );
-      })
-    : [];
-  const selectedToolSet = new Set(selectedTools);
-  if (selectedTools.length > 0) {
-    ctx.trace("composer:tools:selected", {
+      }
+
+      if (!byokCredential) {
+        ctx.trace("quota:lane:byok:missing-key", {
+          conversationId,
+          branchId,
+          model: settings.model,
+          provider: modelProvider,
+        });
+        throw new Error(
+          `BYOK lane requested, but no ${providerLabel} API key is connected. Add your key and try again.`,
+        );
+      }
+
+      const normalizedByokProvider = byokCredential.provider.trim().toLowerCase();
+      if (normalizedByokProvider !== modelProvider) {
+        ctx.trace("quota:lane:byok:provider-mismatch", {
+          conversationId,
+          branchId,
+          model: settings.model,
+          provider: modelProvider,
+          byokProvider: normalizedByokProvider,
+        });
+        throw new Error(
+          `BYOK lane requested, but connected provider (${byokCredential.provider}) does not match the selected model provider (${modelProvider}). Switch model/provider or reconnect BYOK.`,
+        );
+      }
+
+      quotaLane = "byok";
+    }
+
+    ctx.trace("quota:lane:resolved", {
       conversationId,
       branchId,
-      tools: selectedTools,
+      requestedLane,
+      lane: quotaLane,
+      provider: modelProvider,
+      model: settings.model,
     });
-  }
 
-  const reservationId =
-    (typeof input.streamId === "string" && input.streamId.trim().length > 0
-      ? input.streamId.trim()
-      : null) ?? crypto.randomUUID();
-  ctx.trace("quota:reserve:start", {
-    conversationId,
-    branchId,
-    reservationId,
-    lane: quotaLane,
-  });
-  const reservation = await reserveDemoPass(ctx, {
-    reservationId,
-    conversationId,
-    branchId,
-  });
-  quotaReservationId = reservation.reservationId;
-  quotaSnapshot = reservation.snapshot;
-  ctx.trace("quota:reserve:success", {
-    conversationId,
-    branchId,
-    reservationId: quotaReservationId,
-    lane: quotaLane,
-    remainingDemoPasses: quotaSnapshot.remaining,
-  });
-
-  const settings = ensured.snapshot.conversation.settings;
-  const usingOpenRouter = isOpenRouterModel(settings.model);
-  const requestModel = usingOpenRouter
-    ? stripOpenRouterPrefix(settings.model)
-    : settings.model;
-  const modelRequestSettings = {
-    ...settings,
-    model: requestModel,
-  };
-  const modelClient = (() => {
-    if (!usingOpenRouter) {
-      return ctx.getOpenAIClient();
+    const selectedTools = Array.isArray(input.tools)
+      ? input.tools.filter((tool): tool is ConversationComposerTool => {
+          return (
+            tool === "study-and-learn" ||
+            tool === "web-search" ||
+            tool === "file-upload"
+          );
+        })
+      : [];
+    const selectedToolSet = new Set(selectedTools);
+    if (selectedTools.length > 0) {
+      ctx.trace("composer:tools:selected", {
+        conversationId,
+        branchId,
+        tools: selectedTools,
+      });
     }
+
+    const reservationId =
+      (typeof input.streamId === "string" && input.streamId.trim().length > 0
+        ? input.streamId.trim()
+        : null) ?? crypto.randomUUID();
+    if (quotaLane === "demo") {
+      ctx.trace("quota:reserve:start", {
+        conversationId,
+        branchId,
+        reservationId,
+        lane: quotaLane,
+      });
+      const reservation = await reserveDemoPass(ctx, {
+        reservationId,
+        conversationId,
+        branchId,
+      });
+      quotaReservationId = reservation.reservationId;
+      quotaSnapshot = reservation.snapshot;
+      ctx.trace("quota:reserve:success", {
+        conversationId,
+        branchId,
+        reservationId: quotaReservationId,
+        lane: quotaLane,
+        remainingDemoPasses: quotaSnapshot.remaining,
+      });
+    }
+
+    const modelClient = (() => {
+      if (quotaLane === "byok") {
+        if (!byokCredential) {
+          ctx.trace("quota:lane:byok:credential-missing", {
+            conversationId,
+            branchId,
+            model: settings.model,
+            provider: modelProvider,
+          });
+          throw new Error(
+            "BYOK lane requested, but credentials were unavailable at send time. Please retry.",
+          );
+        }
+
+        ctx.trace("quota:lane:byok:client", {
+          conversationId,
+          branchId,
+          provider: modelProvider,
+          model: modelRequestSettings.model,
+        });
+
+        if (modelProvider === "openrouter") {
+          const requestUrl = new URL(requestInfo.request.url);
+          const referer = ctx.env.OPENROUTER_SITE_URL ?? requestUrl.origin;
+          const title = ctx.env.OPENROUTER_APP_NAME ?? "Branch Chat";
+          return createOpenAIClient({
+            apiKey: byokCredential.apiKey,
+            baseURL: ctx.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+            defaultHeaders: {
+              "HTTP-Referer": referer,
+              "X-Title": title,
+            },
+          });
+        }
+
+        return createOpenAIClient({
+          apiKey: byokCredential.apiKey,
+        });
+      }
+
+      if (!usingOpenRouter) {
+        return ctx.getOpenAIClient();
+      }
+      try {
+        return ctx.getOpenRouterClient();
+      } catch (error) {
+        ctx.trace("openrouter:client:error", {
+          conversationId,
+          branchId,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+        throw new Error(
+          "OpenRouter is not configured for this environment. Add OPENROUTER_API_KEY to enable OpenRouter models.",
+        );
+      }
+    })();
+    const webSearchToolType = getWebSearchToolTypeForModel(settings.model);
+    const webSearchSupported = webSearchToolType !== null;
+
+    const attachmentLookup = new Map<string, MessageAttachment>();
+    for (const storedMessage of Object.values(ensured.snapshot.messages)) {
+      const storedAttachments = storedMessage.attachments;
+      if (!Array.isArray(storedAttachments)) {
+        continue;
+      }
+      for (const item of storedAttachments) {
+        if (!attachmentLookup.has(item.id)) {
+          attachmentLookup.set(item.id, item);
+        }
+      }
+    }
+
+    let attachmentIngestions: AttachmentIngestionRecord[] = [];
     try {
-      return ctx.getOpenRouterClient();
+      attachmentIngestions = await storeClient.listAttachmentIngestions();
     } catch (error) {
-      ctx.trace("openrouter:client:error", {
+      ctx.trace("retrieval:ingestion:list-error", {
         conversationId,
         branchId,
         error: error instanceof Error ? error.message : "unknown",
       });
-      throw new Error(
-        "OpenRouter is not configured for this environment. Add OPENROUTER_API_KEY to enable OpenRouter models.",
-      );
     }
-  })();
-  const webSearchToolType = getWebSearchToolTypeForModel(settings.model);
-  const webSearchSupported = webSearchToolType !== null;
 
-  const attachmentLookup = new Map<string, MessageAttachment>();
-  for (const storedMessage of Object.values(ensured.snapshot.messages)) {
-    const storedAttachments = storedMessage.attachments;
-    if (!Array.isArray(storedAttachments)) {
-      continue;
-    }
-    for (const item of storedAttachments) {
-      if (!attachmentLookup.has(item.id)) {
-        attachmentLookup.set(item.id, item);
-      }
-    }
-  }
-
-  let attachmentIngestions: AttachmentIngestionRecord[] = [];
-  try {
-    attachmentIngestions = await storeClient.listAttachmentIngestions();
-  } catch (error) {
-    ctx.trace("retrieval:ingestion:list-error", {
-      conversationId,
+    const now = new Date().toISOString();
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
       branchId,
-      error: error instanceof Error ? error.message : "unknown",
-    });
-  }
+      role: "user",
+      content: input.content.trim(),
+      createdAt: now,
+      tokenUsage: null,
+      attachments:
+        consumedAttachments.length > 0
+          ? consumedAttachments.map(toMessageAttachment)
+          : [],
+      toolInvocations: null,
+    };
 
-  const now = new Date().toISOString();
-  const userMessage: Message = {
-    id: crypto.randomUUID(),
-    branchId,
-    role: "user",
-    content: input.content.trim(),
-    createdAt: now,
-    tokenUsage: null,
-    attachments:
-      consumedAttachments.length > 0
-        ? consumedAttachments.map(toMessageAttachment)
-        : [],
-    toolInvocations: null,
-  };
-
-  const assistantMessage: Message = {
-    id: crypto.randomUUID(),
-    branchId,
-    role: "assistant",
-    content: "",
-    createdAt: new Date().toISOString(),
-    tokenUsage: null,
-    attachments: null,
-    toolInvocations: [],
-  };
-  let assistantState: Message = assistantMessage;
+    const assistantMessage: Message = {
+      id: crypto.randomUUID(),
+      branchId,
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+      tokenUsage: null,
+      attachments: null,
+      toolInvocations: [],
+    };
+    let assistantState: Message = assistantMessage;
 
   const enableWebSearchTool =
     webSearchSupported &&
