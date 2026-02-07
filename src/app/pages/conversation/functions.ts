@@ -24,9 +24,13 @@ import {
 } from "@/app/shared/conversationDirectory.server";
 import {
   commitDemoPass,
+  deleteByokKey,
+  getAccountQuotaSnapshot,
+  getByokStatus,
   releaseDemoPass,
   reserveDemoPass,
   resolveByokCredential,
+  saveByokKey,
 } from "@/app/shared/account.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
 import {
@@ -277,6 +281,96 @@ export interface UpdateConversationSettingsInput extends ConversationPayload {
 }
 
 export type UpdateConversationSettingsResponse = LoadConversationResponse;
+
+export type ComposerByokProvider = "openai" | "openrouter";
+
+export interface ComposerByokStatus {
+  provider: ComposerByokProvider | null;
+  connected: boolean;
+  updatedAt: string | null;
+}
+
+export interface ComposerAccountState {
+  quota: {
+    total: number;
+    used: number;
+    reserved: number;
+    remaining: number;
+  };
+  byok: ComposerByokStatus;
+}
+
+export interface SaveComposerByokKeyInput {
+  provider: ComposerByokProvider;
+  apiKey: string;
+}
+
+function normalizeComposerByokStatus(
+  input: Awaited<ReturnType<typeof getByokStatus>>,
+): ComposerByokStatus {
+  const normalizedProvider = input.provider?.trim().toLowerCase();
+  const provider: ComposerByokProvider | null =
+    normalizedProvider === "openrouter"
+      ? "openrouter"
+      : normalizedProvider === "openai"
+        ? "openai"
+        : null;
+  return {
+    provider,
+    connected: provider ? input.connected : false,
+    updatedAt: provider ? input.updatedAt : null,
+  };
+}
+
+function validateComposerByokProvider(value: unknown): ComposerByokProvider {
+  if (value === "openai" || value === "openrouter") {
+    return value;
+  }
+  throw new Error("Provider must be openai or openrouter.");
+}
+
+export async function getComposerAccountState(): Promise<ComposerAccountState> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+
+  const quota = await getAccountQuotaSnapshot(ctx);
+  const byokStatus = await getByokStatus(ctx);
+
+  return {
+    quota: {
+      total: quota.total,
+      used: quota.used,
+      reserved: quota.reserved,
+      remaining: quota.remaining,
+    },
+    byok: normalizeComposerByokStatus(byokStatus),
+  };
+}
+
+export async function saveComposerByokKey(
+  input: SaveComposerByokKeyInput,
+): Promise<ComposerByokStatus> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+
+  const provider = validateComposerByokProvider(input.provider);
+  const status = await saveByokKey(ctx, {
+    provider,
+    apiKey: input.apiKey,
+  });
+  return normalizeComposerByokStatus(status);
+}
+
+export async function deleteComposerByokKey(): Promise<ComposerByokStatus> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  await deleteByokKey(ctx);
+  return {
+    provider: null,
+    connected: false,
+    updatedAt: null,
+  };
+}
 
 export async function updateConversationSettings(
   input: UpdateConversationSettingsInput,

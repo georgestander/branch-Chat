@@ -28,10 +28,14 @@ import {
 
 import {
   createAttachmentUploadAction,
+  deleteComposerByokKey,
   finalizeAttachmentUploadAction,
+  getComposerAccountState,
   getConversationSummary,
   removeAttachmentUploadAction,
+  saveComposerByokKey,
   sendMessage,
+  type ComposerByokProvider,
 } from "@/app/pages/conversation/functions";
 import {
   formatBytes,
@@ -106,6 +110,25 @@ const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "file-upload",
 ]);
 
+type ComposerLane = "demo" | "byok";
+type ComposerAccountStateResponse = Awaited<
+  ReturnType<typeof getComposerAccountState>
+>;
+
+function getProviderForModel(model: string): ComposerByokProvider {
+  return isOpenRouterModel(model) ? "openrouter" : "openai";
+}
+
+function extractErrorMessage(cause: unknown): string {
+  if (cause instanceof Error && typeof cause.message === "string") {
+    return cause.message;
+  }
+  if (typeof cause === "string") {
+    return cause;
+  }
+  return "Unknown error";
+}
+
 function sanitizeStoredComposerTools(value: unknown): ConversationComposerTool[] {
   if (!Array.isArray(value)) {
     return [];
@@ -168,12 +191,25 @@ export function ConversationComposer({
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
   const [isBrowser, setIsBrowser] = useState(false);
+  const [selectedLane, setSelectedLane] = useState<ComposerLane>("demo");
+  const [accountState, setAccountState] =
+    useState<ComposerAccountStateResponse | null>(null);
+  const [isAccountStateLoading, setIsAccountStateLoading] = useState(true);
+  const [isByokPanelOpen, setIsByokPanelOpen] = useState(false);
+  const [byokProvider, setByokProvider] = useState<ComposerByokProvider>(
+    getProviderForModel(conversationModel),
+  );
+  const [byokApiKey, setByokApiKey] = useState("");
+  const [isByokSaving, setIsByokSaving] = useState(false);
   const toolsStorageKey = `${COMPOSER_TOOL_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
+  const accountStateRequestIdRef = useRef(0);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuId = useId();
   const modelMenuId = useId();
+  const byokProviderId = useId();
+  const byokApiKeyId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +353,124 @@ export function ConversationComposer({
     }
     setSelectedTools((previous) => previous.filter((tool) => tool !== "web-search"));
   }, [webSearchSupported]);
+
+  const loadComposerAccountState = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const showLoading = options?.showLoading ?? true;
+      const requestId = accountStateRequestIdRef.current + 1;
+      accountStateRequestIdRef.current = requestId;
+      if (showLoading) {
+        setIsAccountStateLoading(true);
+      }
+      try {
+        const nextState = await getComposerAccountState();
+        if (accountStateRequestIdRef.current !== requestId) {
+          return null;
+        }
+        setAccountState(nextState);
+        return nextState;
+      } catch (loadError) {
+        console.error("[Composer] account state load failed", loadError);
+        if (accountStateRequestIdRef.current !== requestId) {
+          return null;
+        }
+        setError((previous) => previous ?? "We couldn't load account quota state.");
+        return null;
+      } finally {
+        if (showLoading && accountStateRequestIdRef.current === requestId) {
+          setIsAccountStateLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadComposerAccountState({ showLoading: true });
+  }, [conversationId, loadComposerAccountState]);
+
+  useEffect(() => {
+    if (accountState?.byok.provider) {
+      setByokProvider(accountState.byok.provider);
+      return;
+    }
+    setByokProvider(getProviderForModel(conversationModel));
+  }, [accountState?.byok.provider, conversationModel]);
+
+  useEffect(() => {
+    if (!accountState?.byok.connected && selectedLane === "byok") {
+      setSelectedLane("demo");
+    }
+  }, [accountState?.byok.connected, selectedLane]);
+
+  const handleSaveByokKey = useCallback(async () => {
+    if (isByokSaving) {
+      return;
+    }
+    const normalizedKey = byokApiKey.trim();
+    if (!normalizedKey) {
+      setError("Enter an API key before connecting BYOK.");
+      setIsByokPanelOpen(true);
+      return;
+    }
+
+    setIsByokSaving(true);
+    setError(null);
+    try {
+      const status = await saveComposerByokKey({
+        provider: byokProvider,
+        apiKey: normalizedKey,
+      });
+      setAccountState((previous) =>
+        previous
+          ? {
+              ...previous,
+              byok: status,
+            }
+          : previous,
+      );
+      setByokApiKey("");
+      setSelectedLane("byok");
+      await loadComposerAccountState({ showLoading: false });
+    } catch (saveError) {
+      console.error("[Composer] save BYOK key failed", saveError);
+      setError("We couldn't connect your BYOK key. Verify the key and try again.");
+      setIsByokPanelOpen(true);
+    } finally {
+      setIsByokSaving(false);
+    }
+  }, [byokApiKey, byokProvider, isByokSaving, loadComposerAccountState]);
+
+  const handleDeleteByokKey = useCallback(async () => {
+    if (isByokSaving) {
+      return;
+    }
+    setIsByokSaving(true);
+    setError(null);
+    try {
+      await deleteComposerByokKey();
+      setAccountState((previous) =>
+        previous
+          ? {
+              ...previous,
+              byok: {
+                provider: null,
+                connected: false,
+                updatedAt: null,
+              },
+            }
+          : previous,
+      );
+      setSelectedLane("demo");
+      setByokApiKey("");
+      await loadComposerAccountState({ showLoading: false });
+    } catch (deleteError) {
+      console.error("[Composer] delete BYOK key failed", deleteError);
+      setError("We couldn't disconnect your BYOK key. Please try again.");
+    } finally {
+      setIsByokSaving(false);
+    }
+  }, [isByokSaving, loadComposerAccountState]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -766,6 +920,18 @@ export function ConversationComposer({
     (attachment) => attachment.status === "error",
   );
   const canAddMoreAttachments = attachments.length < UPLOAD_MAX_ATTACHMENTS;
+  const byokConnected = accountState?.byok.connected ?? false;
+  const byokProviderLabel =
+    accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const demoRemainingPasses = accountState?.quota.remaining ?? null;
+  const quotaIndicatorText =
+    selectedLane === "byok" && byokConnected
+      ? "BYOK lane: unlimited via your key."
+      : isAccountStateLoading
+        ? "Demo lane: loading pass balance..."
+        : demoRemainingPasses === null
+          ? "Demo lane: pass balance unavailable."
+          : `Demo lane: ${demoRemainingPasses} pass${demoRemainingPasses === 1 ? "" : "es"} remaining.`;
   const isSendDisabled = isPending || hasPendingAttachments || hasErroredAttachments;
 
   const submitMessage = (): boolean => {
@@ -823,11 +989,32 @@ export function ConversationComposer({
           branchId,
           content,
           streamId,
+          lane: selectedLane,
           tools: selectedTools,
           attachmentIds: readyAttachmentIds,
         });
         setValue("");
         setAttachments([]);
+        if (result.quota.remainingDemoPasses !== null) {
+          setAccountState((previous) => {
+            if (!previous) {
+              return previous;
+            }
+            const nextRemaining = Math.max(0, result.quota.remainingDemoPasses ?? 0);
+            const nextUsed = Math.max(
+              0,
+              previous.quota.total - nextRemaining - previous.quota.reserved,
+            );
+            return {
+              ...previous,
+              quota: {
+                ...previous.quota,
+                used: nextUsed,
+                remaining: nextRemaining,
+              },
+            };
+          });
+        }
 
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
@@ -883,7 +1070,30 @@ export function ConversationComposer({
           reason: "failed",
         });
         console.error("[Composer] sendMessage failed", cause);
-        setError("We couldn't send that message. Please try again.");
+        const errorMessage = extractErrorMessage(cause);
+        const demoCapReached =
+          errorMessage.includes("Demo pass limit reached") ||
+          errorMessage.includes("quota-exhausted");
+        if (demoCapReached && !byokConnected) {
+          setAccountState((previous) =>
+            previous
+              ? {
+                  ...previous,
+                  quota: {
+                    ...previous.quota,
+                    remaining: 0,
+                  },
+                }
+              : previous,
+          );
+          setByokProvider(getProviderForModel(conversationModel));
+          setIsByokPanelOpen(true);
+          setError(
+            "Demo passes are exhausted. Connect a BYOK key below, then switch to the BYOK lane to continue.",
+          );
+          return;
+        }
+        setError(errorMessage || "We couldn't send that message. Please try again.");
       }
     });
     return true;
@@ -930,6 +1140,122 @@ export function ConversationComposer({
           void handleFilesSelected(event.target.files);
         }}
       />
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <div
+          role="group"
+          aria-label="Message lane"
+          className="inline-flex items-center rounded-full border border-background/30 bg-foreground/95 p-0.5 text-background"
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedLane("demo")}
+            aria-pressed={selectedLane === "demo"}
+            className={cn(
+              "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              selectedLane === "demo"
+                ? "bg-background text-foreground"
+                : "text-background/75 hover:text-background",
+            )}
+          >
+            Demo
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedLane("byok")}
+            aria-pressed={selectedLane === "byok"}
+            disabled={!byokConnected}
+            className={cn(
+              "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+              selectedLane === "byok"
+                ? "bg-background text-foreground"
+                : "text-background/75 hover:text-background",
+            )}
+          >
+            BYOK
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsByokPanelOpen((previous) => !previous)}
+          className="interactive-target inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {byokConnected ? "Manage BYOK" : "Connect BYOK"}
+        </button>
+      </div>
+      {isByokPanelOpen ? (
+        <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor={byokProviderId}
+                className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+              >
+                Provider
+              </label>
+              <select
+                id={byokProviderId}
+                value={byokProvider}
+                onChange={(event) =>
+                  setByokProvider(event.target.value as ComposerByokProvider)
+                }
+                disabled={isByokSaving}
+                className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+            </div>
+            <div className="flex min-w-[220px] flex-1 flex-col gap-1">
+              <label
+                htmlFor={byokApiKeyId}
+                className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+              >
+                API key
+              </label>
+              <input
+                id={byokApiKeyId}
+                type="password"
+                value={byokApiKey}
+                onChange={(event) => setByokApiKey(event.target.value)}
+                placeholder="sk-..."
+                disabled={isByokSaving}
+                autoComplete="off"
+                className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSaveByokKey()}
+              disabled={isByokSaving}
+              className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isByokSaving ? "Saving..." : byokConnected ? "Update key" : "Connect"}
+            </button>
+            {byokConnected ? (
+              <button
+                type="button"
+                onClick={() => void handleDeleteByokKey()}
+                disabled={isByokSaving}
+                className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Disconnect
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setIsByokPanelOpen(false)}
+              className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Close
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            {byokConnected
+              ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.`
+              : "Connect your API key, then switch lanes to BYOK for unlimited sends via your key."}
+          </p>
+        </div>
+      ) : null}
       {(hasSelectedTools || attachments.length > 0) ? (
         <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
           {hasSelectedTools ? (
@@ -1397,7 +1723,7 @@ export function ConversationComposer({
           </p>
         ) : (
           <span className="text-xs text-background/70">
-            Enter to send · Shift+Enter for line break
+            {quotaIndicatorText} · Enter to send · Shift+Enter for line break
           </span>
         )}
       </div>
