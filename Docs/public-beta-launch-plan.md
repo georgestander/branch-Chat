@@ -36,6 +36,16 @@ Primary objective: stability and UX quality first, then auth/quota/BYOK, then de
 9. Study mode produces guided, stepwise tutoring behavior (not answer-dumping).
 10. OSS forkability is clear via docs and setup flow.
 
+## Execution Status (2026-02-07)
+- [x] `P2-T1` Clerk-auth-required middleware gate (`depends_on: []`)
+  Work log: Added `AUTH_REQUIRED` flag gate in `src/worker.tsx` and auth helper updates in `src/app/shared/auth.server.ts`; unauthenticated chat requests now return `401` when enabled, while `/_uploads` and `/events` remain auth-optional.
+  Files: `src/worker.tsx`, `src/app/shared/auth.server.ts`, `types/env.d.ts`
+  Notes: uses header/cookie identity plumbing already present; Clerk upstream integration remains the identity source.
+- [x] `P2-T2` OpenRouter demo primary->backup retry (`depends_on: []`)
+  Work log: Added one-time fallback on stream initialization failure for demo lane OpenRouter requests; routes to configured primary model then retries once with backup model if configured and distinct.
+  Files: `src/app/pages/conversation/functions.ts`
+  Notes: BYOK lane unchanged; trace logs added for route/fallback attempt/success/failure.
+
 ## Important API / Interface / Type Changes
 1. Extend conversation ownership and defaults in `src/lib/conversation/model.ts`.
 
