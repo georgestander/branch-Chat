@@ -165,14 +165,20 @@ export async function saveByokKey(
     );
     return status;
   } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown";
     console.error(
       "[ERROR] account:byok:save failed",
       JSON.stringify({
         ownerId: ctx.auth.userId,
         provider,
-        message: error instanceof Error ? error.message : "unknown",
+        message,
       }),
     );
+    if (message.includes("BYOK secret is missing")) {
+      throw new Error(
+        "BYOK is not configured in this environment. Add BYOK_ENCRYPTION_SECRET to your worker/.dev.vars.",
+      );
+    }
     throw new Error("Failed to save BYOK key");
   }
 }
@@ -240,13 +246,19 @@ export async function resolveByokCredential(
       apiKey,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown";
     console.error(
       "[ERROR] account:byok:resolve failed",
       JSON.stringify({
         ownerId: ctx.auth.userId,
-        message: error instanceof Error ? error.message : "unknown",
+        message,
       }),
     );
+    if (message.includes("BYOK secret is missing")) {
+      throw new Error(
+        "BYOK is not configured in this environment. Add BYOK_ENCRYPTION_SECRET to your worker/.dev.vars.",
+      );
+    }
     throw new Error("Failed to resolve BYOK key");
   }
 }

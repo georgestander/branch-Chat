@@ -104,6 +104,7 @@ const TOOL_OPTIONS: ToolOption[] = [
 ];
 
 const COMPOSER_TOOL_STORAGE_PREFIX = "connexus:composer:tools:";
+const COMPOSER_LANE_STORAGE_PREFIX = "connexus:composer:lane:";
 const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "study-and-learn",
   "web-search",
@@ -202,6 +203,7 @@ export function ConversationComposer({
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
   const toolsStorageKey = `${COMPOSER_TOOL_STORAGE_PREFIX}${conversationId}`;
+  const laneStorageKey = `${COMPOSER_LANE_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
   const accountStateRequestIdRef = useRef(0);
@@ -308,6 +310,26 @@ export function ConversationComposer({
   }, [toolsStorageKey]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const stored = window.sessionStorage.getItem(laneStorageKey);
+      if (stored === "demo" || stored === "byok") {
+        setSelectedLane(stored);
+      } else {
+        setSelectedLane("demo");
+      }
+    } catch (storageError) {
+      console.warn(
+        "[Composer] unable to hydrate persisted lane selection",
+        storageError,
+      );
+      setSelectedLane("demo");
+    }
+  }, [laneStorageKey]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !hasHydratedToolsRef.current) {
       return;
     }
@@ -331,6 +353,20 @@ export function ConversationComposer({
       );
     }
   }, [selectedTools, toolsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(laneStorageKey, selectedLane);
+    } catch (storageError) {
+      console.warn(
+        "[Composer] unable to persist lane selection",
+        storageError,
+      );
+    }
+  }, [laneStorageKey, selectedLane]);
 
   useEffect(() => {
     if (!bootstrapMessage) {
@@ -398,10 +434,10 @@ export function ConversationComposer({
   }, [accountState?.byok.provider, conversationModel]);
 
   useEffect(() => {
-    if (!accountState?.byok.connected && selectedLane === "byok") {
+    if (accountState && !accountState.byok.connected && selectedLane === "byok") {
       setSelectedLane("demo");
     }
-  }, [accountState?.byok.connected, selectedLane]);
+  }, [accountState, selectedLane]);
 
   const handleSaveByokKey = useCallback(async () => {
     if (isByokSaving) {
@@ -434,7 +470,8 @@ export function ConversationComposer({
       await loadComposerAccountState({ showLoading: false });
     } catch (saveError) {
       console.error("[Composer] save BYOK key failed", saveError);
-      setError("We couldn't connect your BYOK key. Verify the key and try again.");
+      const message = extractErrorMessage(saveError);
+      setError(message || "We couldn't connect your BYOK key. Verify the key and try again.");
       setIsByokPanelOpen(true);
     } finally {
       setIsByokSaving(false);
