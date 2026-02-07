@@ -689,10 +689,8 @@ export async function sendMessage(
           model: settings.model,
           provider: modelProvider,
           byokProvider: normalizedByokProvider,
+          action: "continue-with-model-provider",
         });
-        throw new Error(
-          `BYOK lane requested, but connected provider (${byokCredential.provider}) does not match the selected model provider (${modelProvider}). Switch model/provider or reconnect BYOK.`,
-        );
       }
 
       quotaLane = "byok";
