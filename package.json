@@ -22,8 +22,8 @@
     "check": "npm run generate && npm run types",
     "types": "tsc",
     "typecheck": "npm run types",
-    "test": "echo \"No tests configured\"",
-    "lint": "echo \"No lint configured\""
+    "test": "node --test",
+    "lint": "npm run types -- --pretty false"
   },
   "dependencies": {
     "@openai/agents": "^0.2.1",

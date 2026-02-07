@@ -1,26 +1,52 @@
-# RedwoodSDK Minimal Starter
+# Branch Chat
 
-This is the starter project for RedwoodSDK. It's a template designed to get you up and running as quickly as possible.
+Branch Chat is a server-first, non-linear branching chat app built with RedwoodSDK React Server Components (RSC) on Cloudflare Workers.
 
-Create your new project:
+The project is designed around branchable conversations, Durable Object persistence, and server-owned chat orchestration.
 
-```shell
-npx create-rwsdk my-project-name
-cd my-project-name
-npm install
-```
+## Documentation
 
-## Running the dev server
+- Architecture: [`Docs/architecture.md`](Docs/architecture.md)
+- Local setup: [`Docs/setup.md`](Docs/setup.md)
+- Environment variables and bindings: [`Docs/env-vars.md`](Docs/env-vars.md)
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Security policy: [`SECURITY.md`](SECURITY.md)
 
-```shell
-npm run dev
-```
+## Core Architecture
 
-Point your browser to the URL displayed in the terminal (e.g. `http://localhost:5173/`). You should see a "Hello World" message in your browser.
+- Routing and rendering use RedwoodSDK primitives in `src/worker.tsx` (`defineApp`, `route`, `render`).
+- Conversation graph state persists in Cloudflare Durable Objects:
+  - `ConversationStoreDO` (per-conversation graph + messages)
+  - `ConversationDirectoryDO` (conversation list metadata)
+  - `AccountDO` (per-user quota + BYOK metadata)
+- Mutations run through server functions in `src/app/pages/conversation/functions.ts` (`"use server"`).
+- Client islands in `src/app/components/**` handle interaction-only concerns (pane resizing, keyboard shortcuts, optimistic UI).
 
-Codex Cloud automatically runs `npm run dev`, which already bypasses the sandbox proxy so live previews work without extra steps.
+## Quick Start
 
-## Further Reading
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+2. Copy local env template:
+   ```bash
+   cp .dev.vars.example .dev.vars
+   ```
+3. Add required keys in `.dev.vars` (at minimum `OPENAI_API_KEY`).
+4. Start local development:
+   ```bash
+   pnpm dev
+   ```
+5. Open [http://localhost:5174](http://localhost:5174).
 
-- [RedwoodSDK Documentation](https://docs.rwsdk.com/)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers)
+## Scripts
+
+- `pnpm dev`: Start Vite + RedwoodSDK dev server.
+- `pnpm types`: Run TypeScript type checking.
+- `npm run test`: Run Node's test runner (`node --test`).
+- `npm run lint`: Run TypeScript checks as the current lint gate.
+- `pnpm release`: Build and deploy with Wrangler.
+
+## License
+
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE).

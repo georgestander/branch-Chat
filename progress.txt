@@ -76,3 +76,7 @@
 - Decisions: encode explicit output rubric (Next step / Comprehension check / Recap / Your turn); add normalization pass to guarantee shape even when model drifts; attach guardrail telemetry to `agent:study:success` trace for observability.
 - Files: src/app/shared/openai/studyAndLearnAgent.server.ts, src/app/pages/conversation/functions.ts, progress.txt.
 - Notes: validation commands still pass (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-07 — Phase4 OSS hardening: replaced starter docs with project architecture/setup/env references; added LICENSE/CONTRIBUTING/SECURITY; upgraded `test`/`lint` scripts from placeholders to executable checks. Ref: Docs/public-beta-launch-plan.md Phase4 items 3-4.
+- Decisions: keep scripts low-risk with existing toolchain (`node --test`, `tsc`-backed lint) to satisfy real gate requirement without introducing dependency churn; document Cloudflare bindings + local env expectations explicitly for forkability.
+- Files: README.md, package.json, LICENSE, CONTRIBUTING.md, SECURITY.md, Docs/architecture.md, Docs/setup.md, Docs/env-vars.md, progress.txt.
+- Notes: adjusted docs URLs/examples to localhost:5174 to match Vite strictPort config.
