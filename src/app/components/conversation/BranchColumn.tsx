@@ -12,7 +12,13 @@ import {
 import { ChevronDown, File as FileIcon, FileText, Image as ImageIcon, type LucideIcon } from "lucide-react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
-import type { Branch, ConversationModelId, MessageAttachment } from "@/lib/conversation";
+import type {
+  Branch,
+  ComposerPreset,
+  ConversationModelId,
+  MessageAttachment,
+} from "@/lib/conversation";
+import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/app/shared/uploads.config";
@@ -52,10 +58,16 @@ interface BranchColumnProps {
   highlightedBranchId?: string | null;
   conversationModel: string;
   reasoningEffort: "low" | "medium" | "high" | null;
+  composerPreset: ComposerPreset;
+  composerTools: ConversationComposerTool[];
   openRouterModels: OpenRouterModelOption[];
   onConversationSettingsChange: (
     model: string,
     effort: "low" | "medium" | "high" | null,
+    options?: {
+      preset?: ComposerPreset;
+      tools?: ConversationComposerTool[];
+    },
   ) => Promise<boolean>;
   conversationSettingsSaving: boolean;
   conversationSettingsError: string | null;
@@ -132,6 +144,8 @@ export function BranchColumn({
   highlightedBranchId,
   conversationModel,
   reasoningEffort,
+  composerPreset,
+  composerTools,
   openRouterModels,
   onConversationSettingsChange,
   conversationSettingsSaving,
@@ -534,10 +548,12 @@ export function BranchColumn({
                 conversationId={conversationId}
                 autoFocus
                 className=""
-            conversationModel={conversationModel}
-            reasoningEffort={reasoningEffort}
-            openRouterModels={openRouterModels}
-            onConversationSettingsChange={onConversationSettingsChange}
+                conversationModel={conversationModel}
+                reasoningEffort={reasoningEffort}
+                composerPreset={composerPreset}
+                composerTools={composerTools}
+                openRouterModels={openRouterModels}
+                onConversationSettingsChange={onConversationSettingsChange}
                 conversationSettingsSaving={conversationSettingsSaving}
                 conversationSettingsError={conversationSettingsError}
                 onClearConversationSettingsError={onClearConversationSettingsError}

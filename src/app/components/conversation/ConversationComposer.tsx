@@ -50,6 +50,7 @@ import {
   emitOptimisticMessageClear,
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
+import type { ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import {
   isWebSearchSupportedModel,
@@ -103,13 +104,36 @@ const TOOL_OPTIONS: ToolOption[] = [
   },
 ];
 
-const COMPOSER_TOOL_STORAGE_PREFIX = "connexus:composer:tools:";
 const COMPOSER_LANE_STORAGE_PREFIX = "connexus:composer:lane:";
 const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "study-and-learn",
   "web-search",
   "file-upload",
 ]);
+const START_MODE_DEFAULTS: Record<
+  Exclude<ComposerPreset, "custom">,
+  {
+    model: string;
+    reasoningEffort: "low" | "medium" | "high" | null;
+    tools: ConversationComposerTool[];
+  }
+> = {
+  fast: {
+    model: "gpt-5-chat-latest",
+    reasoningEffort: null,
+    tools: [],
+  },
+  reasoning: {
+    model: "gpt-5-mini",
+    reasoningEffort: "medium",
+    tools: [],
+  },
+  study: {
+    model: "gpt-5-mini",
+    reasoningEffort: "medium",
+    tools: ["study-and-learn"],
+  },
+};
 
 type ComposerLane = "demo" | "byok";
 type ComposerAccountStateResponse = Awaited<
@@ -147,6 +171,61 @@ function sanitizeStoredComposerTools(value: unknown): ConversationComposerTool[]
   return tools;
 }
 
+function isSameToolSelection(
+  left: ConversationComposerTool[],
+  right: ConversationComposerTool[],
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function inferComposerPreset(options: {
+  model: string;
+  reasoningEffort: "low" | "medium" | "high" | null;
+  tools: ConversationComposerTool[];
+}): ComposerPreset {
+  const normalizedTools = sanitizeStoredComposerTools(options.tools);
+  const normalizedEffort = supportsReasoningEffortModel(options.model)
+    ? (options.reasoningEffort ?? "low")
+    : null;
+
+  const fastDefaults = START_MODE_DEFAULTS.fast;
+  if (
+    options.model === fastDefaults.model &&
+    normalizedEffort === fastDefaults.reasoningEffort &&
+    isSameToolSelection(normalizedTools, fastDefaults.tools)
+  ) {
+    return "fast";
+  }
+
+  const reasoningDefaults = START_MODE_DEFAULTS.reasoning;
+  if (
+    options.model === reasoningDefaults.model &&
+    normalizedEffort === reasoningDefaults.reasoningEffort &&
+    isSameToolSelection(normalizedTools, reasoningDefaults.tools)
+  ) {
+    return "reasoning";
+  }
+
+  const studyDefaults = START_MODE_DEFAULTS.study;
+  if (
+    options.model === studyDefaults.model &&
+    normalizedEffort === studyDefaults.reasoningEffort &&
+    isSameToolSelection(normalizedTools, studyDefaults.tools)
+  ) {
+    return "study";
+  }
+
+  return "custom";
+}
+
 interface ConversationComposerProps {
   branchId: string;
   conversationId: string;
@@ -154,10 +233,16 @@ interface ConversationComposerProps {
   className?: string;
   conversationModel: string;
   reasoningEffort: "low" | "medium" | "high" | null;
+  composerPreset: ComposerPreset;
+  composerTools: ConversationComposerTool[];
   openRouterModels: OpenRouterModelOption[];
   onConversationSettingsChange: (
     model: string,
     effort: "low" | "medium" | "high" | null,
+    options?: {
+      preset?: ComposerPreset;
+      tools?: ConversationComposerTool[];
+    },
   ) => Promise<boolean>;
   conversationSettingsSaving: boolean;
   conversationSettingsError: string | null;
@@ -173,6 +258,8 @@ export function ConversationComposer({
   className,
   conversationModel,
   reasoningEffort,
+  composerPreset,
+  composerTools,
   openRouterModels,
   onConversationSettingsChange,
   conversationSettingsSaving,
@@ -186,7 +273,7 @@ export function ConversationComposer({
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
-    [],
+    sanitizeStoredComposerTools(composerTools),
   );
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
@@ -202,7 +289,6 @@ export function ConversationComposer({
   );
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
-  const toolsStorageKey = `${COMPOSER_TOOL_STORAGE_PREFIX}${conversationId}`;
   const laneStorageKey = `${COMPOSER_LANE_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
@@ -218,8 +304,6 @@ export function ConversationComposer({
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
-  const hasHydratedToolsRef = useRef(false);
-  const skipToolsPersistRef = useRef(false);
   const webSearchSupported = isWebSearchSupportedModel(conversationModel);
   const { notify } = useToast();
   const reasoningOptions: Array<"low" | "medium" | "high"> = [
@@ -238,6 +322,13 @@ export function ConversationComposer({
     medium: "Medium",
     high: "High",
   };
+  const presetLabels: Record<ComposerPreset, string> = {
+    fast: "Fast",
+    reasoning: "Reasoning",
+    study: "Study",
+    custom: "Custom",
+  };
+  const currentPresetLabel = presetLabels[composerPreset];
   const currentReasoningEffort = (reasoningEffort ?? "low") as "low" | "medium" | "high";
   const selectedOpenRouterModel = openRouterModels.find(
     (model) => model.id === conversationModel,
@@ -286,28 +377,13 @@ export function ConversationComposer({
   }, [attachments]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    hasHydratedToolsRef.current = false;
-    try {
-      const stored = window.sessionStorage.getItem(toolsStorageKey);
-      const parsed = stored
-        ? sanitizeStoredComposerTools(JSON.parse(stored))
-        : [];
-      skipToolsPersistRef.current = true;
-      setSelectedTools(parsed);
-    } catch (storageError) {
-      console.warn(
-        "[Composer] unable to hydrate persisted tool selections",
-        storageError,
-      );
-      skipToolsPersistRef.current = true;
-      setSelectedTools([]);
-    } finally {
-      hasHydratedToolsRef.current = true;
-    }
-  }, [toolsStorageKey]);
+    const defaults = sanitizeStoredComposerTools(composerTools).filter((tool) =>
+      webSearchSupported ? true : tool !== "web-search",
+    );
+    setSelectedTools((previous) =>
+      isSameToolSelection(previous, defaults) ? previous : defaults,
+    );
+  }, [composerTools, webSearchSupported]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -328,31 +404,6 @@ export function ConversationComposer({
       setSelectedLane("demo");
     }
   }, [laneStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !hasHydratedToolsRef.current) {
-      return;
-    }
-    if (skipToolsPersistRef.current) {
-      skipToolsPersistRef.current = false;
-      return;
-    }
-    try {
-      if (selectedTools.length === 0) {
-        window.sessionStorage.removeItem(toolsStorageKey);
-      } else {
-        window.sessionStorage.setItem(
-          toolsStorageKey,
-          JSON.stringify(selectedTools),
-        );
-      }
-    } catch (storageError) {
-      console.warn(
-        "[Composer] unable to persist tool selections",
-        storageError,
-      );
-    }
-  }, [selectedTools, toolsStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -382,13 +433,6 @@ export function ConversationComposer({
     autoSendPendingRef.current = bootstrapMessage;
     setValue(bootstrapMessage);
   }, [bootstrapMessage, value]);
-
-  useEffect(() => {
-    if (webSearchSupported) {
-      return;
-    }
-    setSelectedTools((previous) => previous.filter((tool) => tool !== "web-search"));
-  }, [webSearchSupported]);
 
   const loadComposerAccountState = useCallback(
     async (options?: { showLoading?: boolean }) => {
@@ -626,9 +670,6 @@ export function ConversationComposer({
       const hasFileUpload = previous.includes("file-upload");
       if (attachments.length > 0 && !hasFileUpload) {
         return [...previous, "file-upload"];
-      }
-      if (attachments.length === 0 && hasFileUpload) {
-        return previous.filter((value) => value !== "file-upload");
       }
       return previous;
     });
@@ -893,53 +934,111 @@ export function ConversationComposer({
     };
   }, [clearAllAttachments]);
 
-  const handleToolSelect = useCallback(
-    (tool: ToolOption["id"]) => {
-      setSelectedTools((previous) => {
-        if (tool === "web-search" && !webSearchSupported) {
-          setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
-          setIsToolMenuOpen(false);
-          return previous;
-        }
-        if (tool === "file-upload") {
-          if (attachmentsRef.current.length >= UPLOAD_MAX_ATTACHMENTS) {
-            setError(
-              `You can upload up to ${UPLOAD_MAX_ATTACHMENTS} files per message.`,
-            );
-            return previous.includes(tool) ? previous : previous;
-          }
-          const next = previous.includes(tool) ? previous : [...previous, tool];
-          setIsToolMenuOpen(false);
-          openFilePicker();
-          return next;
-        }
-
-        if (previous.includes(tool)) {
-          return previous.filter((value) => value !== tool);
-        }
-        return [...previous, tool];
+  const persistComposerDefaults = useCallback(
+    (
+      nextToolsInput: ConversationComposerTool[],
+      options?: {
+        model?: string;
+        reasoningEffort?: "low" | "medium" | "high" | null;
+      },
+    ) => {
+      const nextModel = options?.model ?? conversationModel;
+      const nextEffort = options?.reasoningEffort ?? reasoningEffort;
+      const normalizedEffort = supportsReasoningEffortModel(nextModel)
+        ? (nextEffort ?? "low")
+        : null;
+      const webSearchSupportedForModel = isWebSearchSupportedModel(nextModel);
+      const normalizedTools = sanitizeStoredComposerTools(nextToolsInput).filter((tool) =>
+        webSearchSupportedForModel ? true : tool !== "web-search",
+      );
+      const inferredPreset = inferComposerPreset({
+        model: nextModel,
+        reasoningEffort: normalizedEffort,
+        tools: normalizedTools,
       });
 
-      if (tool !== "file-upload") {
-        setIsToolMenuOpen(false);
-      }
+      void onConversationSettingsChange(nextModel, normalizedEffort, {
+        preset: inferredPreset,
+        tools: normalizedTools,
+      });
+      return normalizedTools;
     },
-    [openFilePicker, webSearchSupported],
+    [conversationModel, onConversationSettingsChange, reasoningEffort],
+  );
+
+  useEffect(() => {
+    if (webSearchSupported) {
+      return;
+    }
+    if (!selectedTools.includes("web-search")) {
+      return;
+    }
+    const nextTools = selectedTools.filter((tool) => tool !== "web-search");
+    setSelectedTools(nextTools);
+    persistComposerDefaults(nextTools);
+  }, [persistComposerDefaults, selectedTools, webSearchSupported]);
+
+  const handleToolSelect = useCallback(
+    (tool: ToolOption["id"]) => {
+      if (tool === "web-search" && !webSearchSupported) {
+        setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+        setIsToolMenuOpen(false);
+        return;
+      }
+
+      if (tool === "file-upload" && attachmentsRef.current.length >= UPLOAD_MAX_ATTACHMENTS) {
+        setError(
+          `You can upload up to ${UPLOAD_MAX_ATTACHMENTS} files per message.`,
+        );
+        return;
+      }
+
+      const nextTools = (() => {
+        if (tool === "file-upload") {
+          return selectedTools.includes(tool)
+            ? selectedTools
+            : [...selectedTools, tool];
+        }
+        if (selectedTools.includes(tool)) {
+          return selectedTools.filter((value) => value !== tool);
+        }
+        return [...selectedTools, tool];
+      })();
+
+      if (!isSameToolSelection(nextTools, selectedTools)) {
+        setSelectedTools(nextTools);
+        persistComposerDefaults(nextTools);
+      }
+
+      if (tool === "file-upload") {
+        openFilePicker();
+      }
+
+      setIsToolMenuOpen(false);
+    },
+    [openFilePicker, persistComposerDefaults, selectedTools, webSearchSupported],
   );
 
   const handleClearTool = useCallback(() => {
-    setSelectedTools([]);
+    if (!isSameToolSelection(selectedTools, [])) {
+      setSelectedTools([]);
+      persistComposerDefaults([]);
+    }
     void clearAllAttachments();
-  }, [clearAllAttachments]);
+  }, [clearAllAttachments, persistComposerDefaults, selectedTools]);
 
   const handleRemoveTool = useCallback(
     (tool: ConversationComposerTool) => {
-      setSelectedTools((previous) => previous.filter((value) => value !== tool));
+      const nextTools = selectedTools.filter((value) => value !== tool);
+      if (!isSameToolSelection(nextTools, selectedTools)) {
+        setSelectedTools(nextTools);
+        persistComposerDefaults(nextTools);
+      }
       if (tool === "file-upload") {
         void clearAllAttachments();
       }
     },
-    [clearAllAttachments],
+    [clearAllAttachments, persistComposerDefaults, selectedTools],
   );
 
   const handleModelSelection = useCallback(
@@ -947,8 +1046,23 @@ export function ConversationComposer({
       nextModel: string,
       nextEffort: "low" | "medium" | "high" | null,
     ) => {
-      const success = await onConversationSettingsChange(nextModel, nextEffort);
+      const normalizedEffort = supportsReasoningEffortModel(nextModel)
+        ? (nextEffort ?? "low")
+        : null;
+      const nextTools = sanitizeStoredComposerTools(selectedTools).filter((tool) =>
+        isWebSearchSupportedModel(nextModel) ? true : tool !== "web-search",
+      );
+      const inferredPreset = inferComposerPreset({
+        model: nextModel,
+        reasoningEffort: normalizedEffort,
+        tools: nextTools,
+      });
+      const success = await onConversationSettingsChange(nextModel, normalizedEffort, {
+        preset: inferredPreset,
+        tools: nextTools,
+      });
       if (success) {
+        setSelectedTools(nextTools);
         setIsModelMenuOpen(false);
         if (supportsReasoningEffortModel(nextModel)) {
           const effortLabel = effortLabels[(nextEffort ?? "low") as "low" | "medium" | "high"];
@@ -960,7 +1074,7 @@ export function ConversationComposer({
         }
       }
     },
-    [notify, onConversationSettingsChange],
+    [notify, onConversationSettingsChange, selectedTools],
   );
 
   const activeToolOptions = TOOL_OPTIONS.filter((option) =>
@@ -1205,38 +1319,43 @@ export function ConversationComposer({
         }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div
-          role="group"
-          aria-label="Message lane"
-          className="inline-flex items-center rounded-full border border-background/30 bg-foreground/95 p-0.5 text-background"
-        >
-          <button
-            type="button"
-            onClick={() => setSelectedLane("demo")}
-            aria-pressed={selectedLane === "demo"}
-            className={cn(
-              "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              selectedLane === "demo"
-                ? "bg-background text-foreground"
-                : "text-background/75 hover:text-background",
-            )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Message lane"
+            className="inline-flex items-center rounded-full border border-background/30 bg-foreground/95 p-0.5 text-background"
           >
-            Demo
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedLane("byok")}
-            aria-pressed={selectedLane === "byok"}
-            disabled={!byokEnabled || !byokConnected}
-            className={cn(
-              "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-              selectedLane === "byok"
-                ? "bg-background text-foreground"
-                : "text-background/75 hover:text-background",
-            )}
-          >
-            BYOK
-          </button>
+            <button
+              type="button"
+              onClick={() => setSelectedLane("demo")}
+              aria-pressed={selectedLane === "demo"}
+              className={cn(
+                "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                selectedLane === "demo"
+                  ? "bg-background text-foreground"
+                  : "text-background/75 hover:text-background",
+              )}
+            >
+              Demo
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedLane("byok")}
+              aria-pressed={selectedLane === "byok"}
+              disabled={!byokEnabled || !byokConnected}
+              className={cn(
+                "interactive-target rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+                selectedLane === "byok"
+                  ? "bg-background text-foreground"
+                  : "text-background/75 hover:text-background",
+              )}
+            >
+              BYOK
+            </button>
+          </div>
+          <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
+            {`Mode ${currentPresetLabel}`}
+          </span>
         </div>
         <button
           type="button"

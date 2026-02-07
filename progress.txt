@@ -68,3 +68,7 @@
 - Decisions: introduced backward-compatible defaults + validation migration for legacy snapshots without composerDefaults; createConversation updates settings atomically when start-mode overrides are supplied; initialMessage contract accepted with deferred trace (no server auto-send side effect).
 - Files: src/lib/conversation/model.ts, src/lib/conversation/validation.ts, src/app/shared/conversation.server.ts, src/app/pages/conversation/functions.ts, progress.txt.
 - Notes: next wave wires UI preset/drawer controls to these server contracts.
+2026-02-07 — Phase3 start-mode UI wiring: landing presets + advanced controls now drive deterministic create payload; composer defaults (preset/tools) now persisted via conversation settings and rehydrated across reload/branch switch. Ref: Docs/public-beta-launch-plan.md Phase3 start-mode items.
+- Decisions: enforce deterministic preset map (`fast/reasoning/study`) at create time; `custom` preserves explicit advanced selections; move composer tool defaults from session-only storage to `updateConversationSettings` (`preset + tools`) with optimistic layout state/rollback.
+- Files: src/app/components/conversation/ConversationEmptyLayout.tsx, src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: no blockers. Validation run: `pnpm types`, `npm run test`, `npm run lint`.

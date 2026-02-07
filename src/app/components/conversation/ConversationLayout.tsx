@@ -14,9 +14,11 @@ import { ConversationSidebar } from "@/app/pages/conversation/ConversationSideba
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import type {
   Branch,
+  ComposerPreset,
   Conversation,
   ConversationModelId,
 } from "@/lib/conversation";
+import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,132 @@ const PARENT_MIN_WIDTH_PX = 280;
 const ACTIVE_MIN_WIDTH_PX = 680;
 const MAX_PARENT_RATIO = 0.48;
 const RESIZER_WIDTH_PX = 6;
+const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
+  "study-and-learn",
+  "web-search",
+  "file-upload",
+]);
+
+type ConversationReasoningEffort = "low" | "medium" | "high" | null;
+
+const START_MODE_DEFAULTS: Record<
+  Exclude<ComposerPreset, "custom">,
+  {
+    model: string;
+    reasoningEffort: ConversationReasoningEffort;
+    tools: ConversationComposerTool[];
+  }
+> = {
+  fast: {
+    model: "gpt-5-chat-latest",
+    reasoningEffort: null,
+    tools: [],
+  },
+  reasoning: {
+    model: "gpt-5-mini",
+    reasoningEffort: "medium",
+    tools: [],
+  },
+  study: {
+    model: "gpt-5-mini",
+    reasoningEffort: "medium",
+    tools: ["study-and-learn"],
+  },
+};
+
+function sanitizeComposerTools(value: unknown): ConversationComposerTool[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const tools: ConversationComposerTool[] = [];
+  for (const item of value) {
+    if (
+      typeof item === "string" &&
+      ALLOWED_COMPOSER_TOOLS.has(item as ConversationComposerTool) &&
+      !tools.includes(item as ConversationComposerTool)
+    ) {
+      tools.push(item as ConversationComposerTool);
+    }
+  }
+  return tools;
+}
+
+function isSameToolSelection(
+  left: ConversationComposerTool[],
+  right: ConversationComposerTool[],
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function inferPresetFromSelections(options: {
+  model: string;
+  reasoningEffort: ConversationReasoningEffort;
+  tools: ConversationComposerTool[];
+}): ComposerPreset {
+  const normalizedTools = sanitizeComposerTools(options.tools);
+  const normalizedEffort = supportsReasoningEffortModel(options.model)
+    ? (options.reasoningEffort ?? "low")
+    : null;
+
+  const fastDefaults = START_MODE_DEFAULTS.fast;
+  if (
+    options.model === fastDefaults.model &&
+    normalizedEffort === fastDefaults.reasoningEffort &&
+    isSameToolSelection(normalizedTools, fastDefaults.tools)
+  ) {
+    return "fast";
+  }
+
+  const reasoningDefaults = START_MODE_DEFAULTS.reasoning;
+  if (
+    options.model === reasoningDefaults.model &&
+    normalizedEffort === reasoningDefaults.reasoningEffort &&
+    isSameToolSelection(normalizedTools, reasoningDefaults.tools)
+  ) {
+    return "reasoning";
+  }
+
+  const studyDefaults = START_MODE_DEFAULTS.study;
+  if (
+    options.model === studyDefaults.model &&
+    normalizedEffort === studyDefaults.reasoningEffort &&
+    isSameToolSelection(normalizedTools, studyDefaults.tools)
+  ) {
+    return "study";
+  }
+
+  return "custom";
+}
+
+function resolvePresetFromConversation(options: {
+  model: string;
+  reasoningEffort: ConversationReasoningEffort;
+  tools: ConversationComposerTool[];
+  preset: unknown;
+}): ComposerPreset {
+  const fallbackPreset = inferPresetFromSelections({
+    model: options.model,
+    reasoningEffort: options.reasoningEffort,
+    tools: options.tools,
+  });
+  if (
+    options.preset === "fast" ||
+    options.preset === "reasoning" ||
+    options.preset === "study" ||
+    options.preset === "custom"
+  ) {
+    return options.preset;
+  }
+  return fallbackPreset;
+}
 
 export function ConversationLayout({
   conversation,
@@ -71,6 +199,15 @@ export function ConversationLayout({
   const resolvedInitialEffort = supportsReasoningEffortModel(resolvedInitialModel)
     ? ((conversation.settings as any).reasoningEffort ?? "low")
     : null;
+  const resolvedInitialTools = sanitizeComposerTools(
+    conversation.settings.composerDefaults?.tools ?? [],
+  );
+  const resolvedInitialPreset = resolvePresetFromConversation({
+    model: resolvedInitialModel,
+    reasoningEffort: resolvedInitialEffort,
+    tools: resolvedInitialTools,
+    preset: conversation.settings.composerDefaults?.preset,
+  });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     initialSidebarCollapsed,
   );
@@ -81,6 +218,10 @@ export function ConversationLayout({
   const [settingsEffort, setSettingsEffort] = useState<"low" | "medium" | "high" | null>(
     resolvedInitialEffort,
   );
+  const [settingsPreset, setSettingsPreset] =
+    useState<ComposerPreset>(resolvedInitialPreset);
+  const [settingsTools, setSettingsTools] =
+    useState<ConversationComposerTool[]>(resolvedInitialTools);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   // Resizable split: store current and last-known parent width ratios
@@ -164,28 +305,57 @@ export function ConversationLayout({
     const nextEffort = supportsReasoningEffortModel(nextModel)
       ? ((conversation.settings as any).reasoningEffort ?? "low")
       : null;
+    const nextTools = sanitizeComposerTools(
+      conversation.settings.composerDefaults?.tools ?? [],
+    );
+    const nextPreset = resolvePresetFromConversation({
+      model: nextModel,
+      reasoningEffort: nextEffort,
+      tools: nextTools,
+      preset: conversation.settings.composerDefaults?.preset,
+    });
     setSettingsModel(nextModel);
     setSettingsEffort(nextEffort);
+    setSettingsPreset(nextPreset);
+    setSettingsTools(nextTools);
   }, [conversation.settings, conversationId]);
 
   const handleConversationSettingsChange = useCallback(
     async (
       nextModel: string,
       nextEffort: "low" | "medium" | "high" | null,
+      options?: {
+        preset?: ComposerPreset;
+        tools?: ConversationComposerTool[];
+      },
     ): Promise<boolean> => {
       setIsSavingSettings(true);
       setSettingsError(null);
       const previousModel = settingsModel;
       const previousEffort = settingsEffort;
+      const previousPreset = settingsPreset;
+      const previousTools = settingsTools;
+      const normalizedEffort = supportsReasoningEffortModel(nextModel)
+        ? (nextEffort ?? "low")
+        : null;
+      const normalizedTools = sanitizeComposerTools(options?.tools ?? settingsTools);
+      const normalizedPreset = resolvePresetFromConversation({
+        model: nextModel,
+        reasoningEffort: normalizedEffort,
+        tools: normalizedTools,
+        preset: options?.preset,
+      });
       setSettingsModel(nextModel);
-      setSettingsEffort(nextEffort);
+      setSettingsEffort(normalizedEffort);
+      setSettingsPreset(normalizedPreset);
+      setSettingsTools(normalizedTools);
       try {
         await updateConversationSettings({
           conversationId,
           model: nextModel,
-          reasoningEffort: supportsReasoningEffortModel(nextModel)
-            ? nextEffort
-            : null,
+          reasoningEffort: normalizedEffort,
+          preset: normalizedPreset,
+          tools: normalizedTools,
         });
         return true;
       } catch (error) {
@@ -196,12 +366,14 @@ export function ConversationLayout({
         setSettingsError("Unable to save settings. Try again.");
         setSettingsModel(previousModel);
         setSettingsEffort(previousEffort);
+        setSettingsPreset(previousPreset);
+        setSettingsTools(previousTools);
         return false;
       } finally {
         setIsSavingSettings(false);
       }
     },
-    [conversationId, settingsEffort, settingsModel],
+    [conversationId, settingsEffort, settingsModel, settingsPreset, settingsTools],
   );
 
   const clearConversationSettingsError = useCallback(() => {
@@ -427,6 +599,8 @@ export function ConversationLayout({
               className="min-h-0 bg-background"
               conversationModel={settingsModel}
               reasoningEffort={settingsEffort}
+              composerPreset={settingsPreset}
+              composerTools={settingsTools}
               openRouterModels={openRouterModels}
               onConversationSettingsChange={handleConversationSettingsChange}
               conversationSettingsSaving={isSavingSettings}
@@ -491,6 +665,8 @@ export function ConversationLayout({
             )}
             conversationModel={settingsModel}
             reasoningEffort={settingsEffort}
+            composerPreset={settingsPreset}
+            composerTools={settingsTools}
             openRouterModels={openRouterModels}
             onConversationSettingsChange={handleConversationSettingsChange}
             conversationSettingsSaving={isSavingSettings}
