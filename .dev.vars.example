@@ -1,3 +1,7 @@
 # Copy this file to `.dev.vars` and replace with your own secrets.
 
 OPENAI_API_KEY="sk-your-openai-key"
+# AUTH_REQUIRED="true"
+# AUTH_COOKIE_SECRET="replace-with-long-random-secret"
+# AUTH_TRUST_IDENTITY_HEADERS="false"
+# AUTH_ALLOW_LEGACY_COOKIE="false"

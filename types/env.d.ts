@@ -7,6 +7,9 @@ declare global {
     AccountDO: DurableObjectNamespace;
     OPENAI_API_KEY: string;
     AUTH_REQUIRED?: string;
+    AUTH_COOKIE_SECRET?: string;
+    AUTH_TRUST_IDENTITY_HEADERS?: string;
+    AUTH_ALLOW_LEGACY_COOKIE?: string;
     BYOK_ENCRYPTION_SECRET: string;
     OPENROUTER_API_KEY?: string;
     OPENROUTER_BASE_URL?: string;

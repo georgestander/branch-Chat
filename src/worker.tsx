@@ -9,6 +9,7 @@ import { Home } from "@/app/pages/Home";
 import { LandingPage } from "@/app/pages/landing/LandingPage";
 import { SignInPage } from "@/app/pages/sign-in/SignInPage";
 import {
+  isAuthOptionEnabled,
   isAuthRequiredEnabled,
   resolveRequestAuth,
 } from "@/app/shared/auth.server";
@@ -33,7 +34,13 @@ export type AppRequestInfo = RequestInfo<any, AppContext>;
 const envStorage = new AsyncLocalStorage<Env>();
 const openAIClientSymbol = Symbol.for("connexus.openai-client");
 const openRouterClientSymbol = Symbol.for("connexus.openrouter-client");
-const AUTH_OPTIONAL_PATH_PREFIXES = ["/events", "/_uploads", "/sign-in", "/landing"] as const;
+const AUTH_OPTIONAL_PATH_PREFIXES = [
+  "/",
+  "/events",
+  "/_uploads",
+  "/sign-in",
+  "/landing",
+] as const;
 
 function isAuthOptionalPath(pathname: string): boolean {
   return AUTH_OPTIONAL_PATH_PREFIXES.some((prefix) => {
@@ -45,7 +52,7 @@ function isAuthOptionalPath(pathname: string): boolean {
   });
 }
 
-const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) => {
+const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestInfo) => {
   const { ctx, request, response } = requestInfo;
   if ((ctx as Partial<AppContext>).env) {
     return;
@@ -63,11 +70,29 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => (requestInfo) =
     isAuthRequiredEnabled(env.AUTH_REQUIRED) && !isAuthOptionalPath(requestPath);
   const requestId =
     request.headers.get("cf-ray") ?? crypto.randomUUID();
-  const auth = resolveRequestAuth({
+  const allowIdentityHeaders = isAuthOptionEnabled(env.AUTH_TRUST_IDENTITY_HEADERS);
+  const allowLegacyAuthCookie = isAuthOptionEnabled(env.AUTH_ALLOW_LEGACY_COOKIE);
+
+  if (authRequired && !env.AUTH_COOKIE_SECRET && !allowIdentityHeaders) {
+    console.error(
+      "[ERROR] auth.config.missing_identity_source",
+      JSON.stringify({
+        requestId,
+        path: requestPath,
+        authRequired,
+      }),
+    );
+    return new Response("Server auth configuration missing", { status: 503 });
+  }
+
+  const auth = await resolveRequestAuth({
     request,
     response,
     authRequired,
     persistGuestCookie: requestPath !== "/sign-in",
+    authCookieSecret: env.AUTH_COOKIE_SECRET,
+    allowIdentityHeaders,
+    allowLegacyAuthCookie,
   });
 
   if (!auth) {
@@ -183,8 +208,14 @@ const app = defineApp<AppRequestInfo>([
   setCommonHeaders(),
   route("/_uploads", handleDirectUploadRequest),
   render(Document, [
-    route("/", Home),
-    route("/landing", LandingPage),
+    route("/", LandingPage),
+    route("/app", Home),
+    route("/landing", ({ request }) => {
+      const url = new URL(request.url);
+      const target = new URL("/", url);
+      target.search = url.search;
+      return Response.redirect(target.toString(), 308);
+    }),
     route("/sign-in", SignInPage),
     route("/events", async ({ request }) => {
       const url = new URL(request.url);

@@ -36,6 +36,19 @@ Primary objective: stability and UX quality first, then auth/quota/BYOK, then de
 9. Study mode produces guided, stepwise tutoring behavior (not answer-dumping).
 10. OSS forkability is clear via docs and setup flow.
 
+## Progress Tracker (2026-02-17)
+
+| Workstream | Scope | Status | Evidence | Remaining Before Public Beta |
+| --- | --- | --- | --- | --- |
+| P1 | Interaction and streaming reliability | Complete | `P1-T4` complete; persisted-message reconciliation replaced forced refresh | Run focused regression for test cases 1-6 |
+| P2 | Auth, ownership, quota, BYOK | In progress (hardening) | `P2-T1`, `P2-T1b`, `P2-T2` complete; quota + BYOK lane shipped | Finalize auth-provider direction and close auth abuse checks |
+| P3 | Landing, start mode, UX parity | Complete | `P3-T2`, `P3-T3`, `P3-T4` complete; landing/app route split is live | Re-run CTA and sign-in funnel smoke checks |
+| P4 | Study mode + OSS hardening | Complete | `P4-T1/T2` and `P4-T3/T4` complete | Re-run study multi-turn/manual acceptance checks |
+| QA | Go/no-go verification pass | Not started | Test matrix exists in `Docs/testing-report.md` | Execute pending high-risk checks and mark pass/fail |
+| Rollout | Internal soak + observability gate | Not started | Rollout criteria listed below | Run 72h internal soak with error budgets before public toggle |
+
+**Completion snapshot:** `9/9` tracked execution items in this plan are marked complete. Current ship blockers are verification and rollout gates.
+
 ## Execution Status (2026-02-07)
 - [x] `P2-T1` Clerk-auth-required middleware gate (`depends_on: []`)
   Work log: Added `AUTH_REQUIRED` flag gate in `src/worker.tsx` and auth helper updates in `src/app/shared/auth.server.ts`; unauthenticated chat requests now return `401` when enabled, while `/_uploads` and `/events` remain auth-optional.

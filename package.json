@@ -22,7 +22,7 @@
     "check": "npm run generate && npm run types",
     "types": "tsc",
     "typecheck": "npm run types",
-    "test": "node --test",
+    "test": "node --experimental-strip-types --test",
     "lint": "npm run types -- --pretty false"
   },
   "dependencies": {

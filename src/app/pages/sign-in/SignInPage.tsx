@@ -7,13 +7,13 @@ import {
 
 function resolveRedirectPath(rawValue: string | null): string {
   if (!rawValue) {
-    return "/";
+    return "/app";
   }
   if (!rawValue.startsWith("/")) {
-    return "/";
+    return "/app";
   }
   if (rawValue.startsWith("//")) {
-    return "/";
+    return "/app";
   }
   return rawValue;
 }
@@ -25,7 +25,7 @@ function toFormString(value: FormDataEntryValue | null): string {
   return value.trim();
 }
 
-export async function SignInPage({ request, response }: AppRequestInfo) {
+export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
   const requestUrl = new URL(request.url);
   const redirectTo = resolveRedirectPath(requestUrl.searchParams.get("redirectTo"));
   const invalidUserError = requestUrl.searchParams.get("error") === "invalid";
@@ -41,16 +41,17 @@ export async function SignInPage({ request, response }: AppRequestInfo) {
     if (!normalizedUserId) {
       const signInUrl = new URL("/sign-in", requestUrl);
       signInUrl.searchParams.set("error", "invalid");
-      if (requestedRedirect !== "/") {
+      if (requestedRedirect !== "/app") {
         signInUrl.searchParams.set("redirectTo", requestedRedirect);
       }
       return Response.redirect(signInUrl.toString(), 303);
     }
 
-    setAuthCookie({
+    await setAuthCookie({
       request,
       response,
       userId: normalizedUserId,
+      authCookieSecret: ctx.env.AUTH_COOKIE_SECRET,
     });
 
     const redirectResponse = new Response(null, {

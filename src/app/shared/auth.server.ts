@@ -2,6 +2,7 @@ import type { ConversationModelId } from "@/lib/conversation";
 
 const AUTH_COOKIE_NAME = "connexus_uid";
 const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+const AUTH_COOKIE_VERSION = "v1";
 
 export interface AppAuth {
   userId: string;
@@ -14,12 +15,16 @@ function isGuestUserId(userId: string): boolean {
   return userId.startsWith("guest-");
 }
 
-export function isAuthRequiredEnabled(value: string | undefined): boolean {
+export function isAuthOptionEnabled(value: string | undefined): boolean {
   if (!value) {
     return false;
   }
 
   return AUTH_REQUIRED_TRUTHY_VALUES.has(value.trim().toLowerCase());
+}
+
+export function isAuthRequiredEnabled(value: string | undefined): boolean {
+  return isAuthOptionEnabled(value);
 }
 
 function parseCookies(cookieHeader: string | null): Map<string, string> {
@@ -60,6 +65,125 @@ function sanitizeUserId(value: string): string {
 export function normalizeAuthUserId(value: string): string | null {
   const normalized = sanitizeUserId(value);
   return normalized.length > 0 ? normalized : null;
+}
+
+const signingKeyCache = new Map<string, Promise<CryptoKey>>();
+
+function encodeBytesAsBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function encodeStringAsBase64Url(value: string): string {
+  return encodeBytesAsBase64Url(new TextEncoder().encode(value));
+}
+
+function decodeBase64UrlToString(value: string): string | null {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const paddingLength = (4 - (normalized.length % 4)) % 4;
+    const padded = `${normalized}${"=".repeat(paddingLength)}`;
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function isConstantTimeMatch(left: string, right: string): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
+
+function getCookieSigningKey(secret: string): Promise<CryptoKey> {
+  const cached = signingKeyCache.get(secret);
+  if (cached) {
+    return cached;
+  }
+
+  const keyPromise = crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  signingKeyCache.set(secret, keyPromise);
+  return keyPromise;
+}
+
+async function signCookiePayload(secret: string, payload: string): Promise<string> {
+  const key = await getCookieSigningKey(secret);
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(payload),
+  );
+  return encodeBytesAsBase64Url(new Uint8Array(signature));
+}
+
+async function createCookieUserValue(options: {
+  userId: string;
+  authCookieSecret?: string;
+}): Promise<string> {
+  const secret = options.authCookieSecret?.trim();
+  if (!secret) {
+    return options.userId;
+  }
+
+  // `v1.<base64-user-id>.<hmac>` keeps auth identity tamper-resistant in public beta.
+  const encodedUserId = encodeStringAsBase64Url(options.userId);
+  const payload = `${AUTH_COOKIE_VERSION}.${encodedUserId}`;
+  const signature = await signCookiePayload(secret, payload);
+  return `${payload}.${signature}`;
+}
+
+async function parseCookieUserValue(options: {
+  rawValue: string;
+  authCookieSecret?: string;
+  allowLegacyUnsigned?: boolean;
+}): Promise<string | null> {
+  const secret = options.authCookieSecret?.trim();
+  if (!secret) {
+    const normalized = sanitizeUserId(options.rawValue);
+    return normalized || null;
+  }
+
+  const segments = options.rawValue.split(".");
+  if (segments.length === 3 && segments[0] === AUTH_COOKIE_VERSION) {
+    const [version, encodedUserId, signature] = segments;
+    const payload = `${version}.${encodedUserId}`;
+    const expectedSignature = await signCookiePayload(secret, payload);
+    if (!isConstantTimeMatch(expectedSignature, signature)) {
+      return null;
+    }
+
+    const decodedUserId = decodeBase64UrlToString(encodedUserId);
+    if (!decodedUserId) {
+      return null;
+    }
+
+    const normalized = sanitizeUserId(decodedUserId);
+    return normalized || null;
+  }
+
+  if (options.allowLegacyUnsigned) {
+    const normalized = sanitizeUserId(options.rawValue);
+    return normalized || null;
+  }
+
+  return null;
 }
 
 function parseAuthFromHeaders(request: Request): AppAuth | null {
@@ -107,14 +231,23 @@ function parseAuthFromHeaders(request: Request): AppAuth | null {
   };
 }
 
-function parseAuthFromCookie(request: Request): AppAuth | null {
+async function parseAuthFromCookie(options: {
+  request: Request;
+  authCookieSecret?: string;
+  allowLegacyUnsigned?: boolean;
+}): Promise<AppAuth | null> {
+  const { request, authCookieSecret, allowLegacyUnsigned = false } = options;
   const cookies = parseCookies(request.headers.get("cookie"));
   const rawUserId = cookies.get(AUTH_COOKIE_NAME);
   if (!rawUserId) {
     return null;
   }
 
-  const normalizedUserId = sanitizeUserId(rawUserId);
+  const normalizedUserId = await parseCookieUserValue({
+    rawValue: rawUserId,
+    authCookieSecret,
+    allowLegacyUnsigned,
+  });
   if (!normalizedUserId) {
     return null;
   }
@@ -128,18 +261,18 @@ function parseAuthFromCookie(request: Request): AppAuth | null {
 function writeAuthCookie(options: {
   request: Request;
   response: { headers: Headers };
-  userId: string;
+  cookieValue: string;
   maxAgeSeconds?: number;
 }): void {
   const {
     request,
     response,
-    userId,
+    cookieValue,
     maxAgeSeconds = AUTH_COOKIE_MAX_AGE_SECONDS,
   } = options;
   const secure = new URL(request.url).protocol === "https:";
   const cookie = [
-    `${AUTH_COOKIE_NAME}=${encodeURIComponent(userId)}`,
+    `${AUTH_COOKIE_NAME}=${encodeURIComponent(cookieValue)}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
@@ -156,15 +289,21 @@ export function setAuthCookie(options: {
   request: Request;
   response: { headers: Headers };
   userId: string;
-}): void {
+  authCookieSecret?: string;
+}): Promise<void> {
   const normalized = normalizeAuthUserId(options.userId);
   if (!normalized) {
     throw new Error("Invalid auth user id.");
   }
-  writeAuthCookie({
-    request: options.request,
-    response: options.response,
+  return createCookieUserValue({
     userId: normalized,
+    authCookieSecret: options.authCookieSecret,
+  }).then((cookieValue) => {
+    writeAuthCookie({
+      request: options.request,
+      response: options.response,
+      cookieValue,
+    });
   });
 }
 
@@ -175,30 +314,47 @@ export function clearAuthCookie(options: {
   writeAuthCookie({
     request: options.request,
     response: options.response,
-    userId: "guest-expired",
+    cookieValue: "guest-expired",
     maxAgeSeconds: 0,
   });
 }
 
-export function resolveRequestAuth(options: {
+export async function resolveRequestAuth(options: {
   request: Request;
   response: { headers: Headers };
   authRequired?: boolean;
   persistGuestCookie?: boolean;
-}): AppAuth | null {
+  authCookieSecret?: string;
+  allowIdentityHeaders?: boolean;
+  allowLegacyAuthCookie?: boolean;
+}): Promise<AppAuth | null> {
   const {
     request,
     response,
     authRequired = false,
     persistGuestCookie = true,
+    authCookieSecret,
+    allowIdentityHeaders = false,
+    allowLegacyAuthCookie = false,
   } = options;
+  const hasCookieSecret = Boolean(authCookieSecret?.trim());
 
-  const headerAuth = parseAuthFromHeaders(request);
-  if (headerAuth) {
-    return headerAuth;
+  if (allowIdentityHeaders) {
+    const headerAuth = parseAuthFromHeaders(request);
+    if (headerAuth) {
+      return headerAuth;
+    }
   }
 
-  const cookieAuth = parseAuthFromCookie(request);
+  if (authRequired && !hasCookieSecret) {
+    return null;
+  }
+
+  const cookieAuth = await parseAuthFromCookie({
+    request,
+    authCookieSecret,
+    allowLegacyUnsigned: allowLegacyAuthCookie,
+  });
   if (cookieAuth && (!authRequired || !isGuestUserId(cookieAuth.userId))) {
     return cookieAuth;
   }
@@ -209,10 +365,11 @@ export function resolveRequestAuth(options: {
 
   const fallbackUserId = `guest-${crypto.randomUUID()}`;
   if (persistGuestCookie) {
-    writeAuthCookie({
+    await setAuthCookie({
       request,
       response,
       userId: fallbackUserId,
+      authCookieSecret,
     });
   }
 

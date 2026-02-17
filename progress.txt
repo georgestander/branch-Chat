@@ -126,3 +126,28 @@
 - Decisions: keep `/` as product chat flow; add `/landing` as auth-optional route for top-of-funnel; use env-driven landing link config (`LANDING_*`) with safe defaults; instrument manual observability via `[TRACE] landing_*` console events + server `landing:render` trace.
 - Files: src/worker.tsx, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/{LandingShell.tsx,TopBarClient.tsx,HeroSection.tsx,BranchingDemoIsland.tsx,ValueStrip.tsx,PathCards.tsx,DonateSection.tsx,LandingFooter.tsx,LandingTrackedLink.tsx,types.ts}, types/env.d.ts, Docs/env-vars.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; manual smoke verified `GET /landing` 200 and rendered sections via local dev boot (`npm run dev` + curl).
+2026-02-07 — Skill governance update: `claude-frontend-engineer` now enforces Claude as delegated frontend engineer + Codex as senior reviewer/orchestrator. Ref: process hardening for frontend execution quality.
+- Task: rewrote skill workflow to add explicit role split, mandatory user approval gate, Codex review checklist, and fallback path when Claude CLI unavailable.
+- Decisions: codified non-negotiables around no silent scope creep, no unverifiable test claims, and no final sign-off without independent Codex validation.
+- Files: /Users/georgestander/.codex/skills/claude-frontend-engineer/SKILL.md, progress.txt.
+- Notes: no product runtime changes.
+2026-02-07 — ChatGPT-parity overhaul implementation pass (Codex fallback after Claude CLI write-gate). Ref: front-end parity plan approved in-session (workspace+landing+sign-in).
+- Task: moved app routing to `/(landing)` + `/app(workspace)`, added root deep-link redirect compatibility, system theme toggle, single-pane-first branch UX with parent context sheet+compare entry, progressive composer controls, BYOK modal panel, and neutralized visual system for parity tone.
+- Decisions: kept server action/data contracts stable; `/landing` now canonical redirect alias; sign-in default redirect set to `/app`; retained branch compare mode as explicit opt-in while defaulting to single-pane.
+- Files: src/worker.tsx, src/app/pages/landing/LandingPage.tsx, src/app/pages/sign-in/SignInPage.tsx, src/app/Document.tsx, src/app/styles.css, src/app/components/ui/{theme.ts,ThemeToggle.tsx}, src/app/components/conversation/{ConversationLayout.tsx,ParentContextSheet.tsx,ConversationComposer.tsx,BranchColumn.tsx,BranchableMessage.tsx,ConversationEmptyLayout.tsx}, src/app/pages/conversation/{ConversationPage.tsx,ConversationSidebar.tsx}, src/app/components/landing/TopBarClient.tsx, Docs/env-vars.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; manual smoke via local dev+curl verified `/` landing 200, `/landing` -> `/` (308), and root deeplink redirect to `/app` (307).
+2026-02-17 — P2 auth hardening: signed auth cookies + fail-closed required-auth config + identity-header opt-in gate. Ref: Docs/public-beta-launch-plan.md Phase2 item 1 (auth), item 2 (ownership boundary hardening follow-up).
+- Task: harden public-beta auth path so user identity is tamper-resistant and header spoofing is denied by default.
+- Decisions: auth cookie now signed with `AUTH_COOKIE_SECRET` (`v1.<payload>.<hmac>`); `resolveRequestAuth` rejects unsigned cookies when `AUTH_REQUIRED` is true; identity headers only used when `AUTH_TRUST_IDENTITY_HEADERS` is truthy; worker now returns `503` for protected routes if no trusted identity source is configured; optional migration path via `AUTH_ALLOW_LEGACY_COOKIE`.
+- Files: src/app/shared/auth.server.ts, src/worker.tsx, src/app/pages/sign-in/SignInPage.tsx, src/app/shared/auth.server.test.ts, package.json, tsconfig.json, types/env.d.ts, Docs/env-vars.md, .dev.vars.example, Docs/public-beta-launch-plan.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; review pass found one high issue (auth-required misconfig bypass) and resolved before final validation.
+2026-02-17 — Added ship-progress tracker table to launch plan. Ref: Docs/public-beta-launch-plan.md execution tracking.
+- Task: add at-a-glance progress table so remaining go-live work is obvious.
+- Decisions: inserted table after Success Criteria; grouped by workstream with explicit Remaining Before Public Beta column; added completion snapshot to call out blockers fast.
+- Files: Docs/public-beta-launch-plan.md, progress.txt.
+- Notes: current blockers now explicit in plan: pending QA verification pass + 72h internal soak gate.
+2026-02-17 — Scout auth hardening plan (public beta). Ref: Docs/public-beta-launch-plan.md Phase2 auth gate.
+- Task: catalog auth flow gaps and proto plan for signed-cookie/headers slice.
+- Decisions: enforce signed-cookie baseline while tagging optional trusted-header secret; surface env doc/types updates for rollout clarity.
+- Files: progress.txt.
+- Notes: retention plan only; implementation next sprint.
