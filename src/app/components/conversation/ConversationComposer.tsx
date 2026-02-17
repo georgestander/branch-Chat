@@ -22,6 +22,7 @@ import {
   RotateCcw,
   SendHorizontal,
   Maximize,
+  SlidersHorizontal,
   Upload,
   X,
 } from "lucide-react";
@@ -285,6 +286,7 @@ export function ConversationComposer({
     useState<ComposerAccountStateResponse | null>(null);
   const [isAccountStateLoading, setIsAccountStateLoading] = useState(true);
   const [isByokPanelOpen, setIsByokPanelOpen] = useState(false);
+  const [isAdvancedControlsOpen, setIsAdvancedControlsOpen] = useState(false);
   const [byokProvider, setByokProvider] = useState<ComposerByokProvider>(
     getProviderForModel(conversationModel),
   );
@@ -323,6 +325,12 @@ export function ConversationComposer({
     medium: "Medium",
     high: "High",
   };
+
+  useEffect(() => {
+    if (!isAdvancedControlsOpen) {
+      setIsModelMenuOpen(false);
+    }
+  }, [isAdvancedControlsOpen]);
   const presetLabels: Record<ComposerPreset, string> = {
     fast: "Fast",
     reasoning: "Reasoning",
@@ -1345,7 +1353,21 @@ export function ConversationComposer({
         }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setIsAdvancedControlsOpen((previous) => !previous)}
+          className="interactive-target inline-flex items-center gap-2 rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          aria-expanded={isAdvancedControlsOpen}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{isAdvancedControlsOpen ? "Hide Controls" : "Show Controls"}</span>
+        </button>
+        <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
+          {`Mode ${currentPresetLabel}`}
+        </span>
+      </div>
+      {isAdvancedControlsOpen ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-background/20 bg-foreground/90 px-3 py-2">
           <div
             role="group"
             aria-label="Message lane"
@@ -1379,115 +1401,121 @@ export function ConversationComposer({
               BYOK
             </button>
           </div>
-          <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
-            {`Mode ${currentPresetLabel}`}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (!byokEnabled) {
-              setError(
-                byokUnavailableReason ||
-                  "BYOK is disabled for this environment.",
-              );
-              return;
-            }
-            setIsByokPanelOpen((previous) => !previous);
-          }}
-          disabled={!byokEnabled}
-          className="interactive-target inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          {!byokEnabled
-            ? "BYOK Disabled"
-            : byokConnected
-              ? "Manage BYOK"
-              : "Connect BYOK"}
-        </button>
-      </div>
-      {isByokPanelOpen ? (
-        <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor={byokProviderId}
-                className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-              >
-                Provider
-              </label>
-              <select
-                id={byokProviderId}
-                value={byokProvider}
-                onChange={(event) =>
-                  setByokProvider(event.target.value as ComposerByokProvider)
-                }
-                disabled={isByokSaving || !byokEnabled}
-                className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="openai">OpenAI</option>
-                <option value="openrouter">OpenRouter</option>
-              </select>
-            </div>
-            <div className="flex min-w-[220px] flex-1 flex-col gap-1">
-              <label
-                htmlFor={byokApiKeyId}
-                className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-              >
-                API key
-              </label>
-              <input
-                id={byokApiKeyId}
-                type="password"
-                value={byokApiKey}
-                onChange={(event) => setByokApiKey(event.target.value)}
-                placeholder="sk-..."
-                disabled={isByokSaving || !byokEnabled}
-                autoComplete="off"
-                className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleSaveByokKey()}
-              disabled={isByokSaving || !byokEnabled}
-              className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {!byokEnabled
-                ? "Unavailable"
-                : isByokSaving
-                  ? "Saving..."
-                  : byokConnected
-                    ? "Update key"
-                    : "Connect"}
-            </button>
-            {byokConnected ? (
-              <button
-                type="button"
-                onClick={() => void handleDeleteByokKey()}
-                disabled={isByokSaving}
-                className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Disconnect
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setIsByokPanelOpen(false)}
-              className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              Close
-            </button>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => {
+              if (!byokEnabled) {
+                setError(
+                  byokUnavailableReason ||
+                    "BYOK is disabled for this environment.",
+                );
+                return;
+              }
+              setIsByokPanelOpen(true);
+            }}
+            disabled={!byokEnabled}
+            className="interactive-target inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
             {!byokEnabled
-              ? byokUnavailableReason ||
-                "BYOK is disabled for this environment."
+              ? "BYOK Disabled"
               : byokConnected
-              ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.`
-              : "Connect your API key, then switch lanes to BYOK for unlimited sends via your key."}
-          </p>
+                ? "Manage BYOK"
+                : "Connect BYOK"}
+          </button>
         </div>
       ) : null}
+      {isBrowser && isByokPanelOpen
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="mx-4 w-full max-w-3xl rounded-2xl border border-border/70 bg-card p-6 shadow-2xl">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label
+                      htmlFor={byokProviderId}
+                      className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+                    >
+                      Provider
+                    </label>
+                    <select
+                      id={byokProviderId}
+                      value={byokProvider}
+                      onChange={(event) =>
+                        setByokProvider(event.target.value as ComposerByokProvider)
+                      }
+                      disabled={isByokSaving || !byokEnabled}
+                      className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 flex-col gap-1">
+                    <label
+                      htmlFor={byokApiKeyId}
+                      className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
+                    >
+                      API key
+                    </label>
+                    <input
+                      id={byokApiKeyId}
+                      type="password"
+                      value={byokApiKey}
+                      onChange={(event) => setByokApiKey(event.target.value)}
+                      placeholder="sk-..."
+                      disabled={isByokSaving || !byokEnabled}
+                      autoComplete="off"
+                      className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveByokKey()}
+                    disabled={isByokSaving || !byokEnabled}
+                    className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {!byokEnabled
+                      ? "Unavailable"
+                      : isByokSaving
+                        ? "Saving..."
+                        : byokConnected
+                          ? "Update key"
+                          : "Connect"}
+                  </button>
+                  {byokConnected ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteByokKey()}
+                      disabled={isByokSaving}
+                      className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Disconnect
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setIsByokPanelOpen(false)}
+                    className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    Close
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {!byokEnabled
+                    ? byokUnavailableReason ||
+                      "BYOK is disabled for this environment."
+                    : byokConnected
+                    ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.`
+                    : "Connect your API key, then switch lanes to BYOK for unlimited sends via your key."}
+                </p>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
       {(hasSelectedTools || attachments.length > 0) ? (
         <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
           {hasSelectedTools ? (
@@ -1753,49 +1781,50 @@ export function ConversationComposer({
           </button>
         </div>
 
-        <div className="relative flex items-center gap-2">
-          <button
-            type="button"
-            ref={modelButtonRef}
-            onClick={() => setIsModelMenuOpen((value) => !value)}
-            className={cn(
-              "interactive-target inline-flex h-9 items-center gap-1 border border-background/35 bg-foreground px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
-              isModelMenuOpen ? "bg-foreground/80 text-background" : null,
-            )}
-            aria-haspopup="menu"
-            aria-expanded={isModelMenuOpen}
-            aria-controls={isModelMenuOpen ? modelMenuId : undefined}
-            disabled={conversationSettingsSaving}
-          >
-            <span className="text-xs font-semibold text-background">
-              {currentModelLabel}
-            </span>
-            <ChevronDown
+        {isAdvancedControlsOpen ? (
+          <div className="relative flex items-center gap-2">
+            <button
+              type="button"
+              ref={modelButtonRef}
+              onClick={() => setIsModelMenuOpen((value) => !value)}
               className={cn(
-                "h-3 w-3 text-background transition-transform",
-                isModelMenuOpen ? "rotate-180 text-primary" : "rotate-0",
+                "interactive-target inline-flex h-9 items-center gap-1 border border-background/35 bg-foreground px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+                isModelMenuOpen ? "bg-foreground/80 text-background" : null,
               )}
-              aria-hidden="true"
-            />
-          </button>
-          <div className="flex flex-col items-end justify-center">
-            {conversationSettingsSaving ? (
-              <span className="text-[10px] uppercase tracking-[0.24em] text-background/60">
-                Saving…
-              </span>
-            ) : conversationSettingsError ? (
-              <span className="text-[10px] text-destructive">
-                {conversationSettingsError}
-              </span>
-            ) : null}
-          </div>
-          {isModelMenuOpen ? (
-            <div
-              ref={modelMenuRef}
-              id={modelMenuId}
-              role="menu"
-              className="absolute bottom-full right-0 z-30 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-[2px]"
+              aria-haspopup="menu"
+              aria-expanded={isModelMenuOpen}
+              aria-controls={isModelMenuOpen ? modelMenuId : undefined}
+              disabled={conversationSettingsSaving}
             >
+              <span className="text-xs font-semibold text-background">
+                {currentModelLabel}
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 text-background transition-transform",
+                  isModelMenuOpen ? "rotate-180 text-primary" : "rotate-0",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+            <div className="flex flex-col items-end justify-center">
+              {conversationSettingsSaving ? (
+                <span className="text-[10px] uppercase tracking-[0.24em] text-background/60">
+                  Saving…
+                </span>
+              ) : conversationSettingsError ? (
+                <span className="text-[10px] text-destructive">
+                  {conversationSettingsError}
+                </span>
+              ) : null}
+            </div>
+            {isModelMenuOpen ? (
+              <div
+                ref={modelMenuRef}
+                id={modelMenuId}
+                role="menu"
+                className="absolute bottom-full right-0 z-30 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-[2px]"
+              >
               <button
                 type="button"
                 role="menuitemradio"
@@ -1884,9 +1913,10 @@ export function ConversationComposer({
                   })}
                 </>
               ) : null}
-            </div>
-          ) : null}
-        </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <button
           type="submit"

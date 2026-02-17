@@ -113,8 +113,8 @@ export async function ConversationPage({
   );
 
   const tree = buildBranchTree(snapshot);
-  const shouldAutoCollapseParent =
-    requestUrl.searchParams.get("focus") === "child";
+  const compareModeRequested = requestUrl.searchParams.get("compare") === "1";
+  const shouldAutoCollapseParent = !compareModeRequested;
   const openRouterModels = await listOpenRouterModels(ctx);
 
   return (

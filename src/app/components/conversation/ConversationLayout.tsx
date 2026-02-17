@@ -29,6 +29,8 @@ import { supportsReasoningEffortModel } from "@/lib/openai/models";
 
 import { BranchColumn } from "./BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
+import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
+import { ParentContextSheet } from "@/app/components/conversation/ParentContextSheet";
 import {
   createConversation,
   updateConversationSettings,
@@ -189,7 +191,7 @@ export function ConversationLayout({
   parentMessages,
   conversationId,
   initialSidebarCollapsed = false,
-  initialParentCollapsed = false,
+  initialParentCollapsed = true,
   activeBranchId,
   conversations,
   openRouterModels,
@@ -236,6 +238,7 @@ export function ConversationLayout({
   const containerWidthRef = useRef(0);
   const hasLoggedFirstDragRef = useRef(false);
   const showParentColumn = Boolean(parentBranch) && !isParentCollapsed;
+  const parentOriginMessageId = activeBranch.createdFrom?.messageId ?? null;
   const getActiveMinWidth = useCallback((width: number) => {
     if (width <= 0) {
       return ACTIVE_MIN_WIDTH_PX;
@@ -258,6 +261,8 @@ export function ConversationLayout({
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreatingConversation, startCreateConversation] = useTransition();
   const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
+  const [isParentContextSheetOpen, setIsParentContextSheetOpen] =
+    useState(false);
 
   useEffect(() => {
     setIsSidebarCollapsed(initialSidebarCollapsed);
@@ -296,7 +301,10 @@ export function ConversationLayout({
 
   useEffect(() => {
     if (parentBranch && isParentCollapsed) {
-      setIsParentCollapsed(false);
+      return;
+    }
+    if (!parentBranch) {
+      setIsParentContextSheetOpen(false);
     }
   }, [isParentCollapsed, parentBranch]);
 
@@ -393,7 +401,7 @@ export function ConversationLayout({
       try {
         const result = await createConversation();
         navigate(
-          `/?conversationId=${encodeURIComponent(result.conversationId)}`,
+          `/app?conversationId=${encodeURIComponent(result.conversationId)}`,
         );
       } catch (error) {
         console.error(
@@ -716,14 +724,27 @@ export function ConversationLayout({
                     className={cn(toggleButtonClass, "h-9 w-9")}
                     aria-pressed={false}
                     aria-expanded={false}
-                    title="Show parent thread"
+                    title="Open compare mode"
                   >
                     <GitBranch className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">
-                      Show parent branch column
+                      Open parent comparison mode
                     </span>
                   </button>
                 ) : null;
+              const parentContextControl = parentBranch ? (
+                <button
+                  type="button"
+                  onClick={() => setIsParentContextSheetOpen(true)}
+                  className={cn(toggleButtonClass, "h-9 w-9")}
+                  aria-pressed={isParentContextSheetOpen}
+                  aria-expanded={isParentContextSheetOpen}
+                  title="Open parent context panel"
+                >
+                  <GitBranch className="h-4 w-4" aria-hidden="true" />
+                  <span className="sr-only">Open parent context panel</span>
+                </button>
+              ) : null;
 
               const newChatControl = isSidebarCollapsed ? (
                 <button
@@ -747,17 +768,14 @@ export function ConversationLayout({
                   <span className="sr-only">Start a new chat</span>
                 </button>
               ) : null;
-
-              if (
-                !sidebarToggleControl &&
-                !parentToggleControl &&
-                !newChatControl
-              ) {
-                return null;
-              }
+              const themeToggleControl = (
+                <ThemeToggle compact className="h-9 w-9" />
+              );
 
               return (
                 <>
+                  {themeToggleControl}
+                  {parentContextControl}
                   {sidebarToggleControl}
                   {parentToggleControl}
                   {newChatControl}
@@ -767,6 +785,20 @@ export function ConversationLayout({
           />
         </div>
       </div>
+      {parentBranch ? (
+        <ParentContextSheet
+          open={isParentContextSheetOpen}
+          parentBranch={parentBranch}
+          parentMessages={parentMessages}
+          originMessageId={parentOriginMessageId}
+          onClose={() => setIsParentContextSheetOpen(false)}
+          onOpenCompare={() => {
+            setIsParentCollapsed(false);
+            setParentWidthRatio(lastParentWidthRatioRef.current ?? 0.35);
+            setIsParentContextSheetOpen(false);
+          }}
+        />
+      ) : null}
     </div>
     </ToastProvider>
   );
