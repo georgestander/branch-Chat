@@ -153,6 +153,26 @@
 - Notes: retention plan only; implementation next sprint.
 2026-02-17 — QA go/no-go pass executed; launch blocked on runtime route availability. Ref: Docs/public-beta-launch-plan.md QA row.
 - Task: run high-risk launch checks and classify ship readiness.
-- Decisions: recorded hard evidence in Docs/testing-report.md; moved QA tracker to `In progress (blocked)`; no-go until `/app`, `/sign-in`, `/landing`, `/events` stop returning `404` in local runtime and funnel checks are re-run.
+- Decisions: recorded hard evidence in Docs/testing-report.md; moved QA tracker to `In progress (blocked)` pending route/funnel investigation. This checkpoint was superseded by later same-day rerun.
 - Files: Docs/testing-report.md, Docs/public-beta-launch-plan.md, progress.txt.
-- Notes: validation gates pass (`pnpm types`, `npm run test`, `npm run lint`); sign-in POST currently `404`, so auth funnel verification incomplete.
+- Notes: interim state only; later 2026-02-17 rerun confirmed sign-in POST `303` + auth cookie and restored QA green.
+2026-02-17 — Route normalization hypothesis test (no code change retained). Ref: Docs/public-beta-launch-plan.md QA routing checks.
+- Task: A/B check `/app`, `/sign-in`, `/landing`, `/events` route behavior with and without trailing slash literals in `src/worker.tsx`.
+- Decisions: reverted trailing-slash literals after proving behavior is identical; blocker was stale QA evidence, not route-table mismatch.
+- Files: src/worker.tsx, progress.txt.
+- Notes: route matrix still passed (`/` 200, `/app` 200, `/sign-in` 200, `/landing` 308, `/events?streamId=qa` 200, deep-link redirect 307) after reverting.
+2026-02-17 — QA-doc sync now marks blockers resolved. PRD: Docs/public-beta-launch-plan QA gating.
+- Task: update launch plan tracker row + testing report 2026-02-17 bullets with today’s verified route/auth evidence so docs reflect the actual auth funnel status.
+- Decisions: declare QA go/no-go net green and call out rollout soak as next gate; rely on curl+auth behavior proof to retire earlier 404/401 blockers.
+- Files: Docs/public-beta-launch-plan.md, Docs/testing-report.md.
+- Notes: blocker = rollout soak gate; next verification = high-risk manual checks once soak passes.
+2026-02-17 — Balls closeout: auth-required funnel re-verified and log cleanup. Ref: Docs/public-beta-launch-plan.md QA + Rollout gates.
+- Task: rerun auth-required route funnel with temporary env overrides, confirm deep-link/stream endpoints, and clean progress artifacts before commit.
+- Decisions: verified unauth `/app` stays `401`, spoof headers denied, `/sign-in` POST returns `303` + auth cookie, authed `/app` returns `200`; restored `.dev.vars` and kept `src/worker.tsx` at canonical routes.
+- Files: progress.txt.
+- Notes: remaining ship gate is still rollout soak/high-risk manual checks; validation + review executed before commit.
+2026-02-17 — Review finding cleanup for launch tracker consistency. Ref: Docs/public-beta-launch-plan.md Progress Tracker.
+- Task: resolve /review findings on stale P3 “remaining” wording and conflicting blocked QA history text.
+- Decisions: marked CTA/sign-in funnel rerun as already covered in QA pass; kept blocked checkpoint as history but labeled it superseded by same-day green rerun.
+- Files: Docs/public-beta-launch-plan.md, progress.txt.
+- Notes: docs/progress consistency fix only; no runtime code changes.

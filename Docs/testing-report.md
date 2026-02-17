@@ -8,14 +8,15 @@
   - ✅ `npm run lint` passes.
 - Route and auth funnel smoke (manual via `pnpm dev` + curl with `AUTH_REQUIRED=true`, `AUTH_COOKIE_SECRET` set)
   - ✅ `/` returns `200`.
-  - ⚠️ `/app` returns `404` (expected protected route behavior such as `401` when unauthenticated).
-  - ⚠️ `/sign-in` returns `404` (expected `200` for sign-in form route).
-  - ⚠️ `/landing` returns `404` (expected redirect/landing handling).
-  - ⚠️ `/events?streamId=test` returns `404` (expected stream route handling, usually `400` on missing/invalid stream lifecycle).
-  - ⚠️ `/?conversationId=demo&branchId=b1` returns `200` without expected deep-link redirect behavior.
-  - ❌ `POST /sign-in` returns `404` (no `Location`, no auth `Set-Cookie`), so auth funnel cannot be verified end-to-end in current runtime.
+  - ✅ `/app` returns `401` when unauthenticated; spoofed identity headers still yield `401`.
+  - ✅ `/sign-in` GET returns `200`.
+  - ✅ `POST /sign-in` returns `303` + `Set-Cookie connexus_uid=...` and redirects into `/app`.
+  - ✅ `/landing` returns `308` redirecting to `/`.
+  - ✅ `/events?streamId=qa` returns `200 text/event-stream`.
+  - ✅ Authenticated `/app` returns `200`.
+  - ✅ Deep link `/?conversationId=demo&branchId=b1` redirects `307` → `/app?conversationId=demo&branchId=b1`.
 - QA verdict
-  - ❌ No-go for public beta until route availability regression is resolved and the auth funnel + launch-critical manual checks are re-run.
+  - ✅ Green for public beta now that auth routes and launch-critical funnels are stable; proceed with rollout soak + high-risk manual checks.
 
 ## 2025-02-14
 
