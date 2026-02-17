@@ -314,7 +314,7 @@ export function BranchColumn({
         conversationId,
         branchId: targetBranchId,
       });
-      navigate(`/?${params.toString()}`);
+      navigate(`/app?${params.toString()}`);
     };
 
     container.addEventListener("click", handleHighlightClick);

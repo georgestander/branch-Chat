@@ -95,7 +95,7 @@ export function BranchableMessage({
             conversationId,
             branchId: response.branch.id,
           });
-          navigate(`/?${params.toString()}`);
+          navigate(`/app?${params.toString()}`);
         } catch (cause) {
           console.error("createBranchFromSelection failed", cause);
           setError("Could not create branch. Please try again.");

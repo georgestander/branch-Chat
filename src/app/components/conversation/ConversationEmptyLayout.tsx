@@ -262,7 +262,7 @@ export function ConversationEmptyLayout({
             console.warn("[EmptyLayout] unable to persist draft message", storageError);
           }
         }
-        navigate(`/?conversationId=${encodeURIComponent(result.conversationId)}`);
+        navigate(`/app?conversationId=${encodeURIComponent(result.conversationId)}`);
       } catch (error) {
         console.error("[EmptyLayout] createConversation failed", error);
         const errorMessage =
@@ -406,7 +406,7 @@ export function ConversationEmptyLayout({
               {conversations.slice(0, 6).map((entry) => (
                 <li key={entry.id}>
                   <a
-                    href={`/?conversationId=${encodeURIComponent(entry.id)}`}
+                    href={`/app?conversationId=${encodeURIComponent(entry.id)}`}
                     className="block truncate rounded-md px-2 py-1 transition hover:bg-background hover:text-foreground"
                   >
                     {entry.title || entry.id}

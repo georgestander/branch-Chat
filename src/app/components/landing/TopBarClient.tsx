@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { LandingTrackedLink } from "@/app/components/landing/LandingTrackedLink";
 import type { LandingLinks } from "@/app/components/landing/types";
+import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 interface TopBarClientProps {
@@ -42,7 +43,7 @@ export function TopBarClient({ links }: TopBarClientProps) {
     >
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:px-6">
         <a
-          href="/landing"
+          href="/"
           className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-foreground"
         >
           <span className="inline-flex h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
@@ -50,6 +51,7 @@ export function TopBarClient({ links }: TopBarClientProps) {
         </a>
 
         <nav className="flex items-center gap-2" aria-label="Primary">
+          <ThemeToggle compact />
           <LandingTrackedLink
             href={links.hostedHref}
             eventName="landing_cta_click"

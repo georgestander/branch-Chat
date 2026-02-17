@@ -44,7 +44,7 @@ function resolveLandingLinks(requestInfo: AppRequestInfo): LandingLinks {
   );
 
   return {
-    hostedHref: normalizeExternalHref(env.LANDING_HOSTED_URL, "/sign-in?redirectTo=/"),
+    hostedHref: normalizeExternalHref(env.LANDING_HOSTED_URL, "/sign-in?redirectTo=/app"),
     repoHref: repoUrl,
     donatePrimaryHref: normalizeExternalHref(
       env.LANDING_DONATE_URL,
@@ -66,8 +66,23 @@ function resolveLandingLinks(requestInfo: AppRequestInfo): LandingLinks {
 }
 
 export async function LandingPage(requestInfo: AppRequestInfo) {
+  const requestUrl = new URL(requestInfo.request.url);
+  const hasAppDeepLink =
+    requestUrl.searchParams.has("conversationId") ||
+    requestUrl.searchParams.has("branchId");
+
+  if (hasAppDeepLink) {
+    const appUrl = new URL("/app", requestUrl);
+    appUrl.search = requestUrl.search;
+    requestInfo.ctx.trace("landing:redirect:app-deeplink", {
+      fromPath: requestUrl.pathname,
+      toPath: appUrl.pathname,
+    });
+    return Response.redirect(appUrl.toString(), 307);
+  }
+
   requestInfo.ctx.trace("landing:render", {
-    path: new URL(requestInfo.request.url).pathname,
+    path: requestUrl.pathname,
   });
 
   const links = resolveLandingLinks(requestInfo);

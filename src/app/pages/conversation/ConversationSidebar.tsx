@@ -562,7 +562,7 @@ export function ConversationSidebar({
       try {
         const result = await createConversation();
         navigate(
-          `/?conversationId=${encodeURIComponent(result.conversationId)}`,
+          `/app?conversationId=${encodeURIComponent(result.conversationId)}`,
         );
       } catch (error) {
         console.error("[Sidebar] createConversation failed", error);
@@ -1301,7 +1301,7 @@ function buildBranchHref(
   if (branchId) {
     params.set("branchId", branchId);
   }
-  return `/?${params.toString()}`;
+  return `/app?${params.toString()}`;
 }
 
 function countBranches(node: BranchTreeNode): number {
