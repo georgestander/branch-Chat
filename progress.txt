@@ -181,3 +181,8 @@
 - Decisions: replaced repeated `GitBranch` affordances with distinct icons for compare/context/hide actions; moved sidebar-show + new-chat controls to a fixed left rail when sidebar is collapsed.
 - Files: src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed (`pnpm types`, `npm run test`, `npm run lint`); recommend quick manual UI smoke on branch-open + sidebar-collapse path.
+2026-02-17 — Pending assistant bubble no longer sticks after send completion. Ref: Docs/public-beta-launch-plan.md P1 interaction reliability.
+- Task: fix active branch timeline showing “Connexus is preparing a response…” indefinitely after sends.
+- Decisions: loader now keys on active stream/pending optimistic sends instead of `lastMessage.role === "user"`; stabilized message sort ties to keep user->assistant order when timestamps match.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed (`pnpm types`, `npm run test`, `npm run lint`); manual chat send smoke recommended to verify bubble lifecycle.

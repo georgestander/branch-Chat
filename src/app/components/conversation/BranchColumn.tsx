@@ -89,6 +89,23 @@ interface BranchColumnProps {
   onComposerBootstrapConsumed?: () => void;
 }
 
+function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt.localeCompare(right.createdAt);
+  }
+
+  if (left.role !== right.role) {
+    const roleOrder: Record<RenderedMessage["role"], number> = {
+      system: 0,
+      user: 1,
+      assistant: 2,
+    };
+    return roleOrder[left.role] - roleOrder[right.role];
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function AssistantPendingBubble() {
   return (
     <div
@@ -282,12 +299,7 @@ export function BranchColumn({
         for (const message of detail.messages) {
           merged.set(message.id, createPersistedRenderedMessage(message));
         }
-        return [...merged.values()].sort((left, right) => {
-          if (left.createdAt === right.createdAt) {
-            return left.id.localeCompare(right.id);
-          }
-          return left.createdAt.localeCompare(right.createdAt);
-        });
+        return [...merged.values()].sort(compareRenderedMessages);
       });
       if (detail.messages.some((message) => message.role === "assistant")) {
         setActiveStreamId(null);
@@ -394,12 +406,7 @@ export function BranchColumn({
         merged.set(entry.message.id, entry.message);
       }
     }
-    return [...merged.values()].sort((left, right) => {
-      if (left.createdAt === right.createdAt) {
-        return left.id.localeCompare(right.id);
-      }
-      return left.createdAt.localeCompare(right.createdAt);
-    });
+    return [...merged.values()].sort(compareRenderedMessages);
   }, [messages, optimisticMessages, persistedMessages]);
 
   const visibleMessages = useMemo(
@@ -416,7 +423,11 @@ export function BranchColumn({
     !!lastMessage &&
     lastMessage.role === "assistant" &&
     !lastMessage.tokenUsage;
-  const awaitingAssistant = isActive && lastMessage?.role === "user";
+  const hasPendingOptimisticSend = optimisticMessages.some(
+    (entry) => entry.status === "pending",
+  );
+  const awaitingAssistant =
+    isActive && (Boolean(activeStreamId) || hasPendingOptimisticSend);
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
