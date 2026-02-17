@@ -44,7 +44,7 @@ Primary objective: stability and UX quality first, then auth/quota/BYOK, then de
 | P2 | Auth, ownership, quota, BYOK | In progress (hardening) | `P2-T1`, `P2-T1b`, `P2-T2` complete; quota + BYOK lane shipped | Finalize auth-provider direction and close auth abuse checks |
 | P3 | Landing, start mode, UX parity | Complete | `P3-T2`, `P3-T3`, `P3-T4` complete; landing/app route split is live | Re-run CTA and sign-in funnel smoke checks |
 | P4 | Study mode + OSS hardening | Complete | `P4-T1/T2` and `P4-T3/T4` complete | Re-run study multi-turn/manual acceptance checks |
-| QA | Go/no-go verification pass | Not started | Test matrix exists in `Docs/testing-report.md` | Execute pending high-risk checks and mark pass/fail |
+| QA | Go/no-go verification pass | In progress (blocked) | 2026-02-17 pass logged in `Docs/testing-report.md`; validation gates pass, runtime smoke fails on route availability | Fix route availability (`/app`, `/sign-in`, `/landing`, `/events` returning `404` in local runtime), then re-run funnel and high-risk manual checks |
 | Rollout | Internal soak + observability gate | Not started | Rollout criteria listed below | Run 72h internal soak with error budgets before public toggle |
 
 **Completion snapshot:** `9/9` tracked execution items in this plan are marked complete. Current ship blockers are verification and rollout gates.

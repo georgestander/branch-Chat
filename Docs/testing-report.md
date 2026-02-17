@@ -1,5 +1,22 @@
 # Testing Report
 
+## 2026-02-17
+
+- QA go/no-go pass (local runtime)
+  - ✅ `pnpm types` passes.
+  - ✅ `npm run test` passes (`7/7`), including auth hardening scenarios (signed cookies, tamper rejection, header opt-in/out, legacy cookie gating).
+  - ✅ `npm run lint` passes.
+- Route and auth funnel smoke (manual via `pnpm dev` + curl with `AUTH_REQUIRED=true`, `AUTH_COOKIE_SECRET` set)
+  - ✅ `/` returns `200`.
+  - ⚠️ `/app` returns `404` (expected protected route behavior such as `401` when unauthenticated).
+  - ⚠️ `/sign-in` returns `404` (expected `200` for sign-in form route).
+  - ⚠️ `/landing` returns `404` (expected redirect/landing handling).
+  - ⚠️ `/events?streamId=test` returns `404` (expected stream route handling, usually `400` on missing/invalid stream lifecycle).
+  - ⚠️ `/?conversationId=demo&branchId=b1` returns `200` without expected deep-link redirect behavior.
+  - ❌ `POST /sign-in` returns `404` (no `Location`, no auth `Set-Cookie`), so auth funnel cannot be verified end-to-end in current runtime.
+- QA verdict
+  - ❌ No-go for public beta until route availability regression is resolved and the auth funnel + launch-critical manual checks are re-run.
+
 ## 2025-02-14
 
 - `pnpm types`

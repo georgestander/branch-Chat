@@ -151,3 +151,8 @@
 - Decisions: enforce signed-cookie baseline while tagging optional trusted-header secret; surface env doc/types updates for rollout clarity.
 - Files: progress.txt.
 - Notes: retention plan only; implementation next sprint.
+2026-02-17 — QA go/no-go pass executed; launch blocked on runtime route availability. Ref: Docs/public-beta-launch-plan.md QA row.
+- Task: run high-risk launch checks and classify ship readiness.
+- Decisions: recorded hard evidence in Docs/testing-report.md; moved QA tracker to `In progress (blocked)`; no-go until `/app`, `/sign-in`, `/landing`, `/events` stop returning `404` in local runtime and funnel checks are re-run.
+- Files: Docs/testing-report.md, Docs/public-beta-launch-plan.md, progress.txt.
+- Notes: validation gates pass (`pnpm types`, `npm run test`, `npm run lint`); sign-in POST currently `404`, so auth funnel verification incomplete.
