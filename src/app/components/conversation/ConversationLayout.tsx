@@ -22,7 +22,13 @@ import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import { cn } from "@/lib/utils";
-import { GitBranch, PanelLeftOpen, SquarePen } from "lucide-react";
+import {
+  Columns2,
+  FileSearch,
+  PanelLeftOpen,
+  PanelRightClose,
+  SquarePen,
+} from "lucide-react";
 import { navigate } from "rwsdk/client";
 import type { OpenRouterModelOption } from "@/lib/openrouter/models";
 import { supportsReasoningEffortModel } from "@/lib/openai/models";
@@ -566,6 +572,40 @@ export function ConversationLayout({
           {creationError}
         </p>
       ) : null}
+      {isSidebarCollapsed ? (
+        <div className="pointer-events-none absolute left-3 top-3 z-30 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed(false)}
+            className={cn(toggleButtonClass, "pointer-events-auto h-9 w-9")}
+            aria-pressed={false}
+            aria-expanded={false}
+            title="Show conversation sidebar"
+          >
+            <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Show conversation sidebar</span>
+          </button>
+          <button
+            type="button"
+            onClick={startNewConversation}
+            disabled={isCreatingConversation}
+            className={cn(
+              toggleButtonClass,
+              "pointer-events-auto h-9 w-9",
+              isCreatingConversation ? "cursor-not-allowed opacity-70" : "",
+            )}
+            aria-label={
+              isCreatingConversation
+                ? "Creating new chat"
+                : "Start a new chat"
+            }
+            title="Start a new chat"
+          >
+            <SquarePen className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Start a new chat</span>
+          </button>
+        </div>
+      ) : null}
       <div
         className={cn(
           "relative flex h-full flex-shrink-0 overflow-hidden transition-[width] duration-300",
@@ -630,7 +670,7 @@ export function ConversationLayout({
                   aria-expanded={true}
                   title="Hide parent thread"
                 >
-                  <GitBranch className="h-4 w-4" aria-hidden="true" />
+                  <PanelRightClose className="h-4 w-4" aria-hidden="true" />
                   <span className="sr-only">Hide parent branch column</span>
                 </button>
               }
@@ -693,23 +733,6 @@ export function ConversationLayout({
             }
             withLeftBorder={showParentColumn}
             leadingActions={(() => {
-              const sidebarToggleControl = isSidebarCollapsed ? (
-                <button
-                  type="button"
-                  onClick={() => setIsSidebarCollapsed(false)}
-                  className={cn(
-                    toggleButtonClass,
-                    "h-9 w-9",
-                  )}
-                  aria-pressed={false}
-                  aria-expanded={false}
-                  title="Show conversation sidebar"
-                >
-                  <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only">Show conversation sidebar</span>
-                </button>
-              ) : null;
-
               const parentToggleControl =
                 parentBranch && isParentCollapsed ? (
                   <button
@@ -726,7 +749,7 @@ export function ConversationLayout({
                     aria-expanded={false}
                     title="Open compare mode"
                   >
-                    <GitBranch className="h-4 w-4" aria-hidden="true" />
+                    <Columns2 className="h-4 w-4" aria-hidden="true" />
                     <span className="sr-only">
                       Open parent comparison mode
                     </span>
@@ -739,33 +762,10 @@ export function ConversationLayout({
                   className={cn(toggleButtonClass, "h-9 w-9")}
                   aria-pressed={isParentContextSheetOpen}
                   aria-expanded={isParentContextSheetOpen}
-                  title="Open parent context panel"
+                  title="View parent context"
                 >
-                  <GitBranch className="h-4 w-4" aria-hidden="true" />
+                  <FileSearch className="h-4 w-4" aria-hidden="true" />
                   <span className="sr-only">Open parent context panel</span>
-                </button>
-              ) : null;
-
-              const newChatControl = isSidebarCollapsed ? (
-                <button
-                  type="button"
-                  onClick={startNewConversation}
-                  disabled={isCreatingConversation}
-                  className={cn(
-                    toggleButtonClass,
-                    "h-9 w-9",
-                    isCreatingConversation
-                      ? "cursor-not-allowed opacity-70"
-                      : "",
-                  )}
-                  aria-label={
-                    isCreatingConversation
-                      ? "Creating new chat"
-                      : "Start a new chat"
-                  }
-                >
-                  <SquarePen className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only">Start a new chat</span>
                 </button>
               ) : null;
               const themeToggleControl = (
@@ -776,9 +776,7 @@ export function ConversationLayout({
                 <>
                   {themeToggleControl}
                   {parentContextControl}
-                  {sidebarToggleControl}
                   {parentToggleControl}
-                  {newChatControl}
                 </>
               );
             })()}

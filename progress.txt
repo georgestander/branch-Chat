@@ -176,3 +176,8 @@
 - Decisions: marked CTA/sign-in funnel rerun as already covered in QA pass; kept blocked checkpoint as history but labeled it superseded by same-day green rerun.
 - Files: Docs/public-beta-launch-plan.md, progress.txt.
 - Notes: docs/progress consistency fix only; no runtime code changes.
+2026-02-17 — Branch header clarity + collapsed-sidebar anchor fix. Ref: Docs/public-beta-launch-plan.md P1 UX quality, P3 parity polish.
+- Task: remove ambiguous top-bar branch icons and stop collapsed-sidebar controls from jumping into the second column when compare mode is open.
+- Decisions: replaced repeated `GitBranch` affordances with distinct icons for compare/context/hide actions; moved sidebar-show + new-chat controls to a fixed left rail when sidebar is collapsed.
+- Files: src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed (`pnpm types`, `npm run test`, `npm run lint`); recommend quick manual UI smoke on branch-open + sidebar-collapse path.

@@ -9,7 +9,15 @@ import {
   type ReactNode,
 } from "react";
 
-import { ChevronDown, File as FileIcon, FileText, Image as ImageIcon, type LucideIcon } from "lucide-react";
+import {
+  CornerUpLeft,
+  File as FileIcon,
+  FileText,
+  Image as ImageIcon,
+  PencilLine,
+  TextQuote,
+  type LucideIcon,
+} from "lucide-react";
 
 import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type {
@@ -513,6 +521,7 @@ export function BranchColumn({
   }, [isActive, isStreamingAssistant, lastMessage?.id, scrollSignature]);
 
   const stateLabel = isActive ? "Active" : "Parent";
+  const StateIcon = isActive ? PencilLine : CornerUpLeft;
   const referenceText = branch.createdFrom?.excerpt ?? null;
 
   const truncatedReference = useMemo(() => {
@@ -545,16 +554,17 @@ export function BranchColumn({
             {branch.title || "Untitled Branch"}
           </h2>
           <span className="hidden h-4 w-px bg-foreground/15 sm:inline" aria-hidden="true" />
-          <span className="text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
-            {stateLabel} Branch
+          <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
+            <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{stateLabel} Branch</span>
           </span>
           {referenceText ? (
             <span
               className="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
-              title={`Reference: “${referenceText}”`}
+              title={`From parent: “${referenceText}”`}
             >
-              <ChevronDown aria-hidden className="h-3 w-3 opacity-60" />
-              <span className="font-semibold text-foreground">Reference:</span>
+              <TextQuote aria-hidden className="h-3.5 w-3.5 opacity-70" />
+              <span className="font-semibold text-foreground">From parent:</span>
               <span className="truncate text-foreground/85">
                 “{truncatedReference}”
               </span>
