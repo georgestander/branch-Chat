@@ -186,3 +186,8 @@
 - Decisions: loader now keys on active stream/pending optimistic sends instead of `lastMessage.role === "user"`; stabilized message sort ties to keep user->assistant order when timestamps match.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed (`pnpm types`, `npm run test`, `npm run lint`); manual chat send smoke recommended to verify bubble lifecycle.
+2026-02-17 — Landing page now includes real product screenshot section. Ref: Docs/public-beta-launch-plan.md P3 UX parity + landing conversion path.
+- Task: add an on-page screenshot to home so visitors immediately see real branch split-view context.
+- Decisions: captured a live in-app split-view screenshot and shipped a dedicated section (`Product in action`) between hero and demo; kept copy focused on parent/active branch value.
+- Files: public/landing-branching-screenshot.png, src/app/components/landing/ProductScreenshotSection.tsx, src/app/components/landing/LandingShell.tsx, progress.txt.
+- Notes: validation passed (`pnpm types`, `npm run test`, `npm run lint`); screenshot is static asset and can be replaced later without code changes.

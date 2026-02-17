@@ -3,6 +3,7 @@ import { DonateSection } from "@/app/components/landing/DonateSection";
 import { HeroSection } from "@/app/components/landing/HeroSection";
 import { LandingFooter } from "@/app/components/landing/LandingFooter";
 import { PathCards } from "@/app/components/landing/PathCards";
+import { ProductScreenshotSection } from "@/app/components/landing/ProductScreenshotSection";
 import { TopBarClient } from "@/app/components/landing/TopBarClient";
 import type { LandingLinks } from "@/app/components/landing/types";
 import { ValueStrip } from "@/app/components/landing/ValueStrip";
@@ -17,6 +18,7 @@ export function LandingShell({ links }: LandingShellProps) {
       <TopBarClient links={links} />
       <main>
         <HeroSection links={links} />
+        <ProductScreenshotSection />
         <BranchingDemoIsland />
         <ValueStrip />
         <PathCards links={links} />
