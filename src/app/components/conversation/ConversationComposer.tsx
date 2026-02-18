@@ -87,6 +87,11 @@ type ComposerAttachment = {
   file: File | null;
 };
 
+type SessionByokCredential = {
+  provider: ComposerByokProvider;
+  apiKey: string;
+};
+
 const TOOL_OPTIONS: ToolOption[] = [
   {
     id: "study-and-learn",
@@ -140,6 +145,22 @@ const START_MODE_DEFAULTS: Record<
 type ComposerAccountStateResponse = Awaited<
   ReturnType<typeof getComposerAccountState>
 >;
+
+let inMemorySessionByokCredential: SessionByokCredential | null = null;
+
+function readInMemorySessionByokCredential(): SessionByokCredential | null {
+  return inMemorySessionByokCredential;
+}
+
+function writeInMemorySessionByokCredential(
+  credential: SessionByokCredential,
+): void {
+  inMemorySessionByokCredential = credential;
+}
+
+function clearInMemorySessionByokCredential(): void {
+  inMemorySessionByokCredential = null;
+}
 
 function getProviderForModel(model: string): ComposerByokProvider {
   return isOpenRouterModel(model) ? "openrouter" : "openai";
@@ -314,10 +335,10 @@ export function ConversationComposer({
   );
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
-  const [sessionByokCredential, setSessionByokCredential] = useState<{
-    provider: ComposerByokProvider;
-    apiKey: string;
-  } | null>(null);
+  const [sessionByokCredential, setSessionByokCredential] =
+    useState<SessionByokCredential | null>(() =>
+      readInMemorySessionByokCredential(),
+    );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
   const accountStateRequestIdRef = useRef(0);
@@ -508,10 +529,12 @@ export function ConversationComposer({
     }
 
     if (!nextByokEnabled) {
-      setSessionByokCredential({
+      const nextCredential: SessionByokCredential = {
         provider: byokProvider,
         apiKey: normalizedKey,
-      });
+      };
+      writeInMemorySessionByokCredential(nextCredential);
+      setSessionByokCredential(nextCredential);
       setByokApiKey("");
       setError(null);
       notify({
@@ -564,6 +587,7 @@ export function ConversationComposer({
     }
     const nextByokEnabled = accountState?.byok.enabled ?? false;
     if (!nextByokEnabled) {
+      clearInMemorySessionByokCredential();
       setSessionByokCredential(null);
       setByokApiKey("");
       setError(null);

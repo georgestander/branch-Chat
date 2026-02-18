@@ -431,3 +431,8 @@
 - Decisions: removed trailing blank line to keep `git diff --check` clean.
 - Files: .gitignore, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Fix review F1 session BYOK remount persistence. Ref: Docs/PRD.md Core Experience (Conversation management reliability).
+- Task: keep session-only BYOK key connected across composer remounts in same tab when server persistence disabled.
+- Decisions: moved session credential from component-only state to module-level in-memory store; hydrate composer from that store on mount; clear store on session-key delete; preserves "clears on reload" behavior.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
