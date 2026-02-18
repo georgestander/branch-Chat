@@ -494,6 +494,10 @@ export function ConversationComposer({
     if (isByokSaving) {
       return;
     }
+    if (isAccountStateLoading && !accountState) {
+      setError("Account status is still loading. Try again in a moment.");
+      return;
+    }
     const nextByokEnabled = accountState?.byok.enabled ?? false;
     const nextByokUnavailableReason = accountState?.byok.unavailableReason ?? null;
     const normalizedKey = byokApiKey.trim();
@@ -548,6 +552,7 @@ export function ConversationComposer({
     accountState,
     byokApiKey,
     byokProvider,
+    isAccountStateLoading,
     isByokSaving,
     loadComposerAccountState,
     notify,
@@ -1150,11 +1155,13 @@ export function ConversationComposer({
   const byokEnabled = accountState?.byok.enabled ?? false;
   const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
   const persistedByokConnected = Boolean(accountState?.byok.connected && byokEnabled);
-  const sessionByokConnected = Boolean(sessionByokCredential);
+  const sessionByokConnected = !byokEnabled && Boolean(sessionByokCredential);
   const byokConnected = persistedByokConnected || sessionByokConnected;
   const connectedByokProvider = persistedByokConnected
     ? accountState?.byok.provider ?? null
-    : sessionByokCredential?.provider ?? null;
+    : sessionByokConnected
+      ? sessionByokCredential?.provider ?? null
+      : null;
   const byokProviderLabel =
     connectedByokProvider === "openrouter"
       ? "OpenRouter"
