@@ -1164,8 +1164,6 @@ export function ConversationComposer({
       ? "Attachments uploading"
       : hasErroredAttachments
         ? "Resolve failed attachments"
-        : isByokProviderModelMismatch
-          ? "Switch model provider"
         : isDemoLaneExhausted
           ? "No demo passes left"
           : null;
