@@ -1108,8 +1108,26 @@ export function ConversationComposer({
   const byokEnabled = accountState?.byok.enabled ?? false;
   const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
   const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
+  const connectedByokProvider = accountState?.byok.provider ?? null;
   const byokProviderLabel =
-    accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+    connectedByokProvider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const isByokProviderModelMismatch =
+    selectedLane === "byok" &&
+    byokConnected &&
+    ((connectedByokProvider === "openrouter" && !isOpenRouterModel(conversationModel)) ||
+      (connectedByokProvider === "openai" && isOpenRouterModel(conversationModel)));
+  const byokProviderModelMismatchMessage =
+    connectedByokProvider === "openrouter"
+      ? "Your BYOK key is OpenRouter. Switch to an OpenRouter model before sending."
+      : connectedByokProvider === "openai"
+        ? "Your BYOK key is OpenAI. Switch to an OpenAI model before sending."
+        : "Switch to a model matching your BYOK provider before sending.";
+  const byokProviderModelHint =
+    connectedByokProvider === "openrouter"
+      ? "Use an OpenRouter model when sending in BYOK lane."
+      : connectedByokProvider === "openai"
+        ? "Use an OpenAI model when sending in BYOK lane."
+        : null;
   const demoRemainingPasses = accountState?.quota.remaining ?? null;
   const isDemoLaneExhausted =
     selectedLane === "demo" &&
@@ -1146,6 +1164,8 @@ export function ConversationComposer({
       ? "Attachments uploading"
       : hasErroredAttachments
         ? "Resolve failed attachments"
+        : isByokProviderModelMismatch
+          ? "Switch model provider"
         : isDemoLaneExhausted
           ? "No demo passes left"
           : null;
@@ -1249,6 +1269,12 @@ export function ConversationComposer({
 
   const submitMessage = (): boolean => {
     if (isPending) {
+      return false;
+    }
+
+    if (isByokProviderModelMismatch) {
+      setError(byokProviderModelMismatchMessage);
+      setIsAdvancedControlsOpen(true);
       return false;
     }
 
@@ -1679,7 +1705,7 @@ export function ConversationComposer({
                     ? byokUnavailableReason ||
                       "BYOK is disabled for this environment."
                     : byokConnected
-                    ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.`
+                    ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.${byokProviderModelHint ? ` ${byokProviderModelHint}` : ""}`
                     : "Connect your API key, then switch lanes to BYOK for unlimited sends via your key."}
                 </p>
               </div>
