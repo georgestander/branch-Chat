@@ -25,14 +25,6 @@ export function HeroSection({ links }: HeroSectionProps) {
 
           <div className="flex flex-wrap items-center gap-2">
             <LandingTrackedLink
-              href={links.hostedHref}
-              eventName="landing_cta_click"
-              eventData={{ cta: "hosted", location: "hero" }}
-              className="inline-flex h-10 items-center rounded-full bg-primary px-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground transition hover:bg-primary/90"
-            >
-              Start Free (3 passes)
-            </LandingTrackedLink>
-            <LandingTrackedLink
               href={links.repoHref}
               target="_blank"
               rel="noopener noreferrer"
@@ -41,14 +33,6 @@ export function HeroSection({ links }: HeroSectionProps) {
               className="inline-flex h-10 items-center rounded-full border border-foreground/20 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-foreground transition hover:bg-foreground hover:text-background"
             >
               Run Open Source
-            </LandingTrackedLink>
-            <LandingTrackedLink
-              href="#donate"
-              eventName="landing_cta_click"
-              eventData={{ cta: "donate", location: "hero" }}
-              className="inline-flex h-10 items-center px-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground underline decoration-foreground/25 underline-offset-4 transition hover:text-foreground"
-            >
-              Support this project
             </LandingTrackedLink>
           </div>
 

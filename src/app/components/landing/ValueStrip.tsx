@@ -8,8 +8,8 @@ const VALUE_ITEMS = [
     description: "Parent and child stay visible for clean comparison.",
   },
   {
-    title: "Hosted + BYOK",
-    description: "Use the hosted beta or bring your own key as you scale.",
+    title: "BYOK Ready",
+    description: "Bring your own key as your usage grows.",
   },
   {
     title: "Open Source",

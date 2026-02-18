@@ -44,20 +44,7 @@ function resolveLandingLinks(requestInfo: AppRequestInfo): LandingLinks {
   );
 
   return {
-    hostedHref: normalizeExternalHref(env.LANDING_HOSTED_URL, "/sign-in?redirectTo=/app"),
     repoHref: repoUrl,
-    donatePrimaryHref: normalizeExternalHref(
-      env.LANDING_DONATE_URL,
-      "https://github.com/sponsors",
-    ),
-    donateSecondaryHref: normalizeExternalHref(
-      env.LANDING_DONATE_SECONDARY_URL,
-      "https://www.paypal.com/donate",
-    ),
-    sponsorCompanyHref: normalizeExternalHref(
-      env.LANDING_COMPANY_SPONSOR_URL,
-      "mailto:hello@branch-chat.dev",
-    ),
     docsHref: resolveRepoDocHref(repoUrl, "/blob/main/Docs/setup.md"),
     securityHref: resolveRepoDocHref(repoUrl, "/blob/main/SECURITY.md"),
     licenseHref: resolveRepoDocHref(repoUrl, "/blob/main/LICENSE"),

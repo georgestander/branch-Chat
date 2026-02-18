@@ -53,14 +53,6 @@ export function TopBarClient({ links }: TopBarClientProps) {
         <nav className="flex items-center gap-2" aria-label="Primary">
           <ThemeToggle compact />
           <LandingTrackedLink
-            href={links.hostedHref}
-            eventName="landing_cta_click"
-            eventData={{ cta: "hosted", location: "topbar" }}
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
-          >
-            Try Hosted
-          </LandingTrackedLink>
-          <LandingTrackedLink
             href={links.repoHref}
             target="_blank"
             rel="noopener noreferrer"
@@ -69,14 +61,6 @@ export function TopBarClient({ links }: TopBarClientProps) {
             className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
           >
             View Source
-          </LandingTrackedLink>
-          <LandingTrackedLink
-            href="#donate"
-            eventName="landing_cta_click"
-            eventData={{ cta: "donate", location: "topbar" }}
-            className="rounded-full bg-primary px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-foreground transition hover:bg-primary/90"
-          >
-            Donate
           </LandingTrackedLink>
         </nav>
       </div>
