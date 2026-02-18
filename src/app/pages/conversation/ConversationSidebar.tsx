@@ -1209,7 +1209,11 @@ function BranchTree({
   return (
     <div className="flex flex-col">
       <a
-        href={buildBranchHref(conversationId, tree.branch.id)}
+        href={buildBranchHref(
+          conversationId,
+          tree.branch.id,
+          Boolean(tree.branch.parentId),
+        )}
         className={cn(
           "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition",
           isConversationSelected
@@ -1298,10 +1302,14 @@ function BranchTree({
 function buildBranchHref(
   conversationId: ConversationModelId,
   branchId: string,
+  compareMode = false,
 ): string {
   const params = new URLSearchParams({ conversationId });
   if (branchId) {
     params.set("branchId", branchId);
+  }
+  if (compareMode) {
+    params.set("compare", "1");
   }
   return `/app?${params.toString()}`;
 }

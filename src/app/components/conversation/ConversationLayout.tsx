@@ -51,6 +51,7 @@ interface ConversationLayoutProps {
   conversationId: ConversationModelId;
   initialSidebarCollapsed?: boolean;
   initialParentCollapsed?: boolean;
+  compareModeRequested?: boolean;
   activeBranchId: string;
   conversations: ConversationDirectoryEntry[];
   openRouterModels: OpenRouterModelOption[];
@@ -197,6 +198,7 @@ export function ConversationLayout({
   conversationId,
   initialSidebarCollapsed = false,
   initialParentCollapsed = true,
+  compareModeRequested = false,
   activeBranchId,
   conversations,
   openRouterModels,
@@ -312,6 +314,13 @@ export function ConversationLayout({
       setIsParentContextSheetOpen(false);
     }
   }, [isParentCollapsed, parentBranch]);
+
+  useEffect(() => {
+    if (!compareModeRequested || !parentBranch) {
+      return;
+    }
+    setIsParentCollapsed(false);
+  }, [activeBranchId, compareModeRequested, parentBranch]);
 
   useEffect(() => {
     const nextModel = conversation.settings.model || "gpt-5-chat-latest";

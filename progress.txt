@@ -206,3 +206,8 @@
 - Decisions: removed `ThemeToggle` from active branch leading actions in layout; inserted compact toggle in sidebar header control group next to sidebar/new-chat actions for consistent placement.
 - Files: src/app/components/conversation/ConversationLayout.tsx, src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Sidebar child-branch click now always opens compare mode. Ref: Docs/PRD.md Core Experience branch navigation + branch creation context affordance.
+- Task: clicking child branch in sidebar should always show parent branch beside child and jump to origin highlight context.
+- Decisions: sidebar child branch href now adds `compare=1`; page forwards compare intent to layout; layout force-opens parent pane on child branch navigation when compare mode requested (same-conversation switches included).
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, src/app/pages/conversation/ConversationPage.tsx, src/app/components/conversation/ConversationLayout.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
