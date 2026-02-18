@@ -366,3 +366,8 @@
 - Decisions: executed all runnable commands in report (`pnpm types`, `npm run types`, `npm run test`, `npm run lint`, `pnpm check`, `pnpm tsc --noEmit`); trimmed legacy 2025 noise + blocked manual items to keep report actionable.
 - Files: Docs/testing-report.md, progress.txt.
 - Notes: all listed commands pass in local run; no blockers.
+2026-02-18 — Restored full testing report history; added latest test run at top. Ref: Docs/PRD.md Testing & QA feedback loops.
+- Task: correct over-pruned testing report by restoring unrelated historical entries and updating latest run date.
+- Decisions: rebuilt `Docs/testing-report.md` from prior version (`HEAD~1`) preserving all sections; inserted new `2026-02-18` run summary at top; kept older pending/manual items untouched except noting they were not re-run today.
+- Files: Docs/testing-report.md, progress.txt.
+- Notes: corrective doc-only update after user clarification; no blockers.
