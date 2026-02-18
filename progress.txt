@@ -331,3 +331,8 @@
 - Decisions: transcoded demo to H.264 MP4 (`branch-chat-demo.mp4`) for GitHub/web playback; replaced README inline `<video>` with clickable preview image linking to MP4 blob; updated landing page video source/fallback to MP4; removed MOV asset.
 - Files: public/branch-chat-demo.mp4, public/branch-chat-demo.mov (removed), README.md, src/app/components/landing/ProductScreenshotSection.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Sidebar header brand stays single-line under control-heavy layout. Ref: Docs/PRD.md UX & A11y clarity (navigation readability).
+- Task: fix top-left `Branch-Chat` wrapping onto two lines in sidebar header.
+- Decisions: reduced header control footprint (`h-8/w-8`, tighter gaps), reduced brand size to `text-sm`, enforced `whitespace-nowrap` on brand label.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

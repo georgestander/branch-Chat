@@ -823,11 +823,11 @@ export function ConversationSidebar({
     >
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+          <h2 className="min-w-0 whitespace-nowrap text-sm font-semibold tracking-tight text-foreground">
             Branch-Chat
           </h2>
-          <div className="flex items-center gap-2">
-            <ThemeToggle compact className="h-9 w-9 rounded-md" />
+          <div className="flex items-center gap-1">
+            <ThemeToggle compact className="h-8 w-8 rounded-md" />
             <button
               ref={accountButtonRef}
               type="button"
@@ -838,7 +838,7 @@ export function ConversationSidebar({
                   setPreferredLane(storedLane);
                 }
               }}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-haspopup="dialog"
               aria-expanded={isAccountPanelOpen}
               title="Account and BYOK settings"
@@ -849,7 +849,7 @@ export function ConversationSidebar({
             <button
               type="button"
               onClick={onToggleSidebar}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-pressed={!isSidebarCollapsed}
               aria-expanded={!isSidebarCollapsed}
               title={
@@ -869,7 +869,7 @@ export function ConversationSidebar({
               type="button"
               onClick={startNewConversation}
               disabled={isCreating}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-70"
               aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
             >
               <SquarePen className="h-4 w-4" aria-hidden="true" />
