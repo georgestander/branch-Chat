@@ -1148,7 +1148,7 @@ export function ConversationComposer({
           : `Passes ${demoRemainingPasses}/${demoTotalPasses}`;
   const quotaChipClassName =
     selectedLane === "byok" && byokConnected
-      ? "border-emerald-400/40 text-emerald-200"
+      ? "border-background/55 text-background"
       : isDemoLaneExhausted
         ? "border-destructive/70 text-destructive"
         : demoRemainingPasses !== null && demoRemainingPasses <= DEMO_PASS_CRITICAL_THRESHOLD
