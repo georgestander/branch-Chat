@@ -66,5 +66,3 @@ coverage
 # Wrangler
 .wrangler
 
-# Private planning docs (local only)
-Docs/private-personal-prod-oss-plan.md
