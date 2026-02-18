@@ -491,3 +491,8 @@
 - Decisions: kept branch side for BYOK-only/auth-hardening flow files; kept main side for newer stream-id stale-state fix, OpenRouter cache-size pruning, and generated worker types; updated README demo preview to YouTube thumbnail/link.
 - Files: README.md, src/app/components/conversation/BranchColumn.tsx, src/app/shared/openrouterModels.server.ts, worker-configuration.d.ts, progress.txt.
 - Notes: feedback loops pass on merged state (`pnpm types`, `npm run test`, `npm run lint`); no blockers.
+2026-02-18 — Added production PR CI status checks (required + security). Ref: Docs/PRD.md non-functional quality gates.
+- Task: create enforceable GitHub Actions checks for PRs with exact names used by branch protection.
+- Decisions: added `CI` workflow jobs `preflight/types/test/lint/build`; added `Security` workflow job `dependency-review`; preflight fails on merge markers and package.json-without-lockfile updates; used Node 22 + pnpm cache for faster OSS iteration.
+- Files: .github/workflows/ci.yml, .github/workflows/security.yml, progress.txt.
+- Notes: run local feedback loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no blockers.
