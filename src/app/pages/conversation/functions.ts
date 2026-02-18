@@ -27,10 +27,12 @@ import {
   deleteByokKey,
   getAccountQuotaSnapshot,
   getByokStatus,
+  getComposerPreference,
   isByokConfigured,
   releaseDemoPass,
   reserveDemoPass,
   resolveByokCredential,
+  saveComposerPreference,
   saveByokKey,
 } from "@/app/shared/account.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
@@ -275,6 +277,29 @@ function buildNextConversationSettings(options: {
     reasoningEffort: nextReasoningEffort,
     composerDefaults,
   };
+}
+
+async function persistComposerPreferenceFromSettings(options: {
+  ctx: AppContext;
+  settings: ConversationSettings;
+  conversationId: string;
+  source: "create" | "update";
+}) {
+  try {
+    await saveComposerPreference(options.ctx, {
+      model: options.settings.model,
+      reasoningEffort: options.settings.reasoningEffort ?? null,
+      preset: options.settings.composerDefaults.preset,
+      tools: options.settings.composerDefaults.tools,
+    });
+  } catch (error) {
+    options.ctx.trace("account:composer:save-error", {
+      conversationId: options.conversationId,
+      source: options.source,
+      model: options.settings.model,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 export interface ConversationPayload {
@@ -587,6 +612,12 @@ export async function updateConversationSettings(
     tools: input.tools,
   });
   if (JSON.stringify(nextSettings) === JSON.stringify(current.settings)) {
+    await persistComposerPreferenceFromSettings({
+      ctx,
+      settings: current.settings,
+      conversationId,
+      source: "update",
+    });
     return {
       conversationId,
       snapshot: ensured.snapshot,
@@ -603,6 +634,13 @@ export async function updateConversationSettings(
       },
     },
   ]);
+
+  await persistComposerPreferenceFromSettings({
+    ctx,
+    settings: applied.snapshot.conversation.settings,
+    conversationId,
+    source: "update",
+  });
 
   return {
     conversationId,
@@ -751,12 +789,47 @@ export async function createConversation(
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const currentConversation = ensured.snapshot.conversation;
+  const hasModelOverride =
+    typeof input.model === "string" && input.model.trim().length > 0;
+  const hasReasoningEffortOverride =
+    Object.prototype.hasOwnProperty.call(input, "reasoningEffort");
+  const hasPresetOverride = Object.prototype.hasOwnProperty.call(input, "preset");
+  const hasToolsOverride = Object.prototype.hasOwnProperty.call(input, "tools");
+  let composerPreference: Awaited<ReturnType<typeof getComposerPreference>> = null;
+  if (
+    !hasModelOverride ||
+    !hasReasoningEffortOverride ||
+    !hasPresetOverride ||
+    !hasToolsOverride
+  ) {
+    try {
+      composerPreference = await getComposerPreference(ctx);
+    } catch (error) {
+      ctx.trace("account:composer:load-error", {
+        conversationId,
+        source: "create",
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
+
+  if (!hasModelOverride && composerPreference?.model) {
+    ctx.trace("account:composer:applied", {
+      conversationId,
+      source: "create",
+      model: composerPreference.model,
+      preset: composerPreference.preset,
+      toolCount: composerPreference.tools.length,
+    });
+  }
   const nextSettings = buildNextConversationSettings({
     settings: currentConversation.settings,
-    model: input.model,
-    reasoningEffort: input.reasoningEffort,
-    preset: input.preset,
-    tools: input.tools,
+    model: hasModelOverride ? input.model : composerPreference?.model,
+    reasoningEffort: hasReasoningEffortOverride
+      ? input.reasoningEffort
+      : composerPreference?.reasoningEffort,
+    preset: hasPresetOverride ? input.preset : composerPreference?.preset,
+    tools: hasToolsOverride ? input.tools : composerPreference?.tools,
   });
   const needsSettingsUpdate =
     JSON.stringify(nextSettings) !== JSON.stringify(currentConversation.settings);
@@ -784,6 +857,13 @@ export async function createConversation(
       withUpdatedSettings.snapshot.conversation.rootBranchId
     ];
   const title = input.title?.trim() || rootBranch?.title || conversationId;
+
+  await persistComposerPreferenceFromSettings({
+    ctx,
+    settings: withUpdatedSettings.snapshot.conversation.settings,
+    conversationId,
+    source: "create",
+  });
 
   await touchConversationDirectoryEntry(ctx, {
     id: conversationId,

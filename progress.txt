@@ -296,3 +296,8 @@
 - Decisions: updated final response text resolution to choose first non-empty source (`output_text`, output parts, `response.output` text, buffered deltas); added final non-empty guard fallback message to prevent blank assistant persistence.
 - Files: src/app/pages/conversation/functions.ts, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; smoke verified stream persistence on demo lane; BYOK lane not reproducible in local browser session.
+2026-02-18 — Persist composer model defaults across new chats + sign-in via Account DO. Ref: Docs/PRD.md Chat engine model/settings overrides + state persistence.
+- Task: selected OpenRouter model reset to OpenAI on `Start new chat`; preference did not survive sign back in.
+- Decisions: added account-level composer preference (`model`, `reasoningEffort`, `preset`, `tools`) in Account DO; save on conversation settings updates and create flow; apply preference fallback in `createConversation` when explicit overrides missing; trace logs for load/apply/save paths.
+- Files: src/lib/durable-objects/Account.ts, src/app/shared/account.server.ts, src/app/pages/conversation/functions.ts, progress.txt.
+- Notes: manual smoke via agent-browser confirmed new chats keep OpenRouter model (`Model OpenRouter Auto`) across conversation switches; validation passed `pnpm types`, `npm run test`, `npm run lint`.
