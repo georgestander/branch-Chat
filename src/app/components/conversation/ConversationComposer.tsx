@@ -1210,8 +1210,8 @@ export function ConversationComposer({
         : null;
   const byokChipText = byokConnected ? `${byokProviderLabel} Connected` : "BYOK Required";
   const byokChipClassName = byokConnected
-    ? "border-background/55 text-background"
-    : "border-amber-400/70 text-amber-200";
+    ? "border-border text-foreground"
+    : "border-amber-400/70 text-amber-600 dark:text-amber-400";
   const byokIndicatorText = isAccountStateLoading
     ? "Loading BYOK status..."
     : byokConnected
@@ -1482,7 +1482,7 @@ export function ConversationComposer({
   };
 
   return (
-    <div className={cn("flex w-full flex-col gap-2 text-background", className)}>
+    <div className={cn("flex w-full flex-col gap-2", className)}>
       <input
         ref={fileInputRef}
         type="file"
@@ -1496,13 +1496,13 @@ export function ConversationComposer({
       {branchContextLabel ? (
         <div className="px-1">
           <div
-            className="rounded-xl border border-background/30 bg-background/10 px-3 py-1.5"
+            className="rounded border border-border bg-secondary px-3 py-1.5"
             title={`From parent selection: “${branchContextLabel}”`}
           >
-            <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-background/70">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               From parent selection
             </p>
-            <p className="mt-0.5 truncate text-[11px] font-semibold text-background">
+            <p className="mt-0.5 truncate text-[11px] font-semibold text-foreground">
               “{branchContextLabel}”
             </p>
           </div>
@@ -1512,14 +1512,14 @@ export function ConversationComposer({
         <button
           type="button"
           onClick={() => setIsAdvancedControlsOpen((previous) => !previous)}
-          className="interactive-target inline-flex items-center gap-2 rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="interactive-target inline-flex items-center gap-2 rounded border border-border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           aria-expanded={isAdvancedControlsOpen}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{isAdvancedControlsOpen ? "Hide Controls" : "Show Controls"}</span>
         </button>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
+          <span className="inline-flex items-center rounded border border-border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             {`Mode ${currentPresetLabel}`}
           </span>
           <span
@@ -1533,11 +1533,11 @@ export function ConversationComposer({
         </div>
       </div>
       {isAdvancedControlsOpen ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-background/20 bg-foreground/90 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-card px-3 py-2">
           <button
             type="button"
             onClick={() => setIsByokPanelOpen(true)}
-            className="interactive-target inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-background hover:bg-background/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="interactive-target inline-flex items-center rounded border border-border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {byokConnected ? "Manage BYOK" : "Connect BYOK"}
           </button>
@@ -1550,7 +1550,7 @@ export function ConversationComposer({
               role="dialog"
               aria-modal="true"
             >
-              <div className="mx-4 w-full max-w-3xl rounded-2xl border border-border/70 bg-card p-6 shadow-2xl">
+              <div className="mx-4 w-full max-w-3xl rounded border border-border bg-card p-6 shadow-2xl">
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="flex flex-col gap-1">
                     <label
@@ -1566,7 +1566,7 @@ export function ConversationComposer({
                         setByokProvider(event.target.value as ComposerByokProvider)
                       }
                       disabled={isByokSaving}
-                      className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-8 rounded border border-border bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <option value="openai">OpenAI</option>
                       <option value="openrouter">OpenRouter</option>
@@ -1587,14 +1587,14 @@ export function ConversationComposer({
                       placeholder="sk-..."
                       disabled={isByokSaving}
                       autoComplete="off"
-                      className="h-8 rounded-full border border-border/70 bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-8 rounded border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleSaveByokKey()}
                     disabled={isByokSaving}
-                    className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                    className="interactive-target inline-flex h-8 items-center rounded border border-border bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isByokSaving
                       ? "Saving..."
@@ -1611,7 +1611,7 @@ export function ConversationComposer({
                       type="button"
                       onClick={() => void handleDeleteByokKey()}
                       disabled={isByokSaving}
-                      className="interactive-target inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                      className="interactive-target inline-flex h-8 items-center rounded border border-border bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Disconnect
                     </button>
@@ -1640,7 +1640,7 @@ export function ConversationComposer({
           )
         : null}
       {(hasSelectedTools || attachments.length > 0) ? (
-        <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
+        <div className="rounded border border-border bg-background px-3 py-2 text-foreground shadow-sm">
           {hasSelectedTools ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -1739,7 +1739,7 @@ export function ConversationComposer({
                 <button
                   type="button"
                   onClick={openFilePicker}
-                  className="interactive-target inline-flex items-center gap-2 rounded-full border border-dashed border-primary/60 px-3 py-1 text-[11px] font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="interactive-target inline-flex items-center gap-2 rounded border border-dashed border-border px-3 py-1 text-[11px] font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Add files</span>
@@ -1751,27 +1751,27 @@ export function ConversationComposer({
       ) : null}
       <form
         onSubmit={handleSubmit}
-        className="flex h-12 items-center gap-2 rounded-full border border-background/25 bg-foreground/95 px-3 text-background shadow-lg"
+        className="flex h-12 items-center gap-2 rounded border border-border bg-background px-3 text-foreground shadow-sm"
       >
         <div className="flex items-center gap-2">
           <div className="relative" ref={toolMenuRef}>
             <button
               type="button"
-              className="interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-background/35 bg-foreground text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-background text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="New prompt options"
               aria-expanded={isToolMenuOpen}
               aria-controls={isToolMenuOpen ? toolMenuId : undefined}
               aria-haspopup="menu"
               onClick={() => setIsToolMenuOpen((prev) => !prev)}
             >
-              <Plus className="h-5 w-5 text-background" aria-hidden="true" />
+              <Plus className="h-5 w-5" aria-hidden="true" />
             </button>
 
             {isToolMenuOpen ? (
             <div
               id={toolMenuId}
               role="menu"
-              className="absolute left-0 bottom-full z-20 mb-2 w-56 rounded-xl border border-border/80 bg-popover/95 p-1 shadow-xl backdrop-blur-[2px]"
+              className="absolute left-0 bottom-full z-20 mb-2 w-56 rounded border border-border bg-popover p-1 shadow-xl"
             >
               {TOOL_OPTIONS.map((option) => {
                 const isSelected = selectedTools.includes(option.id);
@@ -1889,7 +1889,7 @@ export function ConversationComposer({
                 submitMessage();
               }
             }}
-            className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-background caret-background placeholder:text-background/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-foreground caret-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isPending}
             aria-disabled={isPending}
             aria-invalid={error ? true : undefined}
@@ -1900,7 +1900,7 @@ export function ConversationComposer({
             onClick={() => {
               setIsComposerModalOpen(true);
             }}
-            className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center rounded-full border border-background/35 bg-foreground text-background transition hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="absolute bottom-1 right-2 inline-flex h-3 w-3 items-center justify-center rounded border border-border bg-background text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             aria-label="Open large editor"
           >
             <Maximize className="h-2 w-2" aria-hidden="true" />
@@ -1914,26 +1914,26 @@ export function ConversationComposer({
               ref={modelButtonRef}
               onClick={() => setIsModelMenuOpen((value) => !value)}
               className={cn(
-                "interactive-target inline-flex h-9 items-center gap-1 border border-background/35 bg-foreground px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
-                isModelMenuOpen ? "bg-foreground/80 text-background" : null,
+                "interactive-target inline-flex h-9 items-center gap-1 border border-border bg-background px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55",
+                isModelMenuOpen ? "bg-muted text-foreground" : null,
               )}
               aria-haspopup="menu"
               aria-expanded={isModelMenuOpen}
               aria-controls={isModelMenuOpen ? modelMenuId : undefined}
               disabled={conversationSettingsSaving}
             >
-              <span className="text-xs font-semibold text-background">Model</span>
+              <span className="text-xs font-semibold text-foreground">Model</span>
               <ChevronDown
                 className={cn(
-                  "h-3 w-3 text-background transition-transform",
-                  isModelMenuOpen ? "rotate-180 text-primary" : "rotate-0",
+                  "h-3 w-3 text-foreground transition-transform",
+                  isModelMenuOpen ? "rotate-180 text-accent" : "rotate-0",
                 )}
                 aria-hidden="true"
               />
             </button>
             <div className="flex flex-col items-end justify-center">
               {conversationSettingsSaving ? (
-                <span className="text-[10px] uppercase tracking-[0.24em] text-background/60">
+                <span className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
                   Saving…
                 </span>
               ) : conversationSettingsError ? (
@@ -1947,7 +1947,7 @@ export function ConversationComposer({
                 ref={modelMenuRef}
                 id={modelMenuId}
                 role="menu"
-                className="absolute bottom-full right-0 z-30 mb-2 max-h-96 w-72 overflow-y-auto rounded-xl border border-border/80 bg-popover/95 p-2 shadow-xl backdrop-blur-[2px]"
+                className="absolute bottom-full right-0 z-30 mb-2 max-h-96 w-72 overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
               >
               <button
                 type="button"
@@ -2044,7 +2044,7 @@ export function ConversationComposer({
 
         {sendDisabledReason && !error ? (
           <span
-            className="hidden text-[10px] font-medium uppercase tracking-[0.16em] text-background/65 md:inline-flex"
+            className="hidden text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground md:inline-flex"
             aria-live="polite"
           >
             {sendDisabledReason}
@@ -2055,7 +2055,7 @@ export function ConversationComposer({
           type="submit"
           disabled={isSendDisabled}
           className={cn(
-            "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-background/35 bg-foreground text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55",
+            "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-foreground text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55",
             isPending ? "animate-pulse" : "",
           )}
           aria-label="Send message"
@@ -2075,7 +2075,7 @@ export function ConversationComposer({
               role="dialog"
               aria-modal="true"
             >
-              <div className="mx-4 w-full max-w-3xl rounded-2xl border border-border/70 bg-card p-6 shadow-2xl">
+              <div className="mx-4 w-full max-w-3xl rounded border border-border bg-card p-6 shadow-2xl">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-foreground">
                     Expanded Composer
@@ -2083,7 +2083,7 @@ export function ConversationComposer({
                   <button
                     type="button"
                     onClick={() => setIsComposerModalOpen(false)}
-                    className="interactive-target inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className="interactive-target inline-flex h-7 w-7 items-center justify-center rounded border border-border text-muted-foreground transition hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     aria-label="Close expanded editor"
                   >
                     <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -2094,13 +2094,13 @@ export function ConversationComposer({
                   onChange={(event) => setValue(event.target.value)}
                   autoFocus
                   placeholder="Ask Connexus to explore a new direction..."
-                  className="h-64 w-full resize-none rounded-xl border border-border/80 bg-background px-4 py-3 text-base text-foreground shadow-inner focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-64 w-full resize-none rounded border border-border bg-background px-4 py-3 text-base text-foreground shadow-inner focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
                 <div className="mt-4 flex justify-end">
                   <button
                     type="button"
                     onClick={() => setIsComposerModalOpen(false)}
-                    className="interactive-target inline-flex items-center gap-2 rounded-full border border-border/70 bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className="interactive-target inline-flex items-center gap-2 rounded border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     Done
                   </button>
@@ -2113,7 +2113,7 @@ export function ConversationComposer({
 
       <div className="flex items-center justify-between gap-2 px-2">
         <span
-          className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-background/75"
+          className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
           title={currentModelLabel}
         >
           {`Model ${currentModelLabel}`}
@@ -2123,11 +2123,11 @@ export function ConversationComposer({
             {error}
           </p>
         ) : sendDisabledReason ? (
-          <span className="text-right text-xs text-background/75">
+          <span className="text-right text-xs text-muted-foreground">
             {sendDisabledReason}
           </span>
         ) : (
-          <span className="text-right text-xs text-background/70">
+          <span className="text-right text-xs text-muted-foreground">
             {byokIndicatorText} · Enter to send · Shift+Enter for line break
           </span>
         )}
