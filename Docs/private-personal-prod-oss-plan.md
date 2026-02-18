@@ -75,8 +75,8 @@ Owner: george
 | P2 | Server APIs | Remove demo lane from send contracts | Done | AC-02 | `sendMessage` now accepts `byok?: boolean` instead of `lane`; response contract no longer returns `quota.lane`; composer caller updated accordingly |
 | P3 | Account DO | Remove quota/pass endpoints, keep BYOK + prefs | Done | AC-02, AC-03 | Removed DO quota/pass endpoints + server/client helpers; legacy account state normalization now ignores old quota/reservation fields and preserves BYOK/composer prefs (covered by `src/lib/durable-objects/Account.test.ts`) |
 | P4 | Composer UX | Add BYOK-required gate in `/app`, remove pass UI | Done | AC-02, AC-05 | Composer now blocks sends until persisted/session BYOK exists, enforces provider mismatch guidance, removes demo/pass lane UI, and supports session-only keys when server BYOK persistence is unavailable |
-| P5 | Sidebar UX | Remove lane preference and pass labels | Not Started | AC-02 | Delete lane preference module and references |
-| P6 | Sign-in Copy | Remove demo wording, keep optional fallback role | Not Started | AC-06 | Copy updates only, flow remains optional |
+| P5 | Sidebar UX | Remove lane preference and pass labels | Done | AC-02 | Removed sidebar lane preference/pass UI, deleted lane preference module, and kept sidebar account modal focused on BYOK connection status only |
+| P6 | Sign-in Copy | Remove demo wording, keep optional fallback role | Done | AC-06 | Updated `/sign-in` helper text to neutral fallback wording without demo/pass language |
 | P7 | Docs | Update setup/env/readme for prod vs self-host | Not Started | AC-06 | Explicit config matrix and examples |
 | P8 | Validation | Run all feedback loops after each logical change | Not Started | AC-01..AC-06 | `pnpm types`, `npm run test`, `npm run lint` |
 

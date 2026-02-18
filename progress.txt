@@ -411,3 +411,8 @@
 - Decisions: enforced provider-family mismatch guard client+server; removed lane/pass chips, toggles, and exhausted-pass paths; added session-only BYOK connect/send flow when `BYOK_ENCRYPTION_SECRET` is absent; kept server response contract stable (`remainingDemoPasses: null`) to avoid churn outside this slice.
 - Files: src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/ConversationEmptyLayout.tsx, src/app/pages/conversation/functions.ts, Docs/private-personal-prod-oss-plan.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed P5/P6 sidebar cleanup + sign-in copy refresh. Ref: Docs/private-personal-prod-oss-plan.md P5/P6, AC-02/AC-06.
+- Task: remove lane preference/pass labels from sidebar account UX and eliminate remaining demo wording in sign-in flow.
+- Decisions: deleted `lanePreference` module entirely; removed default-lane/pass indicators and persistence calls from `ConversationSidebar` while preserving BYOK connect/disconnect actions; updated `/sign-in` body copy to neutral optional-fallback wording.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, src/app/components/conversation/lanePreference.ts (deleted), src/app/pages/sign-in/SignInPage.tsx, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
