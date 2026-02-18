@@ -37,7 +37,7 @@ export function TopBarClient({ links }: TopBarClientProps) {
       className={cn(
         "sticky top-0 z-50 border-b transition-colors",
         isScrolled
-          ? "border-foreground/20 bg-background/95 backdrop-blur"
+          ? "border-border bg-background/95 backdrop-blur"
           : "border-transparent bg-background/0",
       )}
     >
@@ -56,7 +56,7 @@ export function TopBarClient({ links }: TopBarClientProps) {
             href={links.signInHref}
             eventName="landing_cta_click"
             eventData={{ cta: "login", location: "topbar" }}
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             Log In
           </LandingTrackedLink>
@@ -66,7 +66,7 @@ export function TopBarClient({ links }: TopBarClientProps) {
             rel="noopener noreferrer"
             eventName="landing_cta_click"
             eventData={{ cta: "repo", location: "topbar" }}
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             View Source
           </LandingTrackedLink>

@@ -80,7 +80,7 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
 
   return (
     <div className="app-shell flex min-h-screen items-center justify-center px-5 py-10 text-foreground">
-      <main className="panel-surface panel-edge w-full max-w-md rounded-3xl px-6 py-6">
+      <main className="panel-surface panel-edge w-full max-w-md rounded px-6 py-6">
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Branch Chat Beta
@@ -105,7 +105,7 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
                   required
                   autoComplete="username"
                   placeholder="you@example.com"
-                  className="h-10 w-full rounded-xl border border-border/70 bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-10 w-full rounded border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </label>
               {invalidUserError ? (
@@ -115,7 +115,7 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
               ) : null}
               <button
                 type="submit"
-                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-primary px-4 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground transition hover:bg-primary/90"
+                className="inline-flex h-10 w-full items-center justify-center rounded bg-primary px-4 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground transition hover:bg-primary/90"
               >
                 Continue
               </button>

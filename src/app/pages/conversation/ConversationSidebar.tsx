@@ -764,7 +764,7 @@ export function ConversationSidebar({
   return (
     <aside
       className={cn(
-        "panel-surface panel-edge flex h-full w-72 flex-col border-r border-foreground/15 bg-background/70 backdrop-blur",
+        "panel-surface panel-edge flex h-full w-72 flex-col border-r border-border bg-background",
         className,
       )}
     >
@@ -781,7 +781,7 @@ export function ConversationSidebar({
               onClick={() => {
                 setIsAccountPanelOpen((previous) => !previous);
               }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-foreground shadow-sm transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-haspopup="dialog"
               aria-expanded={isAccountPanelOpen}
               title="Account and BYOK settings"
@@ -792,7 +792,7 @@ export function ConversationSidebar({
             <button
               type="button"
               onClick={onToggleSidebar}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-foreground shadow-sm transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-pressed={!isSidebarCollapsed}
               aria-expanded={!isSidebarCollapsed}
               title={
@@ -833,7 +833,7 @@ export function ConversationSidebar({
               aria-modal="true"
               aria-label="Account and BYOK settings"
             >
-              <div className="w-full max-w-md rounded-xl border border-border/70 bg-popover p-4 text-foreground shadow-2xl">
+              <div className="w-full max-w-md rounded border border-border bg-popover p-4 text-foreground shadow-2xl">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Account
@@ -1247,10 +1247,10 @@ function ConversationCard({
   return (
     <div
       className={cn(
-        "interactive-target flex flex-col gap-2 rounded-xl border px-3 py-2 text-sm shadow-sm transition",
+        "interactive-target flex flex-col gap-2 rounded border px-3 py-2 text-sm shadow-sm transition",
         isActive
-          ? "border-foreground/40 bg-foreground text-background shadow-lg hover:bg-foreground/90"
-          : "border-foreground/15 bg-background/80 text-foreground hover:bg-background",
+          ? "border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+          : "border-border bg-background text-foreground hover:bg-muted/50",
       )}
       data-active={isActive}
     >
@@ -1263,7 +1263,7 @@ function ConversationCard({
           className={cn(
             "flex min-w-0 items-center gap-2 overflow-hidden text-left transition",
             isActive
-              ? "text-background"
+              ? "text-primary-foreground"
               : expanded
                 ? "text-foreground"
                 : "text-foreground/90",
@@ -1274,7 +1274,7 @@ function ConversationCard({
             <ChevronDown
               className={cn(
                 "h-4 w-4 shrink-0",
-                isActive ? "text-background" : "text-muted-foreground",
+                isActive ? "text-primary-foreground" : "text-muted-foreground",
               )}
               aria-hidden="true"
             />
@@ -1282,7 +1282,7 @@ function ConversationCard({
             <ChevronRight
               className={cn(
                 "h-4 w-4 shrink-0",
-                isActive ? "text-background" : "text-muted-foreground",
+                isActive ? "text-primary-foreground" : "text-muted-foreground",
               )}
               aria-hidden="true"
             />
@@ -1299,7 +1299,7 @@ function ConversationCard({
               onClick={() => setIsMenuOpen((value) => !value)}
               className={cn(
                 "inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition hover:border-foreground/20 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                isActive && "text-background/70 hover:text-background",
+                isActive && "text-primary-foreground/70 hover:text-primary-foreground",
                 (archiving || deleting) && "cursor-wait",
               )}
               aria-haspopup="menu"
@@ -1313,7 +1313,7 @@ function ConversationCard({
               <div
                 ref={menuRef}
                 role="menu"
-                className="absolute right-0 top-full z-50 mt-2 w-48 rounded-md border border-foreground/15 bg-popover p-2 text-foreground shadow-xl"
+                className="absolute right-0 top-full z-50 mt-2 w-48 rounded border border-border bg-popover p-2 text-foreground shadow-xl"
               >
                 <button
                   type="button"
@@ -1514,11 +1514,11 @@ function BranchTree({
           "group relative grid max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-3 py-2 text-sm transition",
           isConversationSelected
             ? isActive
-              ? "bg-background/10 text-background shadow-sm hover:bg-background/15"
-              : "text-background/85 hover:bg-background/10"
+              ? "bg-primary-foreground/10 text-primary-foreground shadow-sm hover:bg-primary-foreground/15"
+              : "text-primary-foreground/85 hover:bg-primary-foreground/10"
             : isActive
-              ? "bg-primary/10 font-semibold text-primary shadow-sm hover:bg-primary/15"
-              : "text-foreground hover:bg-background/60",
+              ? "bg-secondary font-semibold text-foreground shadow-sm hover:bg-secondary/80"
+              : "text-foreground hover:bg-muted/60",
         )}
         data-active={isActive}
         aria-current={isActive ? "page" : undefined}
@@ -1530,10 +1530,10 @@ function BranchTree({
               "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
               isConversationSelected
                 ? isActive
-                  ? "border-background bg-background"
-                  : "border-background/60 bg-background/40 group-hover:border-background"
+                  ? "border-primary-foreground bg-primary-foreground"
+                  : "border-primary-foreground/60 bg-primary-foreground/40 group-hover:border-primary-foreground"
                 : isActive
-                  ? "border-primary bg-primary"
+                  ? "border-foreground bg-foreground"
                   : "bg-muted group-hover:border-foreground/40",
             )}
             aria-hidden
@@ -1541,7 +1541,7 @@ function BranchTree({
           <span
             className={cn(
               "min-w-0 flex-1 truncate",
-              isConversationSelected ? "text-background" : undefined,
+              isConversationSelected ? "text-primary-foreground" : undefined,
             )}
             title={tree.branch.title?.trim() || UNTITLED_BRANCH}
           >
@@ -1553,7 +1553,7 @@ function BranchTree({
             className={cn(
               "text-[10px] uppercase tracking-[0.2em]",
               isConversationSelected
-                ? "text-background/70"
+                ? "text-primary-foreground/70"
                 : "text-muted-foreground",
             )}
           >
@@ -1568,10 +1568,10 @@ function BranchTree({
             "border-l",
             isConversationSelected
               ? containsActiveDescendant
-                ? "border-background/50"
-                : "border-background/30"
+                ? "border-primary-foreground/50"
+                : "border-primary-foreground/30"
               : containsActiveDescendant
-                ? "border-primary/40"
+                ? "border-foreground/40"
                 : "border-border/60",
           )}
           style={{

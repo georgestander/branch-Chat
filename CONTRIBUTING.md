@@ -42,8 +42,22 @@ npm run test
 npm run lint
 ```
 
+## Required CI Checks
+
+PRs must pass these GitHub checks before merge:
+
+- `CI / preflight`
+- `CI / types`
+- `CI / test`
+- `CI / lint`
+- `CI / build`
+- `Security / dependency-review`
+
+`CI / preflight` also blocks unresolved merge markers and `package.json` changes without a matching `pnpm-lock.yaml` update.
+
 ## Pull Request Notes
 
 - Include a short summary of behavior changes.
 - Add manual validation notes for happy-path and failure-path checks.
 - Mention any follow-up work or known limitations.
+- Wait for all required checks to turn green before requesting merge.

@@ -114,7 +114,7 @@ function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage):
 function AssistantPendingBubble() {
   return (
     <div
-      className="panel-surface panel-edge w-full rounded-2xl px-5 py-5 shadow-sm"
+      className="panel-surface panel-edge w-full rounded px-5 py-5 shadow-sm"
       aria-live="polite"
     >
       <div className="flex flex-col gap-2">
@@ -652,12 +652,12 @@ export function BranchColumn({
     <section
       className={cn(
         "relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent",
-        withLeftBorder ? "border-l border-foreground/15" : "",
+        withLeftBorder ? "border-l border-border" : "",
         className,
       )}
       style={style}
     >
-      <header className="flex min-h-[64px] items-center gap-3 border-b border-foreground/15 bg-background/70 px-6 py-4 text-sm backdrop-blur">
+      <header className="flex min-h-[64px] items-center gap-3 border-b border-border bg-background px-6 py-4 text-sm">
         {leadingActions ? (
           <div className="flex items-center gap-2">{leadingActions}</div>
         ) : null}
@@ -667,7 +667,7 @@ export function BranchColumn({
           </h2>
           {shouldShowStateLabel ? (
             <>
-              <span className="hidden h-4 w-px bg-foreground/15 sm:inline" aria-hidden="true" />
+              <span className="hidden h-4 w-px bg-border sm:inline" aria-hidden="true" />
               <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
                 <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{stateLabel} Branch</span>
@@ -676,14 +676,14 @@ export function BranchColumn({
           ) : null}
           {referenceText ? (
             <span
-              className="inline-flex min-w-0 max-w-[68vw] items-center gap-1.5 rounded-full border border-primary/45 bg-primary/18 px-2.5 py-1 text-xs font-semibold text-primary sm:max-w-[34rem]"
-              title={`From ${sourceBranchLabel}: “${referenceText}”`}
+              className="inline-flex min-w-0 max-w-[68vw] items-center gap-1.5 rounded border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground sm:max-w-[34rem]"
+              title={`From ${sourceBranchLabel}: "${referenceText}"`}
             >
-              <TextQuote aria-hidden className="h-3.5 w-3.5 text-primary/90" />
-              <span className="hidden shrink-0 text-primary/80 sm:inline">
+              <TextQuote aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="hidden shrink-0 text-muted-foreground sm:inline">
                 {`From ${sourceBranchLabel}:`}
               </span>
-              <span className="truncate font-bold text-primary">
+              <span className="truncate font-bold text-foreground">
                 “{truncatedReference}”
               </span>
             </span>
@@ -694,7 +694,7 @@ export function BranchColumn({
           <div className="flex items-center gap-2">{headerActions}</div>
         ) : null}
         <span
-          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? "border-primary/40 bg-primary/15 text-primary" : "border-foreground/15 bg-background/70 text-muted-foreground"}`}
+          className={`inline-flex items-center rounded border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? "border-foreground/40 bg-foreground text-background" : "border-border bg-secondary text-muted-foreground"}`}
         >
           {isActive ? "Editing" : "View Only"}
         </span>
@@ -739,7 +739,7 @@ export function BranchColumn({
       {isActive ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
           <div className="pointer-events-auto w-full max-w-[640px] px-4 sm:px-5">
-            <div className="floating-composer halo-border rounded-[28px] px-4 py-3">
+            <div className="floating-composer halo-border rounded px-4 py-3">
               <ConversationComposer
                 branchId={branch.id}
                 conversationId={conversationId}
@@ -783,7 +783,7 @@ function MessageBubble({
   }
 
   const highlightClass = message.hasBranchHighlight
-    ? "ring-2 ring-primary"
+    ? "ring-2 ring-accent"
     : "";
 
   if (isActive && message.role === "assistant") {
@@ -791,7 +791,7 @@ function MessageBubble({
     return (
       <div
         className={cn(
-          "panel-surface panel-edge w-full rounded-2xl px-5 py-5 transition",
+          "panel-surface panel-edge w-full rounded px-5 py-5 transition",
           highlightClass,
           "[&_.prose]:mt-0",
         )}
@@ -901,8 +901,8 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
 
       <div
         className={cn(
-          "panel-edge w-full rounded-2xl bg-primary/10 px-4 py-3 text-sm text-foreground transition",
-          message.hasBranchHighlight ? "ring-2 ring-primary" : "",
+          "panel-edge w-full rounded bg-secondary px-4 py-3 text-sm text-foreground transition",
+          message.hasBranchHighlight ? "ring-2 ring-accent" : "",
         )}
       >
         {isCollapsible ? (
@@ -910,7 +910,7 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
             <button
               type="button"
               onClick={handleToggle}
-              className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/70 transition hover:text-primary"
+              className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground"
               aria-expanded={isExpanded}
             >
               {isExpanded ? "Hide" : "Show"}
@@ -942,7 +942,7 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
           {isCollapsible && !isExpanded ? (
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-primary/15 to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-secondary to-transparent"
             />
           ) : null}
         </div>
@@ -954,8 +954,8 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
 function AttachmentCard({ attachment }: { attachment: MessageAttachment }) {
   const Icon = resolveAttachmentIcon(attachment.contentType);
   return (
-    <div className="panel-edge flex min-w-[180px] items-center gap-3 rounded-xl bg-background/80 px-3 py-2 text-sm text-foreground">
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-foreground/20 bg-background">
+    <div className="panel-edge flex min-w-[180px] items-center gap-3 rounded bg-background px-3 py-2 text-sm text-foreground">
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded border border-border bg-card">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <div className="flex min-w-0 flex-col">

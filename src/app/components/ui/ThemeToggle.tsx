@@ -60,7 +60,7 @@ export function ThemeToggle({ className, compact = false }: ThemeToggleProps) {
         applyThemePreference(next);
       }}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-foreground/20 bg-background/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         compact ? "h-9 w-9 justify-center p-0" : "",
         className,
       )}

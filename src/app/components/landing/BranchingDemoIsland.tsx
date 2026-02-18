@@ -95,7 +95,7 @@ export function BranchingDemoIsland() {
   return (
     <section
       id="demo"
-      className="mx-auto w-full max-w-6xl scroll-mt-20 border-x border-b border-foreground/15 bg-background/70"
+      className="mx-auto w-full max-w-6xl scroll-mt-20 border-x border-b border-border bg-background"
       aria-labelledby="branching-demo-heading"
     >
       <div className="flex flex-col gap-6 px-4 py-6 md:px-6 md:py-8">
@@ -120,7 +120,7 @@ export function BranchingDemoIsland() {
                 }
                 traceLandingEvent("landing_demo_replay", {});
               }}
-              className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:bg-foreground hover:text-background"
+              className="rounded border border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:bg-secondary hover:text-foreground"
             >
               Replay
             </button>
@@ -128,7 +128,7 @@ export function BranchingDemoIsland() {
               type="button"
               onClick={() => setAutoPlay((value) => !value)}
               disabled={prefersReducedMotion}
-              className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-55"
+              className="rounded border border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
               aria-pressed={autoPlay}
             >
               Auto-play: {autoPlay ? "On" : "Off"}
@@ -150,10 +150,10 @@ export function BranchingDemoIsland() {
                   setAutoPlay(false);
                 }}
                 className={cn(
-                  "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition",
+                  "rounded border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition",
                   active
-                    ? "border-primary/60 bg-primary/15 text-foreground"
-                    : "border-foreground/20 text-muted-foreground hover:text-foreground",
+                    ? "border-foreground bg-secondary text-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground",
                 )}
               >
                 Step {index + 1}
@@ -163,18 +163,18 @@ export function BranchingDemoIsland() {
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <aside className="rounded-2xl border border-foreground/20 bg-background/80 p-3">
+          <aside className="rounded border border-border bg-background p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Branch Tree
             </p>
             <ul className="mt-3 space-y-2 text-xs">
-              <li className="rounded-lg border border-foreground/20 bg-background px-3 py-2">Root branch</li>
+              <li className="rounded border border-border bg-background px-3 py-2">Root branch</li>
               <li
                 className={cn(
-                  "rounded-lg border px-3 py-2 transition",
+                  "rounded border px-3 py-2 transition",
                   childVisible
-                    ? "border-primary/55 bg-primary/15 text-foreground"
-                    : "border-foreground/20 text-muted-foreground",
+                    ? "border-foreground bg-secondary text-foreground"
+                    : "border-border text-muted-foreground",
                 )}
               >
                 Launch strategy branch
@@ -183,8 +183,8 @@ export function BranchingDemoIsland() {
           </aside>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <article className="rounded-2xl border border-foreground/20 bg-background/85 p-3">
-              <header className="mb-3 flex items-center justify-between border-b border-foreground/15 pb-2">
+            <article className="rounded border border-border bg-background p-3">
+              <header className="mb-3 flex items-center justify-between border-b border-border pb-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Parent Branch
                 </span>
@@ -201,7 +201,7 @@ export function BranchingDemoIsland() {
                   className={cn(
                     "mx-1 rounded-sm border-b-2 px-1 text-left font-medium transition",
                     selectionActive
-                      ? "border-primary bg-primary/15 text-foreground"
+                      ? "border-foreground bg-secondary text-foreground"
                       : "border-transparent hover:border-foreground/40",
                   )}
                 >
@@ -216,7 +216,7 @@ export function BranchingDemoIsland() {
                   setAutoPlay(false);
                 }}
                 disabled={!selectionActive}
-                className="mt-4 inline-flex h-9 items-center rounded-full border border-foreground/20 px-4 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 inline-flex h-9 items-center rounded border border-border px-4 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Create Branch
               </button>
@@ -224,13 +224,13 @@ export function BranchingDemoIsland() {
 
             <article
               className={cn(
-                "rounded-2xl border bg-background/85 p-3 transition",
+                "rounded border bg-background p-3 transition",
                 childVisible
-                  ? "border-primary/55"
-                  : "border-foreground/20 opacity-70",
+                  ? "border-accent"
+                  : "border-border opacity-70",
               )}
             >
-              <header className="mb-3 flex items-center justify-between border-b border-foreground/15 pb-2">
+              <header className="mb-3 flex items-center justify-between border-b border-border pb-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Child Branch
                 </span>
@@ -244,7 +244,7 @@ export function BranchingDemoIsland() {
                     Great. Let&apos;s branch this path and design a launch checklist with risk gates,
                     fallback models, and onboarding milestones.
                   </p>
-                  <p className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs text-foreground">
+                  <p className="rounded border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-foreground">
                     New branch inherits context up to the selected span.
                   </p>
                 </div>

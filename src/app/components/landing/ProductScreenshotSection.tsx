@@ -2,7 +2,7 @@ export function ProductScreenshotSection() {
   return (
     <section
       id="product-screenshot"
-      className="mx-auto w-full max-w-6xl border-x border-b border-foreground/15 bg-background/80 px-4 py-6 md:px-6 md:py-9"
+      className="mx-auto w-full max-w-6xl border-x border-b border-border bg-background px-4 py-6 md:px-6 md:py-9"
       aria-labelledby="product-screenshot-heading"
     >
       <div className="mb-4 space-y-2">
@@ -22,7 +22,7 @@ export function ProductScreenshotSection() {
       </div>
 
       <div className="space-y-4">
-        <figure className="overflow-hidden rounded-2xl border border-foreground/20 bg-background shadow-sm">
+        <figure className="overflow-hidden rounded border border-border bg-background shadow-sm">
           <video
             className="block h-auto w-full"
             controls
@@ -40,7 +40,7 @@ export function ProductScreenshotSection() {
             </p>
           </video>
         </figure>
-        <figure className="overflow-hidden rounded-2xl border border-foreground/20 bg-background shadow-sm">
+        <figure className="overflow-hidden rounded border border-border bg-background shadow-sm">
           <img
             src="/landing-branching-screenshot.png"
             alt="Branch-Chat split view showing parent branch context on the left and active branch content on the right."
