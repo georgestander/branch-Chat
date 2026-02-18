@@ -187,12 +187,14 @@ async function parseCookieUserValue(options: {
 }
 
 function parseAuthFromHeaders(request: Request): AppAuth | null {
+  const cloudflareAccessEmailHeader = "cf-access-authenticated-user-email";
   const userIdHeaders = [
     "x-connexus-user-id",
     "x-clerk-user-id",
     "x-user-id",
   ];
   const emailHeaders = [
+    cloudflareAccessEmailHeader,
     "x-connexus-user-email",
     "x-clerk-user-email",
     "x-user-email",
@@ -208,7 +210,23 @@ function parseAuthFromHeaders(request: Request): AppAuth | null {
   }
 
   if (!headerUserId) {
-    return null;
+    const cloudflareAccessEmail = request.headers
+      .get(cloudflareAccessEmailHeader)
+      ?.trim()
+      .toLowerCase();
+    if (!cloudflareAccessEmail) {
+      return null;
+    }
+
+    const normalizedUserId = sanitizeUserId(cloudflareAccessEmail);
+    if (!normalizedUserId) {
+      return null;
+    }
+
+    return {
+      userId: normalizedUserId,
+      email: cloudflareAccessEmail,
+    };
   }
 
   const normalizedUserId = sanitizeUserId(headerUserId);

@@ -71,7 +71,7 @@ Owner: george
 ## Progress Tracker
 | ID | Workstream | Deliverable | Status | Acceptance Criteria | Evidence / Notes |
 |---|---|---|---|---|---|
-| P1 | Auth | Support Cloudflare Access email header identity | Not Started | AC-01 | Add tests for trusted header parsing + deny paths |
+| P1 | Auth | Support Cloudflare Access email header identity | Done | AC-01 | Added trusted CF Access email fallback in auth header parser + tests for trusted/denied paths in `src/app/shared/auth.server.test.ts` |
 | P2 | Server APIs | Remove demo lane from send contracts | Not Started | AC-02 | Update `sendMessage` input/output types and callers |
 | P3 | Account DO | Remove quota/pass endpoints, keep BYOK + prefs | Not Started | AC-02, AC-03 | Backward-safe state normalization for existing records |
 | P4 | Composer UX | Add BYOK-required gate in `/app`, remove pass UI | Not Started | AC-02, AC-05 | Block send until BYOK available; provider mismatch guidance |

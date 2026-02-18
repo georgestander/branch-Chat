@@ -386,3 +386,13 @@
 - Decisions: created `Docs/private-personal-prod-oss-plan.md` with locked decisions, scope, AC-01..AC-06, and P1..P8 tracker; ignored exact file path in `.gitignore` to keep it out of repo history.
 - Files: Docs/private-personal-prod-oss-plan.md, .gitignore, progress.txt.
 - Notes: no blockers; run validation loops before commit.
+2026-02-18 — Reviewed private personal-prod + OSS execution plan for implementation alignment. Ref: Docs/private-personal-prod-oss-plan.md (AC-01..AC-06, P1..P8).
+- Task: read and confirm actionable understanding of locked decisions, scope boundaries, acceptance criteria, and workstream order.
+- Decisions: execution should prioritize P1→P8 in order; keep landing public + protect `/app`; remove demo lane everywhere; enforce BYOK gate with dual persistence modes based on `BYOK_ENCRYPTION_SECRET`; keep `/sign-in` optional for OSS fallback.
+- Files: progress.txt.
+- Notes: no blockers; no code changes in this task.
+2026-02-18 — Completed P1 Cloudflare Access trusted-header identity support. Ref: Docs/private-personal-prod-oss-plan.md P1, AC-01.
+- Task: enable auth identity resolution from `cf-access-authenticated-user-email` when trusted headers are enabled; add deny-path coverage.
+- Decisions: keep existing trust gate (`AUTH_TRUST_IDENTITY_HEADERS`); when no user-id header exists, derive stable user id from lower-cased CF email header; keep default deny behavior when trust disabled or no trusted identity present.
+- Files: src/app/shared/auth.server.ts, src/app/shared/auth.server.test.ts, progress.txt, Docs/private-personal-prod-oss-plan.md (tracker status update, local/ignored).
+- Notes: validation pass after dependency bootstrap (`pnpm install` in this worktree): `pnpm types`, `npm run test`, `npm run lint`; review pass against main for touched diff found no additional issues.

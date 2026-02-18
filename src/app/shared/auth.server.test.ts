@@ -78,6 +78,20 @@ test("identity headers are ignored by default", async () => {
   assert.equal(auth, null);
 });
 
+test("cloudflare access email header is ignored unless trusted headers are enabled", async () => {
+  const auth = await resolveRequestAuth({
+    request: new Request("https://example.com/app", {
+      headers: {
+        "cf-access-authenticated-user-email": "person.one@example.com",
+      },
+    }),
+    response: { headers: new Headers() },
+    authRequired: true,
+  });
+
+  assert.equal(auth, null);
+});
+
 test("auth-required mode rejects unsigned cookie identity without signing secret", async () => {
   const auth = await resolveRequestAuth({
     request: new Request("https://example.com/app", {
@@ -107,6 +121,33 @@ test("identity headers can be enabled explicitly", async () => {
 
   assert.equal(auth?.userId, "trusted.user");
   assert.equal(auth?.email, "trusted@example.com");
+});
+
+test("cloudflare access email header can resolve identity when trusted headers are enabled", async () => {
+  const auth = await resolveRequestAuth({
+    request: new Request("https://example.com/app", {
+      headers: {
+        "cf-access-authenticated-user-email": "  Person.One@Example.com  ",
+      },
+    }),
+    response: { headers: new Headers() },
+    authRequired: true,
+    allowIdentityHeaders: true,
+  });
+
+  assert.equal(auth?.userId, "person.one-example.com");
+  assert.equal(auth?.email, "person.one@example.com");
+});
+
+test("auth-required mode denies when trusted headers are enabled but no trusted identity exists", async () => {
+  const auth = await resolveRequestAuth({
+    request: new Request("https://example.com/app"),
+    response: { headers: new Headers() },
+    authRequired: true,
+    allowIdentityHeaders: true,
+  });
+
+  assert.equal(auth, null);
 });
 
 test("legacy unsigned cookie requires explicit opt-in when signing is enabled", async () => {
