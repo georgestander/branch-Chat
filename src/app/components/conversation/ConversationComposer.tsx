@@ -137,6 +137,8 @@ const START_MODE_DEFAULTS: Record<
     tools: ["study-and-learn"],
   },
 };
+const DEMO_PASS_WARNING_THRESHOLD = 3;
+const DEMO_PASS_CRITICAL_THRESHOLD = 1;
 
 type ComposerLane = "demo" | "byok";
 type ComposerAccountStateResponse = Awaited<
@@ -298,6 +300,7 @@ export function ConversationComposer({
   const laneStorageKey = `${COMPOSER_LANE_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
+  const previousDemoRemainingRef = useRef<number | null>(null);
   const accountStateRequestIdRef = useRef(0);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuId = useId();
@@ -493,6 +496,10 @@ export function ConversationComposer({
   useEffect(() => {
     void loadComposerAccountState({ showLoading: true });
   }, [conversationId, loadComposerAccountState]);
+
+  useEffect(() => {
+    previousDemoRemainingRef.current = null;
+  }, [conversationId]);
 
   useEffect(() => {
     if (accountState?.byok.provider) {
@@ -1120,6 +1127,27 @@ export function ConversationComposer({
   const byokProviderLabel =
     accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
   const demoRemainingPasses = accountState?.quota.remaining ?? null;
+  const isDemoLaneExhausted =
+    selectedLane === "demo" &&
+    !isAccountStateLoading &&
+    demoRemainingPasses !== null &&
+    demoRemainingPasses <= 0;
+  const quotaChipText =
+    selectedLane === "byok" && byokConnected
+      ? "Unlimited"
+      : isAccountStateLoading
+        ? "Passes --"
+        : demoRemainingPasses === null
+          ? "Passes ?"
+          : `Passes ${demoRemainingPasses}/10`;
+  const quotaChipClassName =
+    selectedLane === "byok" && byokConnected
+      ? "border-emerald-400/40 text-emerald-200"
+      : isDemoLaneExhausted
+        ? "border-destructive/70 text-destructive"
+        : demoRemainingPasses !== null && demoRemainingPasses <= DEMO_PASS_CRITICAL_THRESHOLD
+          ? "border-amber-400/70 text-amber-200"
+          : "border-background/35 text-background/85";
   const quotaIndicatorText =
     selectedLane === "byok" && byokConnected
       ? "BYOK lane: unlimited via your key."
@@ -1128,10 +1156,95 @@ export function ConversationComposer({
         : demoRemainingPasses === null
           ? "Demo lane: pass balance unavailable."
           : `Demo lane: ${demoRemainingPasses} pass${demoRemainingPasses === 1 ? "" : "es"} remaining.`;
-  const isSendDisabled = isPending || hasPendingAttachments || hasErroredAttachments;
+  const sendDisabledReason = isPending
+    ? "Sending..."
+    : hasPendingAttachments
+      ? "Attachments uploading"
+      : hasErroredAttachments
+        ? "Resolve failed attachments"
+        : isDemoLaneExhausted
+          ? "No demo passes left"
+          : null;
+  const isSendDisabled = sendDisabledReason !== null;
+
+  useEffect(() => {
+    if (isAccountStateLoading || demoRemainingPasses === null) {
+      return;
+    }
+
+    const previousRemaining = previousDemoRemainingRef.current;
+    previousDemoRemainingRef.current = demoRemainingPasses;
+
+    if (
+      previousRemaining === null ||
+      demoRemainingPasses >= previousRemaining
+    ) {
+      return;
+    }
+
+    if (demoRemainingPasses === DEMO_PASS_WARNING_THRESHOLD) {
+      notify({
+        title: "3 free passes left",
+        description: "You are nearing the demo cap.",
+      });
+      console.info("[TRACE] quota:ui:threshold", {
+        conversationId,
+        threshold: DEMO_PASS_WARNING_THRESHOLD,
+        remaining: demoRemainingPasses,
+      });
+      return;
+    }
+
+    if (demoRemainingPasses === DEMO_PASS_CRITICAL_THRESHOLD) {
+      notify({
+        variant: "warning",
+        title: "1 free pass left",
+        description: "Your next demo message will consume the final pass.",
+      });
+      console.info("[TRACE] quota:ui:threshold", {
+        conversationId,
+        threshold: DEMO_PASS_CRITICAL_THRESHOLD,
+        remaining: demoRemainingPasses,
+      });
+      return;
+    }
+
+    if (demoRemainingPasses === 0) {
+      notify({
+        variant: "destructive",
+        title:
+          previousRemaining === DEMO_PASS_CRITICAL_THRESHOLD
+            ? "Last free pass used"
+            : "Free passes exhausted",
+        description: byokEnabled
+          ? "Connect your API key and switch to BYOK lane to continue."
+          : "All 10 demo passes are used for this account.",
+      });
+      console.info("[TRACE] quota:ui:threshold", {
+        conversationId,
+        threshold: 0,
+        remaining: demoRemainingPasses,
+      });
+    }
+  }, [
+    byokEnabled,
+    conversationId,
+    demoRemainingPasses,
+    isAccountStateLoading,
+    notify,
+  ]);
 
   const submitMessage = (): boolean => {
     if (isPending) {
+      return false;
+    }
+
+    if (isDemoLaneExhausted) {
+      setError(
+        byokEnabled
+          ? "Demo passes are exhausted. Connect or switch to BYOK to continue."
+          : "Demo passes are exhausted for this account.",
+      );
       return false;
     }
 
@@ -1295,7 +1408,7 @@ export function ConversationComposer({
         const demoCapReached =
           errorMessage.includes("Demo pass limit reached") ||
           errorMessage.includes("quota-exhausted");
-        if (demoCapReached && !byokConnected) {
+        if (demoCapReached) {
           setAccountState((previous) =>
             previous
               ? {
@@ -1307,7 +1420,11 @@ export function ConversationComposer({
                 }
               : previous,
           );
-          if (byokEnabled) {
+          if (byokConnected) {
+            setError(
+              "Demo passes are exhausted. Switch to BYOK lane to keep chatting.",
+            );
+          } else if (byokEnabled) {
             setByokProvider(getProviderForModel(conversationModel));
             setIsByokPanelOpen(true);
             setError(
@@ -1393,9 +1510,19 @@ export function ConversationComposer({
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{isAdvancedControlsOpen ? "Hide Controls" : "Show Controls"}</span>
         </button>
-        <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
-          {`Mode ${currentPresetLabel}`}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
+            {`Mode ${currentPresetLabel}`}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]",
+              quotaChipClassName,
+            )}
+          >
+            {quotaChipText}
+          </span>
+        </div>
       </div>
       {isAdvancedControlsOpen ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-background/20 bg-foreground/90 px-3 py-2">
@@ -1547,6 +1674,47 @@ export function ConversationComposer({
             document.body,
           )
         : null}
+      {isDemoLaneExhausted ? (
+        <div className="rounded-2xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-foreground">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-destructive">
+            Free passes exhausted
+          </p>
+          <p className="mt-1 text-xs text-foreground/90">
+            You have used all 10 demo passes.
+            {byokEnabled
+              ? " Connect your API key and switch to BYOK lane to continue."
+              : " BYOK is unavailable in this environment."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!byokEnabled) {
+                  setError(
+                    byokUnavailableReason ||
+                      "BYOK is disabled for this environment.",
+                  );
+                  return;
+                }
+                setIsByokPanelOpen(true);
+              }}
+              disabled={!byokEnabled}
+              className="interactive-target inline-flex items-center rounded-full border border-destructive/50 bg-background px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {byokConnected ? "Manage BYOK key" : "Connect API key"}
+            </button>
+            {byokConnected ? (
+              <button
+                type="button"
+                onClick={() => setSelectedLane("byok")}
+                className="interactive-target inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Switch to BYOK lane
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {(hasSelectedTools || attachments.length > 0) ? (
         <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
           {hasSelectedTools ? (
@@ -1949,6 +2117,15 @@ export function ConversationComposer({
           </div>
         ) : null}
 
+        {sendDisabledReason && !error ? (
+          <span
+            className="hidden text-[10px] font-medium uppercase tracking-[0.16em] text-background/65 md:inline-flex"
+            aria-live="polite"
+          >
+            {sendDisabledReason}
+          </span>
+        ) : null}
+
         <button
           type="submit"
           disabled={isSendDisabled}
@@ -2014,12 +2191,23 @@ export function ConversationComposer({
           <p className="text-xs text-destructive" role="status">
             {error}
           </p>
+        ) : sendDisabledReason ? (
+          <span className="text-xs text-background/75">
+            {sendDisabledReason}
+          </span>
         ) : (
           <span className="text-xs text-background/70">
             {quotaIndicatorText} · Enter to send · Shift+Enter for line break
           </span>
         )}
       </div>
+      <p
+        className="sr-only"
+        role="status"
+        aria-live={isDemoLaneExhausted ? "assertive" : "polite"}
+      >
+        {quotaIndicatorText}
+      </p>
     </div>
   );
 }
