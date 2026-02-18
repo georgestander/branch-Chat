@@ -142,6 +142,13 @@ const START_MODE_DEFAULTS: Record<
     tools: ["study-and-learn"],
   },
 };
+const OPENROUTER_PRESET_MODEL_CANDIDATES = [
+  "openai/chatgpt-4o-latest",
+  "openai/gpt-5-chat",
+  "openai/gpt-4.1-mini",
+  "openai/gpt-4o-mini",
+  "openrouter/auto",
+] as const;
 const DEFAULT_DEMO_PASS_TOTAL = 3;
 const DEMO_PASS_WARNING_THRESHOLD = 2;
 const DEMO_PASS_CRITICAL_THRESHOLD = 1;
@@ -194,6 +201,26 @@ function isSameToolSelection(
     }
   }
   return true;
+}
+
+function resolveOpenRouterPresetModelId(
+  models: OpenRouterModelOption[],
+  fallbackModel: string,
+): string | null {
+  for (const rawId of OPENROUTER_PRESET_MODEL_CANDIDATES) {
+    const match = models.find((model) => model.rawId === rawId);
+    if (match) {
+      return match.id;
+    }
+  }
+  if (isOpenRouterModel(fallbackModel)) {
+    return fallbackModel;
+  }
+  const autoModel = models.find((model) => model.rawId === "openrouter/auto");
+  if (autoModel) {
+    return autoModel.id;
+  }
+  return models[0]?.id ?? null;
 }
 
 function inferComposerPreset(options: {
@@ -1064,6 +1091,7 @@ export function ConversationComposer({
     async (
       nextModel: string,
       nextEffort: "low" | "medium" | "high" | null,
+      presetOverride?: ComposerPreset,
     ) => {
       const normalizedEffort = supportsReasoningEffortModel(nextModel)
         ? (nextEffort ?? "low")
@@ -1071,11 +1099,13 @@ export function ConversationComposer({
       const nextTools = sanitizeStoredComposerTools(selectedTools).filter((tool) =>
         isWebSearchSupportedModel(nextModel) ? true : tool !== "web-search",
       );
-      const inferredPreset = inferComposerPreset({
-        model: nextModel,
-        reasoningEffort: normalizedEffort,
-        tools: nextTools,
-      });
+      const inferredPreset =
+        presetOverride ??
+        inferComposerPreset({
+          model: nextModel,
+          reasoningEffort: normalizedEffort,
+          tools: nextTools,
+        });
       const success = await onConversationSettingsChange(nextModel, normalizedEffort, {
         preset: inferredPreset,
         tools: nextTools,
@@ -1162,6 +1192,38 @@ export function ConversationComposer({
         : demoRemainingPasses === null
           ? "Demo lane: pass balance unavailable."
           : `Demo lane: ${demoRemainingPasses} pass${demoRemainingPasses === 1 ? "" : "es"} remaining.`;
+  const openRouterPresetModelId = useMemo(
+    () => resolveOpenRouterPresetModelId(openRouterModels, conversationModel),
+    [conversationModel, openRouterModels],
+  );
+  const shouldRoutePresetsToOpenRouter =
+    (selectedLane === "byok" && byokConnected && connectedByokProvider === "openrouter") ||
+    openRouterSelected;
+  const applyPresetModelSelection = useCallback(
+    (
+      preset: "fast" | "reasoning",
+      effort: "low" | "medium" | "high" | null,
+    ) => {
+      if (shouldRoutePresetsToOpenRouter) {
+        if (!openRouterPresetModelId) {
+          setError(
+            "OpenRouter models are still loading. Please try again in a moment.",
+          );
+          return;
+        }
+        const presetLabel: ComposerPreset = preset === "fast" ? "fast" : "reasoning";
+        void handleModelSelection(openRouterPresetModelId, null, presetLabel);
+        return;
+      }
+      const baseModel = START_MODE_DEFAULTS[preset].model;
+      void handleModelSelection(baseModel, preset === "fast" ? null : effort);
+    },
+    [
+      handleModelSelection,
+      openRouterPresetModelId,
+      shouldRoutePresetsToOpenRouter,
+    ],
+  );
   const sendDisabledReason = isPending
     ? "Sending..."
     : hasPendingAttachments
@@ -2084,7 +2146,7 @@ export function ConversationComposer({
                 role="menuitemradio"
                 aria-checked={!isReasoningModel}
                 onClick={() => {
-                  void handleModelSelection("gpt-5-chat-latest", null);
+                  applyPresetModelSelection("fast", null);
                 }}
                 disabled={conversationSettingsSaving}
                 className={cn(
@@ -2112,7 +2174,7 @@ export function ConversationComposer({
                     role="menuitemradio"
                     aria-checked={isSelected}
                     onClick={() => {
-                      void handleModelSelection("gpt-5-mini", option);
+                      applyPresetModelSelection("reasoning", option);
                     }}
                     disabled={conversationSettingsSaving}
                     className={cn(

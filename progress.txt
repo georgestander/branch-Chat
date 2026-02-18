@@ -316,3 +316,8 @@
 - Decisions: copied source video into `public/` for worker static serving; embedded `<video controls playsInline preload="metadata">` in landing product section; added README inline video block + direct fallback link for renderers that strip video tags.
 - Files: public/branch-chat-demo.mov, src/app/components/landing/ProductScreenshotSection.tsx, README.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Provider-aware preset routing in composer (OpenRouter-compatible Fast/Reasoning). Ref: Docs/PRD.md Chat engine model/settings overrides.
+- Task: Fast/Low/Medium/High controls were hardcoded to OpenAI models and caused mismatch for OpenRouter usage.
+- Decisions: added OpenRouter preset model resolver (ChatGPT-like candidates then `openrouter/auto` fallback); Fast/Reasoning menu actions now route through provider-aware resolver and apply preset intent while keeping live streaming path unchanged.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
