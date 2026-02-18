@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -249,6 +250,7 @@ interface ConversationComposerProps {
   conversationSettingsSaving: boolean;
   conversationSettingsError: string | null;
   onClearConversationSettingsError: () => void;
+  branchContextExcerpt?: string | null;
   bootstrapMessage?: string | null;
   onBootstrapConsumed?: () => void;
 }
@@ -267,6 +269,7 @@ export function ConversationComposer({
   conversationSettingsSaving,
   conversationSettingsError,
   onClearConversationSettingsError,
+  branchContextExcerpt,
   bootstrapMessage,
   onBootstrapConsumed,
 }: ConversationComposerProps) {
@@ -354,6 +357,19 @@ export function ConversationComposer({
   const modelBadgeClassName =
     "inline-flex w-10 shrink-0 items-center justify-end text-[10px] leading-none text-current";
   const BASE_TEXTAREA_HEIGHT = 20;
+  const branchContextLabel = useMemo(() => {
+    if (!branchContextExcerpt) {
+      return null;
+    }
+    const normalized = branchContextExcerpt.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return null;
+    }
+    if (normalized.length <= 110) {
+      return normalized;
+    }
+    return `${normalized.slice(0, 110).trimEnd()}…`;
+  }, [branchContextExcerpt]);
 
   useEffect(() => {
     if (!autoFocus) {
@@ -1352,6 +1368,21 @@ export function ConversationComposer({
           void handleFilesSelected(event.target.files);
         }}
       />
+      {branchContextLabel ? (
+        <div className="px-1">
+          <div
+            className="rounded-xl border border-background/30 bg-background/10 px-3 py-1.5"
+            title={`From parent selection: “${branchContextLabel}”`}
+          >
+            <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-background/70">
+              From parent selection
+            </p>
+            <p className="mt-0.5 truncate text-[11px] font-semibold text-background">
+              “{branchContextLabel}”
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <button
           type="button"

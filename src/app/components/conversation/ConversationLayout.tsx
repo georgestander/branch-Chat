@@ -705,6 +705,7 @@ export function ConversationLayout({
             messages={activeMessages}
             conversationId={conversationId}
             isActive
+            parentBranchTitle={parentBranch?.title ?? null}
             composerBootstrapMessage={bootstrapMessage}
             onComposerBootstrapConsumed={handleBootstrapConsumed}
             className={cn(
