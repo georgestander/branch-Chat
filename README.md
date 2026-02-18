@@ -33,6 +33,33 @@ Click the preview image to open the GitHub video player.
 - Personal production (private): Cloudflare Access-protected `/app` with trusted identity headers and encrypted BYOK persistence (`AUTH_REQUIRED=true`, `AUTH_TRUST_IDENTITY_HEADERS=true`, `AUTH_COOKIE_SECRET`, `BYOK_ENCRYPTION_SECRET`).
 - OSS self-host: auth optional by default (`AUTH_REQUIRED` off); BYOK is still required before send, and if `BYOK_ENCRYPTION_SECRET` is unset the app uses session-only BYOK keys (cleared on reload).
 
+## Cloudflare Access Setup (Private Personal Deployment)
+
+Use this when you want your personal deployment protected by Cloudflare Access login.
+
+1. Configure Worker runtime values in Cloudflare:
+   - `AUTH_REQUIRED=true`
+   - `AUTH_TRUST_IDENTITY_HEADERS=true`
+   - `AUTH_ALLOW_LEGACY_COOKIE=false`
+   - `LANDING_HOSTED_URL=/sign-in?redirectTo=/app` (optional, used by landing login CTA)
+2. Configure Worker secrets in Cloudflare:
+   - `OPENAI_API_KEY`
+   - `AUTH_COOKIE_SECRET`
+   - `BYOK_ENCRYPTION_SECRET`
+3. In Cloudflare Zero Trust, enable at least one login method:
+   - `Zero Trust -> Settings -> Authentication -> Login methods`
+4. Add a Cloudflare Access application for your app route:
+   - `Zero Trust -> Access -> Applications -> Add application -> Self-hosted`
+   - Domain: your app host (for example `chat.example.com`)
+   - Path: `/app*`
+   - Policy: allow your user/group/email
+5. Recommended: add matching Access applications for:
+   - `/events*` (streaming)
+   - `/_uploads*` (uploads)
+6. Verify in an incognito window:
+   - `https://<your-host>/app` prompts Access login then loads the app
+   - `https://<your-host>/` remains public landing
+
 ## Quick Start
 
 1. Install dependencies:

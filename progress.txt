@@ -456,3 +456,8 @@
 - Decisions: added `signInHref` to landing link contract resolved from `LANDING_HOSTED_URL` fallback `/sign-in?redirectTo=/app`; exposed `Log In` CTA in top bar + hero; documented new landing login path in `README.md` and `Docs/setup.md`.
 - Files: src/app/components/landing/types.ts, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/TopBarClient.tsx, src/app/components/landing/HeroSection.tsx, README.md, Docs/setup.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — README Cloudflare Access setup clarification. Ref: Docs/private-personal-prod-oss-plan.md AC-01/AC-06.
+- Task: make personal-account Cloudflare Access setup explicit in README with concrete steps.
+- Decisions: added dedicated "Cloudflare Access Setup (Private Personal Deployment)" section with required Worker flags/secrets, Zero Trust login-method/app-policy steps, recommended `/events*` + `/_uploads*` coverage, and verification checklist.
+- Files: README.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
