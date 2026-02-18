@@ -391,3 +391,8 @@
 - Decisions: removed render-time sessionStorage fallback; restore persisted stream id only when latest visible message is an unfinished assistant (`tokenUsage` null), otherwise clear stale storage key.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — README demo now links to YouTube with thumbnail preview. Ref: Docs/public-beta-launch-plan.md #8 (demo visibility).
+- Task: replace repo-local video link in README with hosted YouTube playback while keeping click-to-preview UX.
+- Decisions: swapped demo link target to `https://youtu.be/MgnB9d0uLrI` and thumbnail source to YouTube `hqdefault` image.
+- Files: README.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

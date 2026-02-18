@@ -6,9 +6,9 @@ The project is designed around branchable conversations, Durable Object persiste
 
 ## Demo Video
 
-[![Watch the Branch Chat demo video](./public/landing-branching-screenshot.png)](./public/branch-chat-demo.mp4)
+[![Watch the Branch Chat demo video](https://img.youtube.com/vi/MgnB9d0uLrI/hqdefault.jpg)](https://youtu.be/MgnB9d0uLrI)
 
-Click the preview image to open the GitHub video player.
+Click the preview image to watch the YouTube demo.
 
 ## Documentation
 
