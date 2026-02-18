@@ -25,6 +25,14 @@ export function HeroSection({ links }: HeroSectionProps) {
 
           <div className="flex flex-wrap items-center gap-2">
             <LandingTrackedLink
+              href={links.signInHref}
+              eventName="landing_cta_click"
+              eventData={{ cta: "login", location: "hero" }}
+              className="inline-flex h-10 items-center rounded-full border border-foreground/20 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-foreground transition hover:bg-foreground hover:text-background"
+            >
+              Log In
+            </LandingTrackedLink>
+            <LandingTrackedLink
               href={links.docsHref}
               target="_blank"
               rel="noopener noreferrer"

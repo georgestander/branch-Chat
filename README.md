@@ -50,7 +50,8 @@ Click the preview image to open the GitHub video player.
    ```bash
    pnpm dev
    ```
-7. Open [http://localhost:5174](http://localhost:5174).
+7. Open [http://localhost:5174](http://localhost:5174), then use `Log In` from the landing page (or go directly to `/sign-in?redirectTo=/app`).
+8. If `AUTH_REQUIRED` is off, you can also open `/app` directly with guest fallback auth.
 
 ## Scripts
 

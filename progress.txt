@@ -446,3 +446,13 @@
 - Decisions: added shared `pruneExpiredCacheEntries(now)` and run it before cache lookup so expired keys are evicted across all users, not only on same-user reuse.
 - Files: src/app/shared/openrouterModels.server.ts, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed security best-practices audit report. Ref: Docs/PRD.md Non-functional (security posture).
+- Task: run explicit security review (`$security-best-practices`) across auth/session, routing, uploads, markdown/CSP, and server action boundaries.
+- Decisions: prioritized exploitability-first findings; flagged auth impersonation + header trust + upload size bypass as top risks; documented env-dependent blast radius for optional-auth profile.
+- Files: security_best_practices_report.md, progress.txt.
+- Notes: report includes line-referenced Critical/High/Medium findings and remediation; no code changes in this task.
+2026-02-18 — Landing login CTA + docs update. Ref: Docs/private-personal-prod-oss-plan.md AC-01/AC-06.
+- Task: add direct login entrypoint from home and document flow in setup/readme.
+- Decisions: added `signInHref` to landing link contract resolved from `LANDING_HOSTED_URL` fallback `/sign-in?redirectTo=/app`; exposed `Log In` CTA in top bar + hero; documented new landing login path in `README.md` and `Docs/setup.md`.
+- Files: src/app/components/landing/types.ts, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/TopBarClient.tsx, src/app/components/landing/HeroSection.tsx, README.md, Docs/setup.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

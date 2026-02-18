@@ -44,6 +44,10 @@ function resolveLandingLinks(requestInfo: AppRequestInfo): LandingLinks {
   );
 
   return {
+    signInHref: normalizeExternalHref(
+      env.LANDING_HOSTED_URL,
+      "/sign-in?redirectTo=/app",
+    ),
     repoHref: repoUrl,
     docsHref: resolveRepoDocHref(repoUrl, "/blob/main/Docs/setup.md"),
     securityHref: resolveRepoDocHref(repoUrl, "/blob/main/SECURITY.md"),

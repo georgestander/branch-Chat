@@ -36,6 +36,7 @@ See `Docs/env-vars.md` for full details.
    ```
 5. Open [http://localhost:5174](http://localhost:5174):
    - `/` is the landing page.
+   - `Log In` on the landing page routes to `/sign-in?redirectTo=/app` (or `LANDING_HOSTED_URL` if configured).
    - `/app` is the chat app.
    - `/sign-in` remains available as an optional fallback sign-in flow.
 

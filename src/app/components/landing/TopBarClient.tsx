@@ -53,6 +53,14 @@ export function TopBarClient({ links }: TopBarClientProps) {
         <nav className="flex items-center gap-2" aria-label="Primary">
           <ThemeToggle compact />
           <LandingTrackedLink
+            href={links.signInHref}
+            eventName="landing_cta_click"
+            eventData={{ cta: "login", location: "topbar" }}
+            className="rounded-full border border-foreground/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-foreground hover:text-background"
+          >
+            Log In
+          </LandingTrackedLink>
+          <LandingTrackedLink
             href={links.repoHref}
             target="_blank"
             rel="noopener noreferrer"
