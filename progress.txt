@@ -496,3 +496,8 @@
 - Decisions: added `CI` workflow jobs `preflight/types/test/lint/build`; added `Security` workflow job `dependency-review`; preflight fails on merge markers and package.json-without-lockfile updates; used Node 22 + pnpm cache for faster OSS iteration.
 - Files: .github/workflows/ci.yml, .github/workflows/security.yml, progress.txt.
 - Notes: run local feedback loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no blockers.
+2026-02-18 — Documented required PR CI checks in contribution guide. Ref: Docs/PRD.md non-functional quality gates.
+- Task: update contributor docs with exact required GitHub status checks and preflight expectations.
+- Decisions: listed required checks by exact name to match branch protection; documented preflight lockfile/merge-marker guard; reminded contributors to wait for green checks before merge.
+- Files: CONTRIBUTING.md, progress.txt.
+- Notes: docs-only change; run standard feedback loops before commit.
