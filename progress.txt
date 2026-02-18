@@ -471,3 +471,8 @@
 - Decisions: wrapped direct upload stream with server-side byte counter and abort > `UPLOAD_MAX_SIZE_BYTES`; added finalize guard to delete + reject oversized stored objects.
 - Files: src/app/shared/uploadsProxy.server.ts, src/app/shared/uploads.server.ts, progress.txt.
 - Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Redacted upload-ingestion logs to avoid content leakage. Ref: Docs/PRD.md Non-functional (security posture).
+- Task: remove user-content previews from ingestion traces/errors.
+- Decisions: replaced parser-failure content snippet logging with output length only; replaced ingest-success preview text with token-count metadata.
+- Files: src/app/shared/uploads.ingest.server.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
