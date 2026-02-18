@@ -381,3 +381,8 @@
 - Decisions: executed agent-browser + live trace sweep on localhost:5180 across fresh signed identities to reset demo quotas; marked each pending check as ✅/❌/⚠️ with trace evidence; captured blockers (`STUDY_LEARN_WORKFLOW_ID` unset, no `tools:invoke` handler path observed) and defects (`copy Retry stuck`, `study+gpt-5-mini temperature`, docx/png ingestion issues).
 - Files: Docs/testing-report.md, progress.txt.
 - Notes: reran required loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no unrelated files staged.
+2026-02-18 — Bounded OpenRouter model cache growth for BYOK keys. Ref: Docs/PRD.md Performance & Observability cache health.
+- Task: prevent process-global OpenRouter model cache from unbounded per-user growth.
+- Decisions: added cache pruning on each request path (expire stale entries) + size cap eviction by oldest `lastAccessedAt`; traced evictions via `openrouter:models:cache-pruned`.
+- Files: src/app/shared/openrouterModels.server.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
