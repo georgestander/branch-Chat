@@ -381,3 +381,8 @@
 - Decisions: executed agent-browser + live trace sweep on localhost:5180 across fresh signed identities to reset demo quotas; marked each pending check as ✅/❌/⚠️ with trace evidence; captured blockers (`STUDY_LEARN_WORKFLOW_ID` unset, no `tools:invoke` handler path observed) and defects (`copy Retry stuck`, `study+gpt-5-mini temperature`, docx/png ingestion issues).
 - Files: Docs/testing-report.md, progress.txt.
 - Notes: reran required loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no unrelated files staged.
+2026-02-18 — Added private execution plan doc with acceptance criteria + progress tracker. Ref: Docs/PRD.md project planning/governance alignment.
+- Task: save personal production + OSS self-host plan in docs with explicit ACs and trackable status table; keep file local-only.
+- Decisions: created `Docs/private-personal-prod-oss-plan.md` with locked decisions, scope, AC-01..AC-06, and P1..P8 tracker; ignored exact file path in `.gitignore` to keep it out of repo history.
+- Files: Docs/private-personal-prod-oss-plan.md, .gitignore, progress.txt.
+- Notes: no blockers; run validation loops before commit.
