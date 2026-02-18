@@ -2226,17 +2226,23 @@ export function ConversationComposer({
           )
         : null}
 
-      <div className="flex items-center justify-center px-2">
+      <div className="flex items-center justify-between gap-2 px-2">
+        <span
+          className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-background/75"
+          title={currentModelLabel}
+        >
+          {`Model ${currentModelLabel}`}
+        </span>
         {error ? (
-          <p className="text-xs text-destructive" role="status">
+          <p className="text-right text-xs text-destructive" role="status">
             {error}
           </p>
         ) : sendDisabledReason ? (
-          <span className="text-xs text-background/75">
+          <span className="text-right text-xs text-background/75">
             {sendDisabledReason}
           </span>
         ) : (
-          <span className="text-xs text-background/70">
+          <span className="text-right text-xs text-background/70">
             {quotaIndicatorText} · Enter to send · Shift+Enter for line break
           </span>
         )}
