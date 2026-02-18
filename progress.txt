@@ -476,3 +476,8 @@
 - Decisions: replaced parser-failure content snippet logging with output length only; replaced ingest-success preview text with token-count metadata.
 - Files: src/app/shared/uploads.ingest.server.ts, progress.txt.
 - Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Tightened production CSP (removed `unsafe-eval`). Ref: Docs/PRD.md Non-functional (security posture).
+- Task: reduce XSS blast radius while preserving local dev tooling compatibility.
+- Decisions: split CSP by env; keep `unsafe-eval` only in dev server mode; production `script-src` now nonce-based without eval.
+- Files: src/app/headers.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).

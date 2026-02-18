@@ -3,6 +3,7 @@ import { RouteMiddleware } from "rwsdk/router";
 export const setCommonHeaders =
   (): RouteMiddleware =>
   ({ response, rw: { nonce } }) => {
+    const isDev = import.meta.env.VITE_IS_DEV_SERVER;
     if (!import.meta.env.VITE_IS_DEV_SERVER) {
       // Forces browsers to always use HTTPS for a specified time period (2 years)
       response.headers.set(
@@ -24,8 +25,11 @@ export const setCommonHeaders =
     );
 
     // Defines trusted sources for content loading and script execution:
+    const scriptSrc = isDev
+      ? `'self' 'unsafe-eval' 'nonce-${nonce}' https://challenges.cloudflare.com`
+      : `'self' 'nonce-${nonce}' https://challenges.cloudflare.com`;
     response.headers.set(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'self'; frame-src 'self' https://challenges.cloudflare.com; object-src 'none';`,
+      `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'self'; frame-src 'self' https://challenges.cloudflare.com; object-src 'none';`,
     );
   };
