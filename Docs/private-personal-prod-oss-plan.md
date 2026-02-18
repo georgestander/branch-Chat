@@ -77,7 +77,7 @@ Owner: george
 | P4 | Composer UX | Add BYOK-required gate in `/app`, remove pass UI | Done | AC-02, AC-05 | Composer now blocks sends until persisted/session BYOK exists, enforces provider mismatch guidance, removes demo/pass lane UI, and supports session-only keys when server BYOK persistence is unavailable |
 | P5 | Sidebar UX | Remove lane preference and pass labels | Done | AC-02 | Removed sidebar lane preference/pass UI, deleted lane preference module, and kept sidebar account modal focused on BYOK connection status only |
 | P6 | Sign-in Copy | Remove demo wording, keep optional fallback role | Done | AC-06 | Updated `/sign-in` helper text to neutral fallback wording without demo/pass language |
-| P7 | Docs | Update setup/env/readme for prod vs self-host | Not Started | AC-06 | Explicit config matrix and examples |
+| P7 | Docs | Update setup/env/readme for prod vs self-host | Done | AC-06 | Added deployment-profile matrices + BYOK persistence/session behavior details across `Docs/setup.md`, `Docs/env-vars.md`, and `README.md` (plus `Docs/architecture.md` AccountDO wording alignment) |
 | P8 | Validation | Run all feedback loops after each logical change | Not Started | AC-01..AC-06 | `pnpm types`, `npm run test`, `npm run lint` |
 
 ## Execution Notes

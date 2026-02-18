@@ -416,3 +416,8 @@
 - Decisions: deleted `lanePreference` module entirely; removed default-lane/pass indicators and persistence calls from `ConversationSidebar` while preserving BYOK connect/disconnect actions; updated `/sign-in` body copy to neutral optional-fallback wording.
 - Files: src/app/pages/conversation/ConversationSidebar.tsx, src/app/components/conversation/lanePreference.ts (deleted), src/app/pages/sign-in/SignInPage.tsx, Docs/private-personal-prod-oss-plan.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed P7 documentation split for personal-prod vs OSS self-host. Ref: Docs/private-personal-prod-oss-plan.md P7, AC-06.
+- Task: update setup/env/readme guidance to clearly describe production-private defaults and self-host-first defaults.
+- Decisions: added explicit deployment-profile matrices; documented BYOK persistence (`BYOK_ENCRYPTION_SECRET`) vs session-only fallback behavior; aligned architecture wording so `AccountDO` no longer references removed quota/pass concepts.
+- Files: Docs/env-vars.md, Docs/setup.md, README.md, Docs/architecture.md, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

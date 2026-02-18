@@ -24,9 +24,14 @@ Click the preview image to open the GitHub video player.
 - Conversation graph state persists in Cloudflare Durable Objects:
   - `ConversationStoreDO` (per-conversation graph + messages)
   - `ConversationDirectoryDO` (conversation list metadata)
-  - `AccountDO` (per-user quota + BYOK metadata)
+  - `AccountDO` (per-user BYOK metadata + composer preference)
 - Mutations run through server functions in `src/app/pages/conversation/functions.ts` (`"use server"`).
 - Client islands in `src/app/components/**` handle interaction-only concerns (pane resizing, keyboard shortcuts, optimistic UI).
+
+## Deployment Profiles
+
+- Personal production (private): Cloudflare Access-protected `/app` with trusted identity headers and encrypted BYOK persistence (`AUTH_REQUIRED=true`, `AUTH_TRUST_IDENTITY_HEADERS=true`, `AUTH_COOKIE_SECRET`, `BYOK_ENCRYPTION_SECRET`).
+- OSS self-host: auth optional by default (`AUTH_REQUIRED` off); BYOK is still required before send, and if `BYOK_ENCRYPTION_SECRET` is unset the app uses session-only BYOK keys (cleared on reload).
 
 ## Quick Start
 
@@ -39,11 +44,13 @@ Click the preview image to open the GitHub video player.
    cp .dev.vars.example .dev.vars
    ```
 3. Add required keys in `.dev.vars` (at minimum `OPENAI_API_KEY`).
-4. Start local development:
+4. Optional but recommended for persisted BYOK keys: set `BYOK_ENCRYPTION_SECRET`.
+5. For private production-style auth locally: set `AUTH_REQUIRED=true`, `AUTH_COOKIE_SECRET`, and `AUTH_TRUST_IDENTITY_HEADERS=true`.
+6. Start local development:
    ```bash
    pnpm dev
    ```
-5. Open [http://localhost:5174](http://localhost:5174).
+7. Open [http://localhost:5174](http://localhost:5174).
 
 ## Scripts
 
