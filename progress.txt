@@ -196,3 +196,8 @@
 - Decisions: branch-create navigation now sets `compare=1` so new child opens with parent pane visible; hide redundant active-branch header label when source context exists to free horizontal room; promote source excerpt to primary-styled chip and include parent branch title label; surface same excerpt in composer as compact `From parent selection` context line.
 - Files: src/app/components/conversation/BranchableMessage.tsx, src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/ConversationComposer.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; next manual smoke = create branch from selection and verify compare-open + header/composer context at desktop/mobile widths.
+2026-02-18 — Composer branch-context auto-hide after first child send. Ref: Docs/PRD.md Core Experience UX affordance follow-up.
+- Task: hide pinned `From parent selection` composer context after first successful message on child branch.
+- Decisions: use persisted branch message presence (`role=user`) rather than optimistic state so context remains on send failures and disappears only after real persist.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.

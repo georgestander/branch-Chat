@@ -420,6 +420,11 @@ export function BranchColumn({
     return [...merged.values()].sort(compareRenderedMessages);
   }, [messages, optimisticMessages, persistedMessages]);
 
+  const hasPersistedUserMessage = useMemo(() => {
+    const persistedBranchMessages = [...messages, ...persistedMessages];
+    return persistedBranchMessages.some((message) => message.role === "user");
+  }, [messages, persistedMessages]);
+
   const visibleMessages = useMemo(
     () => combinedMessages.filter((message) => message.role !== "system"),
     [combinedMessages],
@@ -680,7 +685,7 @@ export function BranchColumn({
                 conversationSettingsSaving={conversationSettingsSaving}
                 conversationSettingsError={conversationSettingsError}
                 onClearConversationSettingsError={onClearConversationSettingsError}
-                branchContextExcerpt={referenceText}
+                branchContextExcerpt={hasPersistedUserMessage ? null : referenceText}
                 bootstrapMessage={composerBootstrapMessage}
                 onBootstrapConsumed={onComposerBootstrapConsumed}
               />
