@@ -56,11 +56,12 @@ import { emitStartStreaming } from "@/app/components/conversation/streamingEvent
 import type { ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import {
-  isWebSearchSupportedModel,
+  isWebSearchSelectableModel,
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
 import {
+  OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES,
   isOpenRouterModel,
   stripOpenRouterPrefix,
   type OpenRouterModelOption,
@@ -142,13 +143,6 @@ const START_MODE_DEFAULTS: Record<
     tools: ["study-and-learn"],
   },
 };
-const OPENROUTER_PRESET_MODEL_CANDIDATES = [
-  "openai/chatgpt-4o-latest",
-  "openai/gpt-5-chat",
-  "openai/gpt-4.1-mini",
-  "openai/gpt-4o-mini",
-  "openrouter/auto",
-] as const;
 const DEFAULT_DEMO_PASS_TOTAL = 3;
 const DEMO_PASS_WARNING_THRESHOLD = 2;
 const DEMO_PASS_CRITICAL_THRESHOLD = 1;
@@ -207,7 +201,7 @@ function resolveOpenRouterPresetModelId(
   models: OpenRouterModelOption[],
   fallbackModel: string,
 ): string | null {
-  for (const rawId of OPENROUTER_PRESET_MODEL_CANDIDATES) {
+  for (const rawId of OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES) {
     const match = models.find((model) => model.rawId === rawId);
     if (match) {
       return match.id;
@@ -346,7 +340,7 @@ export function ConversationComposer({
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
-  const webSearchSupported = isWebSearchSupportedModel(conversationModel);
+  const webSearchSelectable = isWebSearchSelectableModel(conversationModel);
   const { notify } = useToast();
   const reasoningOptions: Array<"low" | "medium" | "high"> = [
     "low",
@@ -439,12 +433,12 @@ export function ConversationComposer({
 
   useEffect(() => {
     const defaults = sanitizeStoredComposerTools(composerTools).filter((tool) =>
-      webSearchSupported ? true : tool !== "web-search",
+      webSearchSelectable ? true : tool !== "web-search",
     );
     setSelectedTools((previous) =>
       isSameToolSelection(previous, defaults) ? previous : defaults,
     );
-  }, [composerTools, webSearchSupported]);
+  }, [composerTools, webSearchSelectable]);
 
   useEffect(() => {
     const storedLane = readComposerLanePreference({ conversationId });
@@ -993,7 +987,7 @@ export function ConversationComposer({
       const normalizedEffort = supportsReasoningEffortModel(nextModel)
         ? (nextEffort ?? "low")
         : null;
-      const webSearchSupportedForModel = isWebSearchSupportedModel(nextModel);
+      const webSearchSupportedForModel = isWebSearchSelectableModel(nextModel);
       const normalizedTools = sanitizeStoredComposerTools(nextToolsInput).filter((tool) =>
         webSearchSupportedForModel ? true : tool !== "web-search",
       );
@@ -1013,7 +1007,7 @@ export function ConversationComposer({
   );
 
   useEffect(() => {
-    if (webSearchSupported) {
+    if (webSearchSelectable) {
       return;
     }
     if (!selectedTools.includes("web-search")) {
@@ -1022,12 +1016,14 @@ export function ConversationComposer({
     const nextTools = selectedTools.filter((tool) => tool !== "web-search");
     setSelectedTools(nextTools);
     persistComposerDefaults(nextTools);
-  }, [persistComposerDefaults, selectedTools, webSearchSupported]);
+  }, [persistComposerDefaults, selectedTools, webSearchSelectable]);
 
   const handleToolSelect = useCallback(
     (tool: ToolOption["id"]) => {
-      if (tool === "web-search" && !webSearchSupported) {
-        setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+      if (tool === "web-search" && !webSearchSelectable) {
+        setError(
+          "Web search is unavailable for this model. Switch to Fast chat or OpenRouter ChatGPT.",
+        );
         setIsToolMenuOpen(false);
         return;
       }
@@ -1053,7 +1049,27 @@ export function ConversationComposer({
 
       if (!isSameToolSelection(nextTools, selectedTools)) {
         setSelectedTools(nextTools);
-        persistComposerDefaults(nextTools);
+        const selectingWebSearch =
+          tool === "web-search" && !selectedTools.includes("web-search");
+        if (selectingWebSearch && openRouterSelected) {
+          const preferredOpenRouterModel = resolveOpenRouterPresetModelId(
+            openRouterModels,
+            conversationModel,
+          );
+          if (
+            preferredOpenRouterModel &&
+            preferredOpenRouterModel !== conversationModel
+          ) {
+            persistComposerDefaults(nextTools, {
+              model: preferredOpenRouterModel,
+              reasoningEffort: null,
+            });
+          } else {
+            persistComposerDefaults(nextTools);
+          }
+        } else {
+          persistComposerDefaults(nextTools);
+        }
       }
 
       if (tool === "file-upload") {
@@ -1062,7 +1078,15 @@ export function ConversationComposer({
 
       setIsToolMenuOpen(false);
     },
-    [openFilePicker, persistComposerDefaults, selectedTools, webSearchSupported],
+    [
+      conversationModel,
+      openFilePicker,
+      openRouterModels,
+      openRouterSelected,
+      persistComposerDefaults,
+      selectedTools,
+      webSearchSelectable,
+    ],
   );
 
   const handleClearTool = useCallback(() => {
@@ -1097,7 +1121,7 @@ export function ConversationComposer({
         ? (nextEffort ?? "low")
         : null;
       const nextTools = sanitizeStoredComposerTools(selectedTools).filter((tool) =>
-        isWebSearchSupportedModel(nextModel) ? true : tool !== "web-search",
+        isWebSearchSelectableModel(nextModel) ? true : tool !== "web-search",
       );
       const inferredPreset =
         presetOverride ??
@@ -1970,10 +1994,11 @@ export function ConversationComposer({
             >
               {TOOL_OPTIONS.map((option) => {
                 const isSelected = selectedTools.includes(option.id);
-                const isDisabled = option.id === "web-search" && !webSearchSupported;
+                const isDisabled =
+                  option.id === "web-search" && !webSearchSelectable;
                 const optionDescription =
-                  option.id === "web-search" && !webSearchSupported
-                    ? "Requires Fast chat or GPT-5 Mini"
+                  option.id === "web-search" && !webSearchSelectable
+                    ? "Requires Fast chat or OpenRouter ChatGPT"
                     : option.description;
                 return (
                   <button
@@ -1985,7 +2010,9 @@ export function ConversationComposer({
                     disabled={isDisabled}
                     onClick={() => {
                       if (isDisabled) {
-                        setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+                        setError(
+                          "Web search is unavailable for this model. Switch to Fast chat or OpenRouter ChatGPT.",
+                        );
                         setIsToolMenuOpen(false);
                         return;
                       }

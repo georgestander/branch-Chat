@@ -346,3 +346,8 @@
 - Decisions: wrapped existing CTA JSX in comment so env wiring stays intact and rollback is one-line uncomment; left other donation CTAs unchanged.
 - Files: src/app/components/landing/DonateSection.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint` in isolated tree; unrelated local edits were stashed to avoid mixing.
+2026-02-18 — Web-search UX auto-enable + OpenRouter ChatGPT default persistence. Ref: Docs/PRD.md Chat engine model/settings overrides + branch continuity.
+- Task: avoid dead-end “web search disabled” replies; support text-intent enablement and keep preference/model sticky across branches.
+- Decisions: added server intent detector (`latest/current/search online` + assent follow-up after assistant prompt) to auto-enable `web-search`; sync/persist composer tools during send; when OpenRouter + web-search, persist model to default OpenRouter ChatGPT and route run model to `:online`; relaxed prompt wording to allow model-native browse when no explicit tool call exists; composer now treats OpenRouter models as web-search-selectable and auto-switches to default OpenRouter chat model when enabling web search.
+- Files: src/lib/conversation/webSearchIntent.ts, src/app/pages/conversation/functions.ts, src/lib/openrouter/models.ts, src/lib/openai/models.ts, src/app/components/conversation/ConversationComposer.tsx, src/lib/openai/agentPrompt.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; local automated smoke for external web providers not executed in this pass.

@@ -30,6 +30,16 @@ export function isWebSearchSupportedModel(model?: string | null): boolean {
   return getWebSearchToolTypeForModel(model) !== null;
 }
 
+export function isWebSearchSelectableModel(model?: string | null): boolean {
+  if (!model || model.length === 0) {
+    return true;
+  }
+  if (isOpenRouterModel(model)) {
+    return true;
+  }
+  return isWebSearchSupportedModel(model);
+}
+
 export function supportsReasoningEffortModel(
   model?: string | null,
 ): boolean {
