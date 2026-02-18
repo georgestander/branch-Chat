@@ -436,3 +436,8 @@
 - Decisions: moved session credential from component-only state to module-level in-memory store; hydrate composer from that store on mount; clear store on session-key delete; preserves "clears on reload" behavior.
 - Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Fix review F2 stale persisted stream-id pending state. Ref: Docs/PRD.md Core Experience (Conversation management reload resilience).
+- Task: stop stale `sessionStorage` stream ids from keeping assistant pending bubble visible after stream completion/reload interruptions.
+- Decisions: only trust persisted stream ids while branch is actively streaming or has pending optimistic send; added cleanup effect to clear stale stored stream ids and local state when branch is not streaming.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

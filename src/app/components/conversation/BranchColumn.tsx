@@ -485,8 +485,6 @@ export function BranchColumn({
     visibleMessages.length > 0
       ? visibleMessages[visibleMessages.length - 1]
       : undefined;
-  const persistedActiveStreamId = readActiveStreamId(conversationId, branch.id);
-  const effectiveActiveStreamId = activeStreamId ?? persistedActiveStreamId;
   const isStreamingAssistant =
     isActive &&
     !!lastMessage &&
@@ -495,8 +493,35 @@ export function BranchColumn({
   const hasPendingOptimisticSend = optimisticMessages.some(
     (entry) => entry.status === "pending",
   );
+  const persistedActiveStreamId = readActiveStreamId(conversationId, branch.id);
+  const effectiveActiveStreamId =
+    isStreamingAssistant || hasPendingOptimisticSend
+      ? (activeStreamId ?? persistedActiveStreamId)
+      : null;
   const awaitingAssistant =
     isActive && (Boolean(effectiveActiveStreamId) || hasPendingOptimisticSend);
+
+  useEffect(() => {
+    if (!persistedActiveStreamId) {
+      return;
+    }
+    if (isStreamingAssistant || hasPendingOptimisticSend) {
+      return;
+    }
+    clearActiveStreamId({
+      conversationId,
+      branchId: branch.id,
+    });
+    setActiveStreamId((current) =>
+      current === persistedActiveStreamId ? null : current,
+    );
+  }, [
+    branch.id,
+    conversationId,
+    hasPendingOptimisticSend,
+    isStreamingAssistant,
+    persistedActiveStreamId,
+  ]);
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
