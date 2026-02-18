@@ -381,18 +381,113 @@
 - Decisions: executed agent-browser + live trace sweep on localhost:5180 across fresh signed identities to reset demo quotas; marked each pending check as ✅/❌/⚠️ with trace evidence; captured blockers (`STUDY_LEARN_WORKFLOW_ID` unset, no `tools:invoke` handler path observed) and defects (`copy Retry stuck`, `study+gpt-5-mini temperature`, docx/png ingestion issues).
 - Files: Docs/testing-report.md, progress.txt.
 - Notes: reran required loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no unrelated files staged.
-2026-02-18 — Bounded OpenRouter model cache growth for BYOK keys. Ref: Docs/PRD.md Performance & Observability cache health.
-- Task: prevent process-global OpenRouter model cache from unbounded per-user growth.
-- Decisions: added cache pruning on each request path (expire stale entries) + size cap eviction by oldest `lastAccessedAt`; traced evictions via `openrouter:models:cache-pruned`.
-- Files: src/app/shared/openrouterModels.server.ts, progress.txt.
+2026-02-18 — Added private execution plan doc with acceptance criteria + progress tracker. Ref: Docs/PRD.md project planning/governance alignment.
+- Task: save personal production + OSS self-host plan in docs with explicit ACs and trackable status table; keep file local-only.
+- Decisions: created `Docs/private-personal-prod-oss-plan.md` with locked decisions, scope, AC-01..AC-06, and P1..P8 tracker; ignored exact file path in `.gitignore` to keep it out of repo history.
+- Files: Docs/private-personal-prod-oss-plan.md, .gitignore, progress.txt.
+- Notes: no blockers; run validation loops before commit.
+2026-02-18 — Reviewed private personal-prod + OSS execution plan for implementation alignment. Ref: Docs/private-personal-prod-oss-plan.md (AC-01..AC-06, P1..P8).
+- Task: read and confirm actionable understanding of locked decisions, scope boundaries, acceptance criteria, and workstream order.
+- Decisions: execution should prioritize P1→P8 in order; keep landing public + protect `/app`; remove demo lane everywhere; enforce BYOK gate with dual persistence modes based on `BYOK_ENCRYPTION_SECRET`; keep `/sign-in` optional for OSS fallback.
+- Files: progress.txt.
+- Notes: no blockers; no code changes in this task.
+2026-02-18 — Completed P1 Cloudflare Access trusted-header identity support. Ref: Docs/private-personal-prod-oss-plan.md P1, AC-01.
+- Task: enable auth identity resolution from `cf-access-authenticated-user-email` when trusted headers are enabled; add deny-path coverage.
+- Decisions: keep existing trust gate (`AUTH_TRUST_IDENTITY_HEADERS`); when no user-id header exists, derive stable user id from lower-cased CF email header; keep default deny behavior when trust disabled or no trusted identity present.
+- Files: src/app/shared/auth.server.ts, src/app/shared/auth.server.test.ts, progress.txt, Docs/private-personal-prod-oss-plan.md (tracker status update, local/ignored).
+- Notes: validation pass after dependency bootstrap (`pnpm install` in this worktree): `pnpm types`, `npm run test`, `npm run lint`; review pass against main for touched diff found no additional issues.
+2026-02-18 — Completed P2 sendMessage contract cleanup (removed demo lane contract). Ref: Docs/private-personal-prod-oss-plan.md P2, AC-02.
+- Task: remove demo lane fields from send server contract and align caller usage.
+- Decisions: replaced `SendMessageInput.lane` with `byok?: boolean` intent flag to avoid exposing demo lane semantics; removed `quota.lane` from `SendMessageResponse`; kept internal quota/pass flow unchanged for now to avoid behavior regression before P3.
+- Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/ConversationComposer.tsx, Docs/private-personal-prod-oss-plan.md (tracker status update), progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; review pass on touched diff found no additional issues.
+2026-02-18 — Completed P3 Account DO simplification (removed quota/pass endpoints). Ref: Docs/private-personal-prod-oss-plan.md P3, AC-02/AC-03.
+- Task: remove quota/pass API surface from Account DO and server helpers while preserving BYOK + composer preference behavior.
+- Decisions: deleted `/quota*` endpoints and reserve/commit/release client/server helpers; removed send-path quota reservation lifecycle and now return `remainingDemoPasses: null`; kept backward-safe normalization via `normalizeAccountState` so legacy records with `demo`/`reservations` still load and preserve BYOK/composer preference.
+- Files: src/lib/durable-objects/Account.ts, src/lib/durable-objects/Account.test.ts, src/app/shared/account.server.ts, src/app/pages/conversation/functions.ts, Docs/private-personal-prod-oss-plan.md (tracker status update), progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; added normalization unit tests for legacy-state compatibility.
+2026-02-18 — Completed P4 composer BYOK-only gate + removed demo/pass UX. Ref: Docs/private-personal-prod-oss-plan.md P4, AC-02/AC-05.
+- Task: block sends in `/app` until BYOK is available and remove remaining demo lane/pass messaging in composer/empty state.
+- Decisions: enforced provider-family mismatch guard client+server; removed lane/pass chips, toggles, and exhausted-pass paths; added session-only BYOK connect/send flow when `BYOK_ENCRYPTION_SECRET` is absent; kept server response contract stable (`remainingDemoPasses: null`) to avoid churn outside this slice.
+- Files: src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/ConversationEmptyLayout.tsx, src/app/pages/conversation/functions.ts, Docs/private-personal-prod-oss-plan.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
-2026-02-18 — Ignore stale persisted stream IDs when assistant turn is already finalized. Ref: Docs/PRD.md Chat engine stream UX + reload resilience.
-- Task: avoid stuck "awaiting assistant" bubble after reload when session had stale stream id.
-- Decisions: removed render-time sessionStorage fallback; restore persisted stream id only when latest visible message is an unfinished assistant (`tokenUsage` null), otherwise clear stale storage key.
+2026-02-18 — Completed P5/P6 sidebar cleanup + sign-in copy refresh. Ref: Docs/private-personal-prod-oss-plan.md P5/P6, AC-02/AC-06.
+- Task: remove lane preference/pass labels from sidebar account UX and eliminate remaining demo wording in sign-in flow.
+- Decisions: deleted `lanePreference` module entirely; removed default-lane/pass indicators and persistence calls from `ConversationSidebar` while preserving BYOK connect/disconnect actions; updated `/sign-in` body copy to neutral optional-fallback wording.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, src/app/components/conversation/lanePreference.ts (deleted), src/app/pages/sign-in/SignInPage.tsx, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed P7 documentation split for personal-prod vs OSS self-host. Ref: Docs/private-personal-prod-oss-plan.md P7, AC-06.
+- Task: update setup/env/readme guidance to clearly describe production-private defaults and self-host-first defaults.
+- Decisions: added explicit deployment-profile matrices; documented BYOK persistence (`BYOK_ENCRYPTION_SECRET`) vs session-only fallback behavior; aligned architecture wording so `AccountDO` no longer references removed quota/pass concepts.
+- Files: Docs/env-vars.md, Docs/setup.md, README.md, Docs/architecture.md, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed P8 validation + review closure. Ref: Docs/private-personal-prod-oss-plan.md P8, AC-01..AC-06.
+- Task: execute required feedback loops after each logical change and run review pass against `main` before finalizing.
+- Decisions: reran full loops at final `HEAD`; review surfaced one edge case where session BYOK could look connected during account-load race when persistence was actually enabled; fixed by gating session-connected state to non-persistent mode and adding a loading guard before save.
+- Files: src/app/components/conversation/ConversationComposer.tsx, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: all final checks pass (`pnpm types`, `npm run test`, `npm run lint`); no unresolved findings from review pass.
+2026-02-18 — Review hygiene cleanup after P8. Ref: Docs/private-personal-prod-oss-plan.md P8.
+- Task: close remaining diff-check nit from `main..HEAD` review (`.gitignore` blank line at EOF).
+- Decisions: removed trailing blank line to keep `git diff --check` clean.
+- Files: .gitignore, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Fix review F1 session BYOK remount persistence. Ref: Docs/PRD.md Core Experience (Conversation management reliability).
+- Task: keep session-only BYOK key connected across composer remounts in same tab when server persistence disabled.
+- Decisions: moved session credential from component-only state to module-level in-memory store; hydrate composer from that store on mount; clear store on session-key delete; preserves "clears on reload" behavior.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Fix review F2 stale persisted stream-id pending state. Ref: Docs/PRD.md Core Experience (Conversation management reload resilience).
+- Task: stop stale `sessionStorage` stream ids from keeping assistant pending bubble visible after stream completion/reload interruptions.
+- Decisions: only trust persisted stream ids while branch is actively streaming or has pending optimistic send; added cleanup effect to clear stale stored stream ids and local state when branch is not streaming.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
-2026-02-18 — README demo now links to YouTube with thumbnail preview. Ref: Docs/public-beta-launch-plan.md #8 (demo visibility).
-- Task: replace repo-local video link in README with hosted YouTube playback while keeping click-to-preview UX.
-- Decisions: swapped demo link target to `https://youtu.be/MgnB9d0uLrI` and thumbnail source to YouTube `hqdefault` image.
+2026-02-18 — Fix review F3 OpenRouter model cache eviction. Ref: Docs/PRD.md Non-functional (performance/operability).
+- Task: prevent per-user OpenRouter model cache map from retaining expired entries indefinitely.
+- Decisions: added shared `pruneExpiredCacheEntries(now)` and run it before cache lookup so expired keys are evicted across all users, not only on same-user reuse.
+- Files: src/app/shared/openrouterModels.server.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed security best-practices audit report. Ref: Docs/PRD.md Non-functional (security posture).
+- Task: run explicit security review (`$security-best-practices`) across auth/session, routing, uploads, markdown/CSP, and server action boundaries.
+- Decisions: prioritized exploitability-first findings; flagged auth impersonation + header trust + upload size bypass as top risks; documented env-dependent blast radius for optional-auth profile.
+- Files: security_best_practices_report.md, progress.txt.
+- Notes: report includes line-referenced Critical/High/Medium findings and remediation; no code changes in this task.
+2026-02-18 — Landing login CTA + docs update. Ref: Docs/private-personal-prod-oss-plan.md AC-01/AC-06.
+- Task: add direct login entrypoint from home and document flow in setup/readme.
+- Decisions: added `signInHref` to landing link contract resolved from `LANDING_HOSTED_URL` fallback `/sign-in?redirectTo=/app`; exposed `Log In` CTA in top bar + hero; documented new landing login path in `README.md` and `Docs/setup.md`.
+- Files: src/app/components/landing/types.ts, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/TopBarClient.tsx, src/app/components/landing/HeroSection.tsx, README.md, Docs/setup.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — README Cloudflare Access setup clarification. Ref: Docs/private-personal-prod-oss-plan.md AC-01/AC-06.
+- Task: make personal-account Cloudflare Access setup explicit in README with concrete steps.
+- Decisions: added dedicated "Cloudflare Access Setup (Private Personal Deployment)" section with required Worker flags/secrets, Zero Trust login-method/app-policy steps, recommended `/events*` + `/_uploads*` coverage, and verification checklist.
 - Files: README.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Hardening auth trust model + sign-in fallback gating. Ref: Docs/PRD.md Non-functional (security posture), Docs/private-personal-prod-oss-plan.md AC-01/AC-05.
+- Task: remove unverified identity-header auth, require verified Cloudflare Access assertion path, and keep self-asserted sign-in only as explicit fallback.
+- Decisions: trust only `cf-access-authenticated-user-email` + verified `cf-access-jwt-assertion` (JWKS + audience); added secure default to reject unsigned cookies unless explicitly allowed by caller; disabled self-asserted `/sign-in` POST when auth-required unless opt-in flag set.
+- Files: src/app/shared/auth.server.ts, src/app/shared/auth.server.test.ts, src/worker.tsx, src/app/pages/sign-in/SignInPage.tsx, types/env.d.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Enforced upload byte limits in fallback path. Ref: Docs/PRD.md Non-functional (security + resilience).
+- Task: close upload-size bypass when `Content-Length` is absent/misleading.
+- Decisions: wrapped direct upload stream with server-side byte counter and abort > `UPLOAD_MAX_SIZE_BYTES`; added finalize guard to delete + reject oversized stored objects.
+- Files: src/app/shared/uploadsProxy.server.ts, src/app/shared/uploads.server.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Redacted upload-ingestion logs to avoid content leakage. Ref: Docs/PRD.md Non-functional (security posture).
+- Task: remove user-content previews from ingestion traces/errors.
+- Decisions: replaced parser-failure content snippet logging with output length only; replaced ingest-success preview text with token-count metadata.
+- Files: src/app/shared/uploads.ingest.server.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Tightened production CSP (removed `unsafe-eval`). Ref: Docs/PRD.md Non-functional (security posture).
+- Task: reduce XSS blast radius while preserving local dev tooling compatibility.
+- Decisions: split CSP by env; keep `unsafe-eval` only in dev server mode; production `script-src` now nonce-based without eval.
+- Files: src/app/headers.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Updated auth/security docs to match hardened runtime behavior. Ref: Docs/private-personal-prod-oss-plan.md AC-01/AC-06.
+- Task: align setup/env/readme guidance with verified Access JWT identity and guarded fallback auth toggles.
+- Decisions: documented `AUTH_ACCESS_JWKS_URL` + `AUTH_ACCESS_AUDIENCE` as required for trusted-header production mode; documented `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN` and `AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE` as explicit fallback flags; updated private-prod plan wording/evidence.
+- Files: .dev.vars.example, Docs/env-vars.md, Docs/setup.md, README.md, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Resolved PR #32 merge conflicts against main with selective keep strategy. Ref: Docs/PRD.md integration stability + security hardening continuity.
+- Task: reconcile dirty merge (`origin/main` into `codex/security-hardening-auth-upload-csp`) and choose side per file.
+- Decisions: kept branch side for BYOK-only/auth-hardening flow files; kept main side for newer stream-id stale-state fix, OpenRouter cache-size pruning, and generated worker types; updated README demo preview to YouTube thumbnail/link.
+- Files: README.md, src/app/components/conversation/BranchColumn.tsx, src/app/shared/openrouterModels.server.ts, worker-configuration.d.ts, progress.txt.
+- Notes: feedback loops pass on merged state (`pnpm types`, `npm run test`, `npm run lint`); no blockers.

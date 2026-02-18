@@ -1,10 +1,7 @@
 import type { AppContext } from "@/app/context";
 import {
-  AccountClientError,
   type AccountByokCredential,
   type AccountComposerPreference,
-  type AccountQuotaSnapshot,
-  type PassReservationResult,
 } from "@/lib/durable-objects/Account";
 import {
   decryptByokApiKey,
@@ -12,15 +9,6 @@ import {
 } from "@/app/shared/byokCrypto.server";
 import type { ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
-
-export class DemoQuotaExceededError extends Error {
-  constructor() {
-    super(
-      "Demo pass limit reached (3/3). Add your own API key to continue.",
-    );
-    this.name = "DemoQuotaExceededError";
-  }
-}
 
 function getClient(ctx: AppContext) {
   return ctx.getAccount();
@@ -126,12 +114,6 @@ function toByokStatus(byok: AccountByokCredential | null): {
   };
 }
 
-export async function getAccountQuotaSnapshot(
-  ctx: AppContext,
-): Promise<AccountQuotaSnapshot> {
-  return getClient(ctx).getSnapshot();
-}
-
 export interface ComposerPreferenceInput {
   model: string;
   reasoningEffort?: "low" | "medium" | "high" | null;
@@ -204,43 +186,6 @@ export async function saveComposerPreference(
     );
     throw new Error("Failed to save composer preference");
   }
-}
-
-export async function reserveDemoPass(
-  ctx: AppContext,
-  input: {
-    reservationId: string;
-    conversationId?: string;
-    branchId?: string;
-  },
-): Promise<PassReservationResult> {
-  try {
-    return await getClient(ctx).reservePass({
-      reservationId: input.reservationId,
-      count: 1,
-      conversationId: input.conversationId,
-      branchId: input.branchId,
-    });
-  } catch (error) {
-    if (error instanceof AccountClientError && error.status === 409) {
-      throw new DemoQuotaExceededError();
-    }
-    throw error;
-  }
-}
-
-export async function commitDemoPass(
-  ctx: AppContext,
-  input: { reservationId: string },
-): Promise<AccountQuotaSnapshot> {
-  return getClient(ctx).commitPass(input);
-}
-
-export async function releaseDemoPass(
-  ctx: AppContext,
-  input: { reservationId: string },
-): Promise<AccountQuotaSnapshot> {
-  return getClient(ctx).releasePass(input);
 }
 
 export async function getByokStatus(ctx: AppContext): Promise<{

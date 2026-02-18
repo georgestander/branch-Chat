@@ -53,11 +53,6 @@ import {
   type DirectoryUpdateDetail,
 } from "@/app/components/conversation/directoryEvents";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
-import {
-  readComposerLanePreference,
-  writeComposerLanePreference,
-  type ComposerLane,
-} from "@/app/components/conversation/lanePreference";
 
 interface ConversationSidebarProps {
   conversation: Conversation;
@@ -146,7 +141,6 @@ export function ConversationSidebar({
   const [byokProvider, setByokProvider] = useState<ComposerByokProvider>("openai");
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
-  const [preferredLane, setPreferredLane] = useState<ComposerLane>("demo");
   const accountButtonRef = useRef<HTMLButtonElement | null>(null);
   const accountStateRequestIdRef = useRef(0);
   const directoryUpdateHandler = useCallback(
@@ -256,30 +250,10 @@ export function ConversationSidebar({
   }, [loadComposerAccountState]);
 
   useEffect(() => {
-    const storedLane = readComposerLanePreference({ conversationId });
-    if (!storedLane) {
-      return;
-    }
-    setPreferredLane(storedLane);
-  }, [conversationId]);
-
-  useEffect(() => {
     if (accountState?.byok.provider) {
       setByokProvider(accountState.byok.provider);
     }
   }, [accountState?.byok.provider]);
-
-  useEffect(() => {
-    if (!accountState) {
-      return;
-    }
-    const byokConnected = Boolean(accountState.byok.enabled && accountState.byok.connected);
-    if (preferredLane !== "byok" || byokConnected) {
-      return;
-    }
-    setPreferredLane("demo");
-    writeComposerLanePreference("demo", { conversationId });
-  }, [accountState, conversationId, preferredLane]);
 
   useEffect(() => {
     if (!isAccountPanelOpen) {
@@ -703,30 +677,6 @@ export function ConversationSidebar({
   const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
   const byokProviderLabel =
     accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
-  const demoTotalPasses = accountState?.quota.total ?? 3;
-  const demoRemainingPasses = accountState?.quota.remaining ?? null;
-  const accountPassesLabel = isAccountStateLoading
-    ? "Passes --"
-    : demoRemainingPasses === null
-      ? "Passes ?"
-      : `Passes ${demoRemainingPasses}/${demoTotalPasses}`;
-
-  const setPreferredLaneWithPersistence = useCallback(
-    (nextLane: ComposerLane) => {
-      if (nextLane === "byok" && (!byokEnabled || !byokConnected)) {
-        setAccountError(
-          byokEnabled
-            ? "Connect a BYOK key before setting BYOK as your default lane."
-            : byokUnavailableReason || "BYOK is disabled for this environment.",
-        );
-        return;
-      }
-      setAccountError(null);
-      setPreferredLane(nextLane);
-      writeComposerLanePreference(nextLane, { conversationId });
-    },
-    [byokConnected, byokEnabled, byokUnavailableReason, conversationId],
-  );
 
   const handleSaveByokKey = useCallback(async () => {
     if (isByokSaving) {
@@ -761,7 +711,6 @@ export function ConversationSidebar({
           : previous,
       );
       setByokApiKey("");
-      setPreferredLaneWithPersistence("byok");
       await loadComposerAccountState({ showLoading: false });
     } catch (cause) {
       setAccountError(
@@ -777,7 +726,6 @@ export function ConversationSidebar({
     byokUnavailableReason,
     isByokSaving,
     loadComposerAccountState,
-    setPreferredLaneWithPersistence,
   ]);
 
   const handleDeleteByokKey = useCallback(async () => {
@@ -803,7 +751,6 @@ export function ConversationSidebar({
           : previous,
       );
       setByokApiKey("");
-      setPreferredLaneWithPersistence("demo");
       await loadComposerAccountState({ showLoading: false });
     } catch (cause) {
       setAccountError(
@@ -812,7 +759,7 @@ export function ConversationSidebar({
     } finally {
       setIsByokSaving(false);
     }
-  }, [isByokSaving, loadComposerAccountState, setPreferredLaneWithPersistence]);
+  }, [isByokSaving, loadComposerAccountState]);
 
   return (
     <aside
@@ -833,10 +780,6 @@ export function ConversationSidebar({
               type="button"
               onClick={() => {
                 setIsAccountPanelOpen((previous) => !previous);
-                const storedLane = readComposerLanePreference({ conversationId });
-                if (storedLane) {
-                  setPreferredLane(storedLane);
-                }
               }}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-haspopup="dialog"
@@ -895,47 +838,16 @@ export function ConversationSidebar({
                   <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Account
                   </h3>
-                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {accountPassesLabel}
-                  </span>
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {isAccountStateLoading
                     ? "Loading account status..."
-                    : `Default lane for new chats: ${preferredLane === "byok" ? "BYOK" : "Demo"}.`}
+                    : byokConnected
+                      ? `Connected to ${byokProviderLabel}.`
+                      : byokEnabled
+                        ? "No BYOK key connected."
+                        : byokUnavailableReason || "BYOK unavailable in this environment."}
                 </p>
-
-                <div
-                  role="group"
-                  aria-label="Default lane for new chats"
-                  className="mt-2 inline-flex items-center rounded-full border border-border/70 bg-background/80 p-0.5"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setPreferredLaneWithPersistence("demo")}
-                    className={cn(
-                      "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition",
-                      preferredLane === "demo"
-                        ? "bg-foreground text-background"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    Demo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreferredLaneWithPersistence("byok")}
-                    disabled={!byokEnabled || !byokConnected}
-                    className={cn(
-                      "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-50",
-                      preferredLane === "byok"
-                        ? "bg-foreground text-background"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    BYOK
-                  </button>
-                </div>
 
                 <div className="mt-3 rounded-lg border border-border/70 bg-background/70 p-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">

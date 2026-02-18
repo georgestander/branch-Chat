@@ -218,7 +218,7 @@ async function parseDocumentWithOpenAI(
       };
     } catch (parseError) {
       console.warn("[WARN] parseDocumentWithOpenAI JSON parse failed", parseError, {
-        output: output.slice(0, 2400),
+        outputLength: output.length,
       });
     }
 
@@ -507,8 +507,7 @@ export async function ingestAttachment(
       conversationId,
       attachmentId: attachment.id,
       chunkCount: ingestionResult.chunks.length,
-      preview:
-        ingestionResult.chunks[0]?.content?.slice(0, 160) ?? null,
+      firstChunkTokenCount: ingestionResult.chunks[0]?.tokenCount ?? null,
     });
   } catch (cause) {
     const error =

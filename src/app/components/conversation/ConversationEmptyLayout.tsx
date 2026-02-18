@@ -421,9 +421,11 @@ export function ConversationEmptyLayout({
       <main className="flex flex-1 items-center justify-center px-6">
         <div className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Start free with 3 demo passes</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Bring your key, start branching
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Sign in, choose a start mode, and launch a branching chat in seconds.
+              Choose a start mode, then connect BYOK before your first send.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -439,7 +441,7 @@ export function ConversationEmptyLayout({
               {isCreating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
               ) : null}
-              <span>{isCreating ? "Creating…" : "Start Free"}</span>
+              <span>{isCreating ? "Creating…" : "Start Chat"}</span>
             </button>
             <a
               href="/sign-in"
@@ -449,7 +451,7 @@ export function ConversationEmptyLayout({
             </a>
           </div>
           <p className="text-xs text-muted-foreground">
-            Demo lane includes 3 completed replies. Connect BYOK later for unlimited usage.
+            BYOK is required to send messages. If server persistence is disabled, keys stay in-session only.
           </p>
           <form
             onSubmit={handleDraftSubmit}

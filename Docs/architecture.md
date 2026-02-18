@@ -27,7 +27,7 @@ Branch Chat is a Cloudflare Worker app using RedwoodSDK RSC. The architecture is
   - Stores conversation directory metadata for sidebar/list views.
 - `AccountDO` (`AccountDO` binding)
   - One object per user via `idFromName("account:<userId>")`.
-  - Stores demo quota state and encrypted BYOK metadata.
+  - Stores encrypted BYOK metadata and composer preferences.
 
 ## Request and Data Flow
 
