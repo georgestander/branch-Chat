@@ -44,7 +44,7 @@ const STACK_ITEMS = ["RedwoodSDK", "Cloudflare Workers", "Durable Objects", "RSC
 
 export function ValueStrip() {
   return (
-    <section className="mx-auto w-full max-w-6xl border-x border-b border-foreground/15 bg-background/75 px-4 py-6 md:px-6 md:py-9">
+    <section className="mx-auto w-full max-w-6xl border-x border-b border-border bg-background px-4 py-6 md:px-6 md:py-9">
       <div className="space-y-7">
         <header className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Live now</p>
@@ -60,9 +60,9 @@ export function ValueStrip() {
           {LIVE_FEATURES.map((item) => (
             <article
               key={item.title}
-              className="rounded-xl border border-foreground/20 bg-background/80 px-4 py-3"
+              className="rounded border border-border bg-background px-4 py-3"
             >
-              <p className="inline-flex rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+              <p className="inline-flex rounded border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">
                 Live
               </p>
               <h3 className="mt-2 text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
@@ -73,7 +73,7 @@ export function ValueStrip() {
           ))}
         </div>
 
-        <article className="rounded-2xl border border-foreground/20 bg-[linear-gradient(120deg,color-mix(in_oklab,var(--primary)_10%,transparent)_0%,transparent_55%)] px-4 py-4 md:px-5">
+        <article className="rounded border border-border bg-background px-4 py-4 md:px-5">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Built for the edge</p>
           <h3 className="mt-2 text-xl font-semibold tracking-tight md:text-2xl">
             RedwoodSDK + Cloudflare foundation
@@ -86,7 +86,7 @@ export function ValueStrip() {
             {STACK_ITEMS.map((item) => (
               <span
                 key={item}
-                className="rounded-full border border-foreground/20 bg-background/80 px-3 py-1 text-foreground"
+                className="rounded border border-border bg-background px-3 py-1 text-foreground"
               >
                 {item}
               </span>
@@ -105,9 +105,9 @@ export function ValueStrip() {
             {COMING_SOON.map((item) => (
               <article
                 key={item.title}
-                className="rounded-xl border border-dashed border-foreground/30 bg-background/60 px-4 py-3"
+                className="rounded border border-dashed border-border bg-background px-4 py-3"
               >
-                <p className="inline-flex rounded-full border border-foreground/30 bg-background px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <p className="inline-flex rounded border border-border bg-background px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Coming soon
                 </p>
                 <h4 className="mt-2 text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
