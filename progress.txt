@@ -361,3 +361,8 @@
 - Decisions: documented strict local port `5174`, landing `/` vs app `/app`, auth-required sign-in path, and current validation/deploy commands; linked env var expansion to `Docs/env-vars.md`.
 - Files: Docs/setup.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Refreshed testing report with current validation run. Ref: Docs/PRD.md Testing & QA feedback loops.
+- Task: review `Docs/testing-report.md`, run listed command checks, remove stale/irrelevant entries, publish current status.
+- Decisions: executed all runnable commands in report (`pnpm types`, `npm run types`, `npm run test`, `npm run lint`, `pnpm check`, `pnpm tsc --noEmit`); trimmed legacy 2025 noise + blocked manual items to keep report actionable.
+- Files: Docs/testing-report.md, progress.txt.
+- Notes: all listed commands pass in local run; no blockers.
