@@ -321,3 +321,8 @@
 - Decisions: added OpenRouter preset model resolver (ChatGPT-like candidates then `openrouter/auto` fallback); Fast/Reasoning menu actions now route through provider-aware resolver and apply preset intent while keeping live streaming path unchanged.
 - Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Sidebar branch-name single-line hardening + branch-count badge removal. Ref: Docs/PRD.md UX & A11y clarity (branch navigation readability).
+- Task: keep sidebar branch names on one line and remove `N BR` chips per UX feedback.
+- Decisions: removed conversation-level branch-count badge entirely; enforced branch-tree row sizing with `grid-cols-[minmax(0,1fr)_auto]` plus `flex-1/min-w-0/overflow-hidden` on branch label path for deterministic ellipsis.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

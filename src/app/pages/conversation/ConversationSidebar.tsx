@@ -1190,7 +1190,6 @@ function ConversationCard({
   onUnarchive,
   onDelete,
 }: ConversationCardProps) {
-  const branchCount = entry.branchCount ?? 0;
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(entry.title.trim() || entry.id);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1350,7 +1349,7 @@ function ConversationCard({
             onToggle();
           }}
           className={cn(
-            "flex min-w-0 items-center gap-2 text-left transition",
+            "flex min-w-0 items-center gap-2 overflow-hidden text-left transition",
             isActive
               ? "text-background"
               : expanded
@@ -1381,16 +1380,6 @@ function ConversationCard({
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex h-6 shrink-0 items-center rounded-full border border-foreground/15 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground",
-              isActive && "border-background/30 text-background/70",
-            )}
-            title={`${branchCount} branch${branchCount === 1 ? "" : "es"}`}
-          >
-            {branchCount} br
-          </span>
-          {/* Status pill removed */}
           <div className="relative">
             <button
               ref={menuButtonRef}
@@ -1610,7 +1599,7 @@ function BranchTree({
           Boolean(tree.branch.parentId),
         )}
         className={cn(
-          "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition",
+          "group relative grid max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-3 py-2 text-sm transition",
           isConversationSelected
             ? isActive
               ? "bg-background/10 text-background shadow-sm hover:bg-background/15"
@@ -1623,7 +1612,7 @@ function BranchTree({
         aria-current={isActive ? "page" : undefined}
         style={{ paddingInlineStart: `${indentRem}rem` }}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <span
             className={cn(
               "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
@@ -1639,7 +1628,7 @@ function BranchTree({
           />
           <span
             className={cn(
-              "truncate",
+              "min-w-0 flex-1 truncate",
               isConversationSelected ? "text-background" : undefined,
             )}
             title={tree.branch.title?.trim() || UNTITLED_BRANCH}
