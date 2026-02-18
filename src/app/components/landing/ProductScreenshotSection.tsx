@@ -30,10 +30,10 @@ export function ProductScreenshotSection() {
             preload="metadata"
             aria-label="Branch-Chat product demo showing message branching and split-view navigation."
           >
-            <source src="/branch-chat-demo.mov" type="video/quicktime" />
+            <source src="/branch-chat-demo.mp4" type="video/mp4" />
             <p className="p-4 text-sm text-muted-foreground">
               Your browser cannot play this video. Open{" "}
-              <a href="/branch-chat-demo.mov" className="underline underline-offset-2">
+              <a href="/branch-chat-demo.mp4" className="underline underline-offset-2">
                 the demo file directly
               </a>
               .

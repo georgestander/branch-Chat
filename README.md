@@ -6,11 +6,9 @@ The project is designed around branchable conversations, Durable Object persiste
 
 ## Demo Video
 
-<video src="./public/branch-chat-demo.mov" controls preload="metadata" width="100%">
-  Your renderer does not support inline video playback.
-</video>
+[![Watch the Branch Chat demo video](./public/landing-branching-screenshot.png)](./public/branch-chat-demo.mp4)
 
-If your Markdown renderer does not display embedded video, open [`public/branch-chat-demo.mov`](public/branch-chat-demo.mov) directly.
+Click the preview image to open the GitHub video player.
 
 ## Documentation
 
