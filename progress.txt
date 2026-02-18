@@ -386,3 +386,8 @@
 - Decisions: added cache pruning on each request path (expire stale entries) + size cap eviction by oldest `lastAccessedAt`; traced evictions via `openrouter:models:cache-pruned`.
 - Files: src/app/shared/openrouterModels.server.ts, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Ignore stale persisted stream IDs when assistant turn is already finalized. Ref: Docs/PRD.md Chat engine stream UX + reload resilience.
+- Task: avoid stuck "awaiting assistant" bubble after reload when session had stale stream id.
+- Decisions: removed render-time sessionStorage fallback; restore persisted stream id only when latest visible message is an unfinished assistant (`tokenUsage` null), otherwise clear stale storage key.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
