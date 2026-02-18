@@ -132,6 +132,21 @@ function buildResponseOptions(settings: {
   return request;
 }
 
+async function waitForSSESubscriber(
+  streamId: string,
+  timeoutMs = 750,
+): Promise<{ ready: boolean; waitedMs: number }> {
+  const startedAt = Date.now();
+  const { getChannel } = await import("@/app/shared/streaming.server");
+  while (Date.now() - startedAt < timeoutMs) {
+    if (getChannel(streamId)) {
+      return { ready: true, waitedMs: Date.now() - startedAt };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return { ready: getChannel(streamId) !== undefined, waitedMs: Date.now() - startedAt };
+}
+
 function normalizeComposerPreset(
   value: unknown,
   fallback: ComposerPreset = "custom",
@@ -1375,6 +1390,17 @@ export async function sendMessage(
 
   const openai = modelClient;
 
+  if (input.streamId) {
+    const subscriber = await waitForSSESubscriber(input.streamId);
+    ctx.trace("sse:subscriber", {
+      conversationId,
+      branchId,
+      streamId: input.streamId,
+      ready: subscriber.ready,
+      waitedMs: subscriber.waitedMs,
+    });
+  }
+
   const streamStart = Date.now();
   let firstDeltaAt: number | null = null;
   ctx.trace("openai:stream:start", {
@@ -1467,23 +1493,7 @@ export async function sendMessage(
   })();
 
   let buffered = "";
-  let lastPublishedLength = 0;
-  let lastPublishTime = Date.now();
   let latestReasoningSummary = "";
-  const MIN_PUBLISH_CHARS = 16;
-  const MIN_PUBLISH_MS = 120;
-
-  const publishPartialUpdate = async (content: string) => {
-    assistantState = {
-      ...assistantState,
-      content,
-    };
-    await persistAssistantState();
-    if (input.streamId) {
-      const { sendSSE } = await import("@/app/shared/streaming.server");
-      sendSSE(input.streamId, "delta", { content });
-    }
-  };
 
   const publishReasoningSummary = async (delta: string) => {
     if (!delta) {
@@ -1608,19 +1618,9 @@ export async function sendMessage(
             sendSSE(input.streamId, "start", { startedAt: firstDeltaAt });
           }
         }
-        const nowTs = Date.now();
-        if (
-          buffered.length - lastPublishedLength >= MIN_PUBLISH_CHARS ||
-          nowTs - lastPublishTime >= MIN_PUBLISH_MS
-        ) {
-          // We no longer persist partial content to the DO to avoid throttling.
-          // Hook for future SSE streaming could emit here instead.
-          lastPublishedLength = buffered.length;
-          lastPublishTime = nowTs;
-          if (input.streamId) {
-            const { sendSSE } = await import("@/app/shared/streaming.server");
-            sendSSE(input.streamId, "delta", { content: buffered });
-          }
+        if (input.streamId) {
+          const { sendSSE } = await import("@/app/shared/streaming.server");
+          sendSSE(input.streamId, "delta", { delta });
         }
         continue;
       }
@@ -1713,23 +1713,32 @@ export async function sendMessage(
 
   try {
     finalResponse = await stream.finalResponse();
-    finalContent =
-      finalResponse.output_text?.trim() ??
-      finalResponse.output
-        ?.map((item: any) =>
-          item.content
-            ?.map?.((part: any) => part.text ?? "")
-            ?.join("") ?? "",
-        )
-        ?.join("")
-        .trim() ??
-      buffered.trim();
+    const outputText =
+      typeof finalResponse?.output_text === "string"
+        ? finalResponse.output_text.trim()
+        : "";
+    const outputItemsText = Array.isArray(finalResponse?.output)
+      ? finalResponse.output
+          .map((item: any) =>
+            Array.isArray(item?.content)
+              ? item.content
+                  .map((part: any) =>
+                    typeof part?.text === "string" ? part.text : "",
+                  )
+                  .join("")
+              : "",
+          )
+          .join("")
+          .trim()
+      : "";
     promptTokens = finalResponse.usage?.input_tokens ?? 0;
     completionTokens = finalResponse.usage?.output_tokens ?? 0;
     const streamReply =
       typeof finalResponse?.response?.output?.[0]?.content?.[0]?.text === "string"
-        ? finalResponse.response.output[0].content[0].text
-        : buffered;
+        ? finalResponse.response.output[0].content[0].text.trim()
+        : "";
+    finalContent =
+      outputText || outputItemsText || streamReply || buffered.trim();
     const finalReasoningSummary =
       extractReasoningSummaryFromFinalResponse(finalResponse);
     if (finalReasoningSummary) {
@@ -1763,6 +1772,10 @@ export async function sendMessage(
     if (!finalContent.trim()) {
       finalContent = "Assistant response interrupted. Please try again.";
     }
+  }
+
+  if (!finalContent.trim()) {
+    finalContent = "Assistant response interrupted. Please try again.";
   }
 
   if (enableWebSearchTool && finalResponse && Array.isArray(finalResponse.output)) {
