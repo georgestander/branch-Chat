@@ -6,8 +6,105 @@ import {
   setAuthCookie,
 } from "./auth.server.ts";
 
+const ACCESS_JWKS_URL = "https://access.example.com/cdn-cgi/access/certs";
+const ACCESS_AUDIENCE = "aud-test-123";
+
 function extractCookiePair(setCookieValue: string): string {
   return setCookieValue.split(";")[0] ?? "";
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function encodeJsonBase64Url(value: Record<string, unknown>): string {
+  return encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
+}
+
+async function createAccessJwt(options: {
+  email: string;
+  audience?: string;
+  expiresAtSeconds?: number;
+}): Promise<{ token: string; jwk: JsonWebKey & { kid?: string } }> {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const kid = "test-kid";
+  const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: "RS256",
+    typ: "JWT",
+    kid,
+  };
+  const payload = {
+    aud: options.audience ?? ACCESS_AUDIENCE,
+    email: options.email,
+    exp: options.expiresAtSeconds ?? now + 300,
+    iat: now,
+    nbf: now - 1,
+  };
+
+  const headerPart = encodeJsonBase64Url(header);
+  const payloadPart = encodeJsonBase64Url(payload);
+  const signingInput = `${headerPart}.${payloadPart}`;
+  const signatureBuffer = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    keyPair.privateKey,
+    new TextEncoder().encode(signingInput),
+  );
+  const signaturePart = encodeBase64Url(new Uint8Array(signatureBuffer));
+  const token = `${signingInput}.${signaturePart}`;
+
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const jwk: JsonWebKey & { kid?: string } = {
+    ...publicJwk,
+    alg: "RS256",
+    use: "sig",
+    kid,
+  };
+  return { token, jwk };
+}
+
+async function withMockedAccessJwks(
+  jwk: JsonWebKey,
+  run: () => Promise<void>,
+): Promise<void> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    if (url === ACCESS_JWKS_URL) {
+      return new Response(JSON.stringify({ keys: [jwk] }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "max-age=60",
+        },
+      });
+    }
+    return originalFetch(input);
+  }) as typeof fetch;
+
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 test("signed auth cookie roundtrip resolves user identity", async () => {
@@ -106,37 +203,93 @@ test("auth-required mode rejects unsigned cookie identity without signing secret
   assert.equal(auth, null);
 });
 
-test("identity headers can be enabled explicitly", async () => {
+test("cloudflare access email header requires a matching JWT assertion", async () => {
   const auth = await resolveRequestAuth({
     request: new Request("https://example.com/app", {
       headers: {
-        "x-clerk-user-id": "trusted.user",
-        "x-clerk-user-email": "trusted@example.com",
+        "cf-access-authenticated-user-email": "person.one@example.com",
       },
     }),
     response: { headers: new Headers() },
     authRequired: true,
     allowIdentityHeaders: true,
+    accessJwksUrl: ACCESS_JWKS_URL,
+    accessAudience: ACCESS_AUDIENCE,
   });
 
-  assert.equal(auth?.userId, "trusted.user");
-  assert.equal(auth?.email, "trusted@example.com");
+  assert.equal(auth, null);
 });
 
-test("cloudflare access email header can resolve identity when trusted headers are enabled", async () => {
-  const auth = await resolveRequestAuth({
-    request: new Request("https://example.com/app", {
-      headers: {
-        "cf-access-authenticated-user-email": "  Person.One@Example.com  ",
-      },
-    }),
-    response: { headers: new Headers() },
-    authRequired: true,
-    allowIdentityHeaders: true,
+test("cloudflare access email header resolves identity with valid JWT assertion", async () => {
+  const { token, jwk } = await createAccessJwt({
+    email: "person.one@example.com",
   });
+  await withMockedAccessJwks(jwk, async () => {
+    const auth = await resolveRequestAuth({
+      request: new Request("https://example.com/app", {
+        headers: {
+          "cf-access-authenticated-user-email": "  Person.One@Example.com  ",
+          "cf-access-jwt-assertion": token,
+        },
+      }),
+      response: { headers: new Headers() },
+      authRequired: true,
+      allowIdentityHeaders: true,
+      accessJwksUrl: ACCESS_JWKS_URL,
+      accessAudience: ACCESS_AUDIENCE,
+    });
 
-  assert.equal(auth?.userId, "person.one-example.com");
-  assert.equal(auth?.email, "person.one@example.com");
+    assert.equal(auth?.userId, "person.one-example.com");
+    assert.equal(auth?.email, "person.one@example.com");
+  });
+});
+
+test("cloudflare access assertion with wrong audience is rejected", async () => {
+  const { token, jwk } = await createAccessJwt({
+    email: "person.one@example.com",
+    audience: "aud-wrong",
+  });
+  await withMockedAccessJwks(jwk, async () => {
+    const auth = await resolveRequestAuth({
+      request: new Request("https://example.com/app", {
+        headers: {
+          "cf-access-authenticated-user-email": "person.one@example.com",
+          "cf-access-jwt-assertion": token,
+        },
+      }),
+      response: { headers: new Headers() },
+      authRequired: true,
+      allowIdentityHeaders: true,
+      accessJwksUrl: ACCESS_JWKS_URL,
+      accessAudience: ACCESS_AUDIENCE,
+    });
+    assert.equal(auth, null);
+  });
+});
+
+test("cloudflare access assertion with tampered signature is rejected", async () => {
+  const { token, jwk } = await createAccessJwt({
+    email: "person.one@example.com",
+  });
+  const tamperedToken = `${token.slice(0, -1)}${
+    token.endsWith("A") ? "B" : "A"
+  }`;
+  await withMockedAccessJwks(jwk, async () => {
+    const auth = await resolveRequestAuth({
+      request: new Request("https://example.com/app", {
+        headers: {
+          "cf-access-authenticated-user-email": "person.one@example.com",
+          "cf-access-jwt-assertion": tamperedToken,
+        },
+      }),
+      response: { headers: new Headers() },
+      authRequired: true,
+      allowIdentityHeaders: true,
+      accessJwksUrl: ACCESS_JWKS_URL,
+      accessAudience: ACCESS_AUDIENCE,
+    });
+    assert.equal(auth, null);
+  });
 });
 
 test("auth-required mode denies when trusted headers are enabled but no trusted identity exists", async () => {
@@ -174,6 +327,31 @@ test("legacy unsigned cookie requires explicit opt-in when signing is enabled", 
     allowLegacyAuthCookie: true,
   });
   assert.equal(allowed?.userId, "legacy.user");
+});
+
+test("unsigned cookie identity requires explicit opt-in without signing secret", async () => {
+  const request = new Request("https://example.com/app", {
+    headers: {
+      cookie: "connexus_uid=unsigned.user",
+    },
+  });
+
+  const denied = await resolveRequestAuth({
+    request,
+    response: { headers: new Headers() },
+    authRequired: false,
+    allowUnsignedCookieIdentity: false,
+  });
+  assert.ok(denied?.userId.startsWith("guest-"));
+  assert.notEqual(denied?.userId, "unsigned.user");
+
+  const allowed = await resolveRequestAuth({
+    request,
+    response: { headers: new Headers() },
+    authRequired: false,
+    allowUnsignedCookieIdentity: true,
+  });
+  assert.equal(allowed?.userId, "unsigned.user");
 });
 
 test("guest fallback sets signed cookie and can be re-used", async () => {

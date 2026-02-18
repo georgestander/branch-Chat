@@ -461,3 +461,8 @@
 - Decisions: added dedicated "Cloudflare Access Setup (Private Personal Deployment)" section with required Worker flags/secrets, Zero Trust login-method/app-policy steps, recommended `/events*` + `/_uploads*` coverage, and verification checklist.
 - Files: README.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Hardening auth trust model + sign-in fallback gating. Ref: Docs/PRD.md Non-functional (security posture), Docs/private-personal-prod-oss-plan.md AC-01/AC-05.
+- Task: remove unverified identity-header auth, require verified Cloudflare Access assertion path, and keep self-asserted sign-in only as explicit fallback.
+- Decisions: trust only `cf-access-authenticated-user-email` + verified `cf-access-jwt-assertion` (JWKS + audience); added secure default to reject unsigned cookies unless explicitly allowed by caller; disabled self-asserted `/sign-in` POST when auth-required unless opt-in flag set.
+- Files: src/app/shared/auth.server.ts, src/app/shared/auth.server.test.ts, src/worker.tsx, src/app/pages/sign-in/SignInPage.tsx, types/env.d.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).

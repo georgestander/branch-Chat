@@ -42,6 +42,16 @@ const AUTH_OPTIONAL_PATH_PREFIXES = [
   "/landing",
 ] as const;
 
+function isLocalhostHost(value: string): boolean {
+  const hostname = value.trim().toLowerCase();
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname.endsWith(".localhost")
+  );
+}
+
 function isAuthOptionalPath(pathname: string): boolean {
   return AUTH_OPTIONAL_PATH_PREFIXES.some((prefix) => {
     return (
@@ -72,10 +82,33 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestI
     request.headers.get("cf-ray") ?? crypto.randomUUID();
   const allowIdentityHeaders = isAuthOptionEnabled(env.AUTH_TRUST_IDENTITY_HEADERS);
   const allowLegacyAuthCookie = isAuthOptionEnabled(env.AUTH_ALLOW_LEGACY_COOKIE);
+  const allowInsecureUnsignedCookie = isAuthOptionEnabled(
+    env.AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE,
+  );
+  const allowUnsignedCookieIdentity =
+    !authRequired &&
+    (allowInsecureUnsignedCookie || isLocalhostHost(requestUrl.hostname));
+  const accessJwksUrl = env.AUTH_ACCESS_JWKS_URL?.trim();
+  const accessAudience = env.AUTH_ACCESS_AUDIENCE?.trim();
 
   if (authRequired && !env.AUTH_COOKIE_SECRET && !allowIdentityHeaders) {
     console.error(
       "[ERROR] auth.config.missing_identity_source",
+      JSON.stringify({
+        requestId,
+        path: requestPath,
+        authRequired,
+      }),
+    );
+    return new Response("Server auth configuration missing", { status: 503 });
+  }
+  if (
+    authRequired &&
+    allowIdentityHeaders &&
+    (!accessJwksUrl || !accessAudience)
+  ) {
+    console.error(
+      "[ERROR] auth.config.missing_access_verification",
       JSON.stringify({
         requestId,
         path: requestPath,
@@ -93,6 +126,9 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestI
     authCookieSecret: env.AUTH_COOKIE_SECRET,
     allowIdentityHeaders,
     allowLegacyAuthCookie,
+    allowUnsignedCookieIdentity,
+    accessJwksUrl,
+    accessAudience,
   });
 
   if (!auth) {

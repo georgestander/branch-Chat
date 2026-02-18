@@ -10,6 +10,10 @@ declare global {
     AUTH_COOKIE_SECRET?: string;
     AUTH_TRUST_IDENTITY_HEADERS?: string;
     AUTH_ALLOW_LEGACY_COOKIE?: string;
+    AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE?: string;
+    AUTH_ALLOW_SELF_ASSERTED_SIGN_IN?: string;
+    AUTH_ACCESS_JWKS_URL?: string;
+    AUTH_ACCESS_AUDIENCE?: string;
     BYOK_ENCRYPTION_SECRET: string;
     OPENROUTER_API_KEY?: string;
     OPENROUTER_BASE_URL?: string;

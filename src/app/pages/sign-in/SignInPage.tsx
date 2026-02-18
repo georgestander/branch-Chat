@@ -1,6 +1,8 @@
 import type { AppRequestInfo } from "@/worker";
 
 import {
+  isAuthOptionEnabled,
+  isAuthRequiredEnabled,
   normalizeAuthUserId,
   setAuthCookie,
 } from "@/app/shared/auth.server";
@@ -29,8 +31,18 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
   const requestUrl = new URL(request.url);
   const redirectTo = resolveRedirectPath(requestUrl.searchParams.get("redirectTo"));
   const invalidUserError = requestUrl.searchParams.get("error") === "invalid";
+  const allowSelfAssertedSignIn =
+    !isAuthRequiredEnabled(ctx.env.AUTH_REQUIRED) ||
+    isAuthOptionEnabled(ctx.env.AUTH_ALLOW_SELF_ASSERTED_SIGN_IN);
 
   if (request.method.toUpperCase() === "POST") {
+    if (!allowSelfAssertedSignIn) {
+      return new Response(
+        "Sign-in is managed by your identity provider for this deployment.",
+        { status: 403 },
+      );
+    }
+
     const formData = await request.formData();
     const requestedRedirect = resolveRedirectPath(
       toFormString(formData.get("redirectTo")) || redirectTo,
@@ -80,31 +92,40 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
         </div>
 
         <form method="post" action="/sign-in" className="mt-6 space-y-3">
-          <input type="hidden" name="redirectTo" value={redirectTo} />
-          <label className="space-y-1">
-            <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Account ID or email
-            </span>
-            <input
-              name="userId"
-              type="text"
-              required
-              autoComplete="username"
-              placeholder="you@example.com"
-              className="h-10 w-full rounded-xl border border-border/70 bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </label>
-          {invalidUserError ? (
-            <p className="text-xs text-destructive" role="status">
-              Enter a valid identifier to sign in.
+          {allowSelfAssertedSignIn ? (
+            <>
+              <input type="hidden" name="redirectTo" value={redirectTo} />
+              <label className="space-y-1">
+                <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Account ID or email
+                </span>
+                <input
+                  name="userId"
+                  type="text"
+                  required
+                  autoComplete="username"
+                  placeholder="you@example.com"
+                  className="h-10 w-full rounded-xl border border-border/70 bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </label>
+              {invalidUserError ? (
+                <p className="text-xs text-destructive" role="status">
+                  Enter a valid identifier to sign in.
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-primary px-4 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground transition hover:bg-primary/90"
+              >
+                Continue
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              This deployment uses managed identity. Complete sign-in through your
+              identity provider, then return to the app.
             </p>
-          ) : null}
-          <button
-            type="submit"
-            className="inline-flex h-10 w-full items-center justify-center rounded-full bg-primary px-4 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground transition hover:bg-primary/90"
-          >
-            Continue
-          </button>
+          )}
         </form>
       </main>
     </div>

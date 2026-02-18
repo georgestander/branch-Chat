@@ -3,6 +3,8 @@ import type { ConversationModelId } from "@/lib/conversation";
 const AUTH_COOKIE_NAME = "connexus_uid";
 const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const AUTH_COOKIE_VERSION = "v1";
+const ACCESS_JWT_CLOCK_SKEW_SECONDS = 60;
+const ACCESS_JWKS_CACHE_MS = 5 * 60 * 1000;
 
 export interface AppAuth {
   userId: string;
@@ -10,6 +12,15 @@ export interface AppAuth {
 }
 
 const AUTH_REQUIRED_TRUTHY_VALUES = new Set(["1", "true", "yes", "on"]);
+const jwksCache = new Map<string, { keys: JsonWebKey[]; expiresAt: number }>();
+type AccessJwk = JsonWebKey & {
+  kid?: string;
+  use?: string;
+  alg?: string;
+  n?: string;
+  e?: string;
+  kty?: string;
+};
 
 function isGuestUserId(userId: string): boolean {
   return userId.startsWith("guest-");
@@ -94,6 +105,18 @@ function decodeBase64UrlToString(value: string): string | null {
   }
 }
 
+function decodeBase64UrlToBytes(value: string): Uint8Array | null {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const paddingLength = (4 - (normalized.length % 4)) % 4;
+    const padded = `${normalized}${"=".repeat(paddingLength)}`;
+    const binary = atob(padded);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
 function isConstantTimeMatch(left: string, right: string): boolean {
   if (left.length !== right.length) {
     return false;
@@ -153,9 +176,13 @@ async function parseCookieUserValue(options: {
   rawValue: string;
   authCookieSecret?: string;
   allowLegacyUnsigned?: boolean;
+  allowUnsignedWithoutSecret?: boolean;
 }): Promise<string | null> {
   const secret = options.authCookieSecret?.trim();
   if (!secret) {
+    if (!options.allowUnsignedWithoutSecret) {
+      return null;
+    }
     const normalized = sanitizeUserId(options.rawValue);
     return normalized || null;
   }
@@ -186,66 +213,232 @@ async function parseCookieUserValue(options: {
   return null;
 }
 
-function parseAuthFromHeaders(request: Request): AppAuth | null {
-  const cloudflareAccessEmailHeader = "cf-access-authenticated-user-email";
-  const userIdHeaders = [
-    "x-connexus-user-id",
-    "x-clerk-user-id",
-    "x-user-id",
-  ];
-  const emailHeaders = [
-    cloudflareAccessEmailHeader,
-    "x-connexus-user-email",
-    "x-clerk-user-email",
-    "x-user-email",
-  ];
+function parseCacheControlMaxAgeMs(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const maxAgeMatch = /(?:^|,\s*)max-age=(\d+)/i.exec(value);
+  if (!maxAgeMatch) {
+    return null;
+  }
+  const seconds = Number(maxAgeMatch[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+  return Math.floor(seconds * 1000);
+}
 
-  let headerUserId: string | null = null;
-  for (const headerName of userIdHeaders) {
-    const headerValue = request.headers.get(headerName)?.trim();
-    if (headerValue) {
-      headerUserId = headerValue;
-      break;
-    }
+async function getJwksKeys(jwksUrl: string): Promise<AccessJwk[]> {
+  const cached = jwksCache.get(jwksUrl);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.keys;
   }
 
-  if (!headerUserId) {
-    const cloudflareAccessEmail = request.headers
-      .get(cloudflareAccessEmailHeader)
-      ?.trim()
-      .toLowerCase();
-    if (!cloudflareAccessEmail) {
-      return null;
-    }
+  const response = await fetch(jwksUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch JWKS: ${response.status}`);
+  }
 
-    const normalizedUserId = sanitizeUserId(cloudflareAccessEmail);
-    if (!normalizedUserId) {
-      return null;
-    }
+  const payload = await response.json().catch(() => null);
+  const keys = Array.isArray((payload as any)?.keys)
+    ? ((payload as any).keys as AccessJwk[])
+    : null;
+  if (!keys || keys.length === 0) {
+    throw new Error("JWKS payload missing keys");
+  }
 
+  const ttlMs =
+    parseCacheControlMaxAgeMs(response.headers.get("cache-control")) ??
+    ACCESS_JWKS_CACHE_MS;
+  jwksCache.set(jwksUrl, {
+    keys,
+    expiresAt: Date.now() + ttlMs,
+  });
+  return keys;
+}
+
+function sanitizeAccessEmail(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return normalized;
+}
+
+function parseJwtClaims(token: string): {
+  header: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  signingInput: string;
+  signature: Uint8Array;
+} | null {
+  const segments = token.split(".");
+  if (segments.length !== 3) {
+    return null;
+  }
+
+  const [headerPart, payloadPart, signaturePart] = segments;
+  const headerJson = decodeBase64UrlToString(headerPart);
+  const payloadJson = decodeBase64UrlToString(payloadPart);
+  const signature = decodeBase64UrlToBytes(signaturePart);
+  if (!headerJson || !payloadJson || !signature) {
+    return null;
+  }
+
+  try {
+    const header = JSON.parse(headerJson) as Record<string, unknown>;
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
     return {
-      userId: normalizedUserId,
-      email: cloudflareAccessEmail,
+      header,
+      payload,
+      signingInput: `${headerPart}.${payloadPart}`,
+      signature,
     };
+  } catch {
+    return null;
+  }
+}
+
+async function importRsaVerifyKey(jwk: AccessJwk): Promise<CryptoKey | null> {
+  if (jwk.kty !== "RSA" || typeof jwk.n !== "string" || typeof jwk.e !== "string") {
+    return null;
   }
 
-  const normalizedUserId = sanitizeUserId(headerUserId);
+  try {
+    return await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+  } catch {
+    return null;
+  }
+}
+
+function includesExpectedAudience(
+  audClaim: unknown,
+  expectedAudience: string,
+): boolean {
+  if (typeof audClaim === "string") {
+    return audClaim === expectedAudience;
+  }
+  if (Array.isArray(audClaim)) {
+    return audClaim.some((entry) => entry === expectedAudience);
+  }
+  return false;
+}
+
+async function verifyAccessJwt(options: {
+  assertion: string;
+  expectedEmail: string;
+  jwksUrl?: string;
+  expectedAudience?: string;
+}): Promise<boolean> {
+  const { assertion, expectedEmail } = options;
+  const jwksUrl = options.jwksUrl?.trim();
+  const expectedAudience = options.expectedAudience?.trim();
+  if (!jwksUrl || !expectedAudience) {
+    return false;
+  }
+
+  const parsed = parseJwtClaims(assertion);
+  if (!parsed) {
+    return false;
+  }
+
+  const alg = parsed.header.alg;
+  const kid = parsed.header.kid;
+  if (alg !== "RS256" || typeof kid !== "string" || kid.length === 0) {
+    return false;
+  }
+
+  const keys = await getJwksKeys(jwksUrl);
+  const jwk = keys.find((entry) => entry.kid === kid);
+  if (!jwk) {
+    return false;
+  }
+
+  const key = await importRsaVerifyKey(jwk);
+  if (!key) {
+    return false;
+  }
+
+  const isValid = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    parsed.signature,
+    new TextEncoder().encode(parsed.signingInput),
+  );
+  if (!isValid) {
+    return false;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const exp = parsed.payload.exp;
+  const nbf = parsed.payload.nbf;
+  if (typeof exp !== "number" || exp < now - ACCESS_JWT_CLOCK_SKEW_SECONDS) {
+    return false;
+  }
+  if (typeof nbf === "number" && nbf > now + ACCESS_JWT_CLOCK_SKEW_SECONDS) {
+    return false;
+  }
+
+  if (!includesExpectedAudience(parsed.payload.aud, expectedAudience)) {
+    return false;
+  }
+
+  const claimEmail =
+    typeof parsed.payload.email === "string"
+      ? sanitizeAccessEmail(parsed.payload.email)
+      : null;
+  if (!claimEmail || claimEmail !== expectedEmail) {
+    return false;
+  }
+
+  return true;
+}
+
+async function parseAuthFromHeaders(options: {
+  request: Request;
+  accessJwksUrl?: string;
+  accessAudience?: string;
+}): Promise<AppAuth | null> {
+  const cloudflareAccessEmailHeader = "cf-access-authenticated-user-email";
+  const cloudflareAccessAssertionHeader = "cf-access-jwt-assertion";
+
+  const accessEmail = sanitizeAccessEmail(
+    options.request.headers.get(cloudflareAccessEmailHeader) ?? "",
+  );
+  const assertion = options.request.headers
+    .get(cloudflareAccessAssertionHeader)
+    ?.trim();
+  if (!accessEmail || !assertion) {
+    return null;
+  }
+
+  try {
+    const verified = await verifyAccessJwt({
+      assertion,
+      expectedEmail: accessEmail,
+      jwksUrl: options.accessJwksUrl,
+      expectedAudience: options.accessAudience,
+    });
+    if (!verified) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const normalizedUserId = sanitizeUserId(accessEmail);
   if (!normalizedUserId) {
     return null;
   }
 
-  let email: string | null = null;
-  for (const headerName of emailHeaders) {
-    const headerValue = request.headers.get(headerName)?.trim();
-    if (headerValue) {
-      email = headerValue;
-      break;
-    }
-  }
-
   return {
     userId: normalizedUserId,
-    email,
+    email: accessEmail,
   };
 }
 
@@ -253,8 +446,14 @@ async function parseAuthFromCookie(options: {
   request: Request;
   authCookieSecret?: string;
   allowLegacyUnsigned?: boolean;
+  allowUnsignedWithoutSecret?: boolean;
 }): Promise<AppAuth | null> {
-  const { request, authCookieSecret, allowLegacyUnsigned = false } = options;
+  const {
+    request,
+    authCookieSecret,
+    allowLegacyUnsigned = false,
+    allowUnsignedWithoutSecret = false,
+  } = options;
   const cookies = parseCookies(request.headers.get("cookie"));
   const rawUserId = cookies.get(AUTH_COOKIE_NAME);
   if (!rawUserId) {
@@ -265,6 +464,7 @@ async function parseAuthFromCookie(options: {
     rawValue: rawUserId,
     authCookieSecret,
     allowLegacyUnsigned,
+    allowUnsignedWithoutSecret,
   });
   if (!normalizedUserId) {
     return null;
@@ -345,6 +545,9 @@ export async function resolveRequestAuth(options: {
   authCookieSecret?: string;
   allowIdentityHeaders?: boolean;
   allowLegacyAuthCookie?: boolean;
+  allowUnsignedCookieIdentity?: boolean;
+  accessJwksUrl?: string;
+  accessAudience?: string;
 }): Promise<AppAuth | null> {
   const {
     request,
@@ -354,11 +557,18 @@ export async function resolveRequestAuth(options: {
     authCookieSecret,
     allowIdentityHeaders = false,
     allowLegacyAuthCookie = false,
+    allowUnsignedCookieIdentity = false,
+    accessJwksUrl,
+    accessAudience,
   } = options;
   const hasCookieSecret = Boolean(authCookieSecret?.trim());
 
   if (allowIdentityHeaders) {
-    const headerAuth = parseAuthFromHeaders(request);
+    const headerAuth = await parseAuthFromHeaders({
+      request,
+      accessJwksUrl,
+      accessAudience,
+    });
     if (headerAuth) {
       return headerAuth;
     }
@@ -372,6 +582,7 @@ export async function resolveRequestAuth(options: {
     request,
     authCookieSecret,
     allowLegacyUnsigned: allowLegacyAuthCookie,
+    allowUnsignedWithoutSecret: allowUnsignedCookieIdentity,
   });
   if (cookieAuth && (!authRequired || !isGuestUserId(cookieAuth.userId))) {
     return cookieAuth;
