@@ -47,6 +47,14 @@ type CachedModels = {
 
 const cache = new Map<string, CachedModels>();
 
+function pruneExpiredCacheEntries(now: number): void {
+  for (const [key, entry] of cache.entries()) {
+    if (entry.expiresAt <= now) {
+      cache.delete(key);
+    }
+  }
+}
+
 function parseNumericPrice(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -195,6 +203,7 @@ export async function listOpenRouterModels(
         : "fallback";
 
   const now = Date.now();
+  pruneExpiredCacheEntries(now);
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
     ctx.trace("openrouter:models:cache-hit", {

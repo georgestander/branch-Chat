@@ -441,3 +441,8 @@
 - Decisions: only trust persisted stream ids while branch is actively streaming or has pending optimistic send; added cleanup effect to clear stale stored stream ids and local state when branch is not streaming.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Fix review F3 OpenRouter model cache eviction. Ref: Docs/PRD.md Non-functional (performance/operability).
+- Task: prevent per-user OpenRouter model cache map from retaining expired entries indefinitely.
+- Decisions: added shared `pruneExpiredCacheEntries(now)` and run it before cache lookup so expired keys are evicted across all users, not only on same-user reuse.
+- Files: src/app/shared/openrouterModels.server.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
