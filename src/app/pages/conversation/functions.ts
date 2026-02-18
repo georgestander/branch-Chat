@@ -27,10 +27,12 @@ import {
   deleteByokKey,
   getAccountQuotaSnapshot,
   getByokStatus,
+  getComposerPreference,
   isByokConfigured,
   releaseDemoPass,
   reserveDemoPass,
   resolveByokCredential,
+  saveComposerPreference,
   saveByokKey,
 } from "@/app/shared/account.server";
 import { getDefaultResponseTools } from "@/app/shared/openai/tools.server";
@@ -41,6 +43,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   removeStagedAttachment as removeStagedAttachmentHelper,
 } from "@/app/shared/uploads.server";
+import { renderMarkdownToHtml } from "@/app/shared/markdown.server";
 import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import {
   buildRetrievalContext,
@@ -70,16 +73,19 @@ import {
   type WebSearchInvocationOutput,
   type WebSearchResultSummary,
 } from "@/lib/conversation/tools";
+import { detectAutoEnableWebSearchIntent } from "@/lib/conversation/webSearchIntent";
 import {
   getWebSearchToolTypeForModel,
-  isWebSearchSupportedModel,
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { createOpenAIClient } from "@/lib/openai/client";
 import type { AppRequestInfo } from "@/worker";
 import {
   isOpenRouterModel,
+  resolveOpenRouterWebSearchModel,
+  resolvePreferredOpenRouterChatModel,
   stripOpenRouterPrefix,
+  withOpenRouterPrefix,
 } from "@/lib/openrouter/models";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
@@ -130,6 +136,21 @@ function buildResponseOptions(settings: {
   }
 
   return request;
+}
+
+async function waitForSSESubscriber(
+  streamId: string,
+  timeoutMs = 750,
+): Promise<{ ready: boolean; waitedMs: number }> {
+  const startedAt = Date.now();
+  const { getChannel } = await import("@/app/shared/streaming.server");
+  while (Date.now() - startedAt < timeoutMs) {
+    if (getChannel(streamId)) {
+      return { ready: true, waitedMs: Date.now() - startedAt };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return { ready: getChannel(streamId) !== undefined, waitedMs: Date.now() - startedAt };
 }
 
 function normalizeComposerPreset(
@@ -262,6 +283,29 @@ function buildNextConversationSettings(options: {
   };
 }
 
+async function persistComposerPreferenceFromSettings(options: {
+  ctx: AppContext;
+  settings: ConversationSettings;
+  conversationId: string;
+  source: "create" | "update" | "send";
+}) {
+  try {
+    await saveComposerPreference(options.ctx, {
+      model: options.settings.model,
+      reasoningEffort: options.settings.reasoningEffort ?? null,
+      preset: options.settings.composerDefaults.preset,
+      tools: options.settings.composerDefaults.tools,
+    });
+  } catch (error) {
+    options.ctx.trace("account:composer:save-error", {
+      conversationId: options.conversationId,
+      source: options.source,
+      model: options.settings.model,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+}
+
 export interface ConversationPayload {
   conversationId?: ConversationModelId;
 }
@@ -364,6 +408,7 @@ export interface SendMessageInput extends ConversationPayload {
 
 export interface SendMessageResponse extends LoadConversationResponse {
   appendedMessages: Message[];
+  assistantRenderedHtml?: string | null;
   quota: {
     lane: "demo" | "byok";
     remainingDemoPasses: number | null;
@@ -572,6 +617,12 @@ export async function updateConversationSettings(
     tools: input.tools,
   });
   if (JSON.stringify(nextSettings) === JSON.stringify(current.settings)) {
+    await persistComposerPreferenceFromSettings({
+      ctx,
+      settings: current.settings,
+      conversationId,
+      source: "update",
+    });
     return {
       conversationId,
       snapshot: ensured.snapshot,
@@ -588,6 +639,13 @@ export async function updateConversationSettings(
       },
     },
   ]);
+
+  await persistComposerPreferenceFromSettings({
+    ctx,
+    settings: applied.snapshot.conversation.settings,
+    conversationId,
+    source: "update",
+  });
 
   return {
     conversationId,
@@ -707,6 +765,36 @@ function extractResultArray(root: unknown, seen = new Set<unknown>()): any[] | n
   return null;
 }
 
+function listRecentAssistantMessagesForBranch(options: {
+  snapshot: ConversationGraphSnapshot;
+  branchId: BranchId;
+  limit?: number;
+}): string[] {
+  const { snapshot, branchId, limit = 4 } = options;
+  const branch = snapshot.branches[branchId];
+  if (!branch || branch.messageIds.length === 0) {
+    return [];
+  }
+
+  const collected: string[] = [];
+  for (let index = branch.messageIds.length - 1; index >= 0; index -= 1) {
+    const messageId = branch.messageIds[index];
+    const message = snapshot.messages[messageId];
+    if (!message || message.role !== "assistant") {
+      continue;
+    }
+    const content = message.content.trim();
+    if (!content) {
+      continue;
+    }
+    collected.push(content);
+    if (collected.length >= limit) {
+      break;
+    }
+  }
+  return collected;
+}
+
 export async function loadConversation(
   input: ConversationPayload = {},
 ): Promise<LoadConversationResponse> {
@@ -736,12 +824,47 @@ export async function createConversation(
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
   const currentConversation = ensured.snapshot.conversation;
+  const hasModelOverride =
+    typeof input.model === "string" && input.model.trim().length > 0;
+  const hasReasoningEffortOverride =
+    Object.prototype.hasOwnProperty.call(input, "reasoningEffort");
+  const hasPresetOverride = Object.prototype.hasOwnProperty.call(input, "preset");
+  const hasToolsOverride = Object.prototype.hasOwnProperty.call(input, "tools");
+  let composerPreference: Awaited<ReturnType<typeof getComposerPreference>> = null;
+  if (
+    !hasModelOverride ||
+    !hasReasoningEffortOverride ||
+    !hasPresetOverride ||
+    !hasToolsOverride
+  ) {
+    try {
+      composerPreference = await getComposerPreference(ctx);
+    } catch (error) {
+      ctx.trace("account:composer:load-error", {
+        conversationId,
+        source: "create",
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
+
+  if (!hasModelOverride && composerPreference?.model) {
+    ctx.trace("account:composer:applied", {
+      conversationId,
+      source: "create",
+      model: composerPreference.model,
+      preset: composerPreference.preset,
+      toolCount: composerPreference.tools.length,
+    });
+  }
   const nextSettings = buildNextConversationSettings({
     settings: currentConversation.settings,
-    model: input.model,
-    reasoningEffort: input.reasoningEffort,
-    preset: input.preset,
-    tools: input.tools,
+    model: hasModelOverride ? input.model : composerPreference?.model,
+    reasoningEffort: hasReasoningEffortOverride
+      ? input.reasoningEffort
+      : composerPreference?.reasoningEffort,
+    preset: hasPresetOverride ? input.preset : composerPreference?.preset,
+    tools: hasToolsOverride ? input.tools : composerPreference?.tools,
   });
   const needsSettingsUpdate =
     JSON.stringify(nextSettings) !== JSON.stringify(currentConversation.settings);
@@ -769,6 +892,13 @@ export async function createConversation(
       withUpdatedSettings.snapshot.conversation.rootBranchId
     ];
   const title = input.title?.trim() || rootBranch?.title || conversationId;
+
+  await persistComposerPreferenceFromSettings({
+    ctx,
+    settings: withUpdatedSettings.snapshot.conversation.settings,
+    conversationId,
+    source: "create",
+  });
 
   await touchConversationDirectoryEntry(ctx, {
     id: conversationId,
@@ -827,13 +957,15 @@ export async function sendMessage(
   let quotaSnapshot: AccountQuotaSnapshot | null = null;
   let quotaReservationId: string | null = null;
   let quotaCommitted = false;
-  const settings = ensured.snapshot.conversation.settings;
-  const usingOpenRouter = isOpenRouterModel(settings.model);
-  const modelProvider: "openai" | "openrouter" = usingOpenRouter
+  const normalizedContent = input.content.trim();
+  let activeSnapshot = ensured.snapshot;
+  let settings = activeSnapshot.conversation.settings;
+  let usingOpenRouter = isOpenRouterModel(settings.model);
+  let modelProvider: "openai" | "openrouter" = usingOpenRouter
     ? "openrouter"
     : "openai";
-  const providerLabel = modelProvider === "openrouter" ? "OpenRouter" : "OpenAI";
-  const requestModel = usingOpenRouter
+  let providerLabel = modelProvider === "openrouter" ? "OpenRouter" : "OpenAI";
+  let requestModel = usingOpenRouter
     ? stripOpenRouterPrefix(settings.model)
     : settings.model;
   const normalizeOpenRouterDemoModel = (value: unknown): string | null => {
@@ -857,6 +989,36 @@ export async function sendMessage(
   const requestedLane: "demo" | "byok" = input.lane === "byok" ? "byok" : "demo";
   let quotaLane: "demo" | "byok" = "demo";
   let byokCredential: Awaited<ReturnType<typeof resolveByokCredential>> = null;
+  let selectedTools = normalizeComposerTools(
+    input.tools ?? settings.composerDefaults?.tools ?? [],
+  );
+  const selectedToolSet = new Set(selectedTools);
+  const recentAssistantMessages = listRecentAssistantMessagesForBranch({
+    snapshot: activeSnapshot,
+    branchId,
+  });
+  const autoWebSearchReason = detectAutoEnableWebSearchIntent({
+    content: normalizedContent,
+    recentAssistantMessages,
+  });
+  if (autoWebSearchReason && !selectedToolSet.has("web-search")) {
+    selectedTools = [...selectedTools, "web-search"];
+    selectedToolSet.add("web-search");
+    ctx.trace("composer:tools:auto-web-search", {
+      conversationId,
+      branchId,
+      reason: autoWebSearchReason,
+      contentLength: normalizedContent.length,
+    });
+  }
+
+  if (selectedTools.length > 0) {
+    ctx.trace("composer:tools:selected", {
+      conversationId,
+      branchId,
+      tools: selectedTools,
+    });
+  }
 
   const toMessageAttachment = (attachment: PendingAttachment) => ({
     id: attachment.id,
@@ -871,6 +1033,54 @@ export async function sendMessage(
   });
 
   try {
+    let modelOverride: string | undefined;
+    if (usingOpenRouter && selectedToolSet.has("web-search")) {
+      const preferredOpenRouterModel = withOpenRouterPrefix(
+        resolvePreferredOpenRouterChatModel(settings.model),
+      );
+      if (preferredOpenRouterModel !== settings.model) {
+        modelOverride = preferredOpenRouterModel;
+        ctx.trace("openrouter:web-search:model-default", {
+          conversationId,
+          branchId,
+          previousModel: settings.model,
+          nextModel: preferredOpenRouterModel,
+        });
+      }
+    }
+
+    const settingsWithToolSync = buildNextConversationSettings({
+      settings,
+      ...(modelOverride ? { model: modelOverride } : {}),
+      tools: selectedTools,
+    });
+    if (JSON.stringify(settingsWithToolSync) !== JSON.stringify(settings)) {
+      const settingsApplied = await applyConversationUpdates(ctx, conversationId, [
+        {
+          type: "conversation:update",
+          conversation: {
+            ...activeSnapshot.conversation,
+            settings: settingsWithToolSync,
+          },
+        },
+      ]);
+      activeSnapshot = settingsApplied.snapshot;
+      settings = settingsApplied.snapshot.conversation.settings;
+      usingOpenRouter = isOpenRouterModel(settings.model);
+      modelProvider = usingOpenRouter ? "openrouter" : "openai";
+      providerLabel = modelProvider === "openrouter" ? "OpenRouter" : "OpenAI";
+      requestModel = usingOpenRouter
+        ? stripOpenRouterPrefix(settings.model)
+        : settings.model;
+      modelRequestSettings.model = requestModel;
+      await persistComposerPreferenceFromSettings({
+        ctx,
+        settings,
+        conversationId,
+        source: "send",
+      });
+    }
+
     if (requestedLane === "byok") {
       try {
         byokCredential = await resolveByokCredential(ctx);
@@ -931,24 +1141,6 @@ export async function sendMessage(
         routedModel: modelRequestSettings.model,
         configuredPrimaryModel: demoOpenRouterPrimaryModel,
         configuredBackupModel: demoOpenRouterBackupModel,
-      });
-    }
-
-    const selectedTools = Array.isArray(input.tools)
-      ? input.tools.filter((tool): tool is ConversationComposerTool => {
-          return (
-            tool === "study-and-learn" ||
-            tool === "web-search" ||
-            tool === "file-upload"
-          );
-        })
-      : [];
-    const selectedToolSet = new Set(selectedTools);
-    if (selectedTools.length > 0) {
-      ctx.trace("composer:tools:selected", {
-        conversationId,
-        branchId,
-        tools: selectedTools,
       });
     }
 
@@ -1035,11 +1227,37 @@ export async function sendMessage(
         );
       }
     })();
-    const webSearchToolType = getWebSearchToolTypeForModel(settings.model);
-    const webSearchSupported = webSearchToolType !== null;
+    const openRouterWebSearchRequested =
+      usingOpenRouter && selectedToolSet.has("web-search");
+    if (openRouterWebSearchRequested) {
+      const webSearchModel = resolveOpenRouterWebSearchModel(
+        modelRequestSettings.model,
+      );
+      if (webSearchModel !== modelRequestSettings.model) {
+        ctx.trace("openrouter:web-search:model-route", {
+          conversationId,
+          branchId,
+          requestedModel: modelRequestSettings.model,
+          routedModel: webSearchModel,
+        });
+      }
+      modelRequestSettings.model = webSearchModel;
+    }
+
+    const webSearchToolType = getWebSearchToolTypeForModel(
+      modelRequestSettings.model,
+    );
+    const webSearchToolSupported = webSearchToolType !== null;
+    const enableWebSearchTool =
+      webSearchToolSupported &&
+      (selectedToolSet.size === 0 || selectedToolSet.has("web-search"));
+    const allowWebSearchForRun =
+      openRouterWebSearchRequested || enableWebSearchTool;
+    const shouldForceWebSearch =
+      enableWebSearchTool && selectedToolSet.has("web-search");
 
     const attachmentLookup = new Map<string, MessageAttachment>();
-    for (const storedMessage of Object.values(ensured.snapshot.messages)) {
+    for (const storedMessage of Object.values(activeSnapshot.messages)) {
       const storedAttachments = storedMessage.attachments;
       if (!Array.isArray(storedAttachments)) {
         continue;
@@ -1067,7 +1285,7 @@ export async function sendMessage(
       id: crypto.randomUUID(),
       branchId,
       role: "user",
-      content: input.content.trim(),
+      content: normalizedContent,
       createdAt: now,
       tokenUsage: null,
       attachments:
@@ -1089,280 +1307,288 @@ export async function sendMessage(
     };
     let assistantState: Message = assistantMessage;
 
-  const enableWebSearchTool =
-    webSearchSupported &&
-    (selectedToolSet.size === 0 || selectedToolSet.has("web-search"));
-
-  const shouldForceWebSearch =
-    webSearchSupported && selectedToolSet.has("web-search");
-
-  let retrievalContextResult: Awaited<ReturnType<typeof buildRetrievalContext>> | null =
-    null;
-  let retrievalContextText: string | null = null;
-  try {
-    retrievalContextResult = await buildRetrievalContext(ctx, {
-      conversationId,
-      query: userMessage.content,
-      maxAttachmentChunks: 6,
-      maxWebSnippets: enableWebSearchTool ? 6 : 0,
-      allowedAttachmentIds: null,
-      minScore: 0.12,
-    });
-    if (retrievalContextResult.blocks.length > 0) {
-      retrievalContextText = formatRetrievedContextForPrompt(
-        retrievalContextResult.blocks,
-      );
-      ctx.trace("retrieval:context", {
+    let retrievalContextResult: Awaited<ReturnType<typeof buildRetrievalContext>> | null =
+      null;
+    let retrievalContextText: string | null = null;
+    try {
+      retrievalContextResult = await buildRetrievalContext(ctx, {
+        conversationId,
+        query: userMessage.content,
+        maxAttachmentChunks: 6,
+        maxWebSnippets: allowWebSearchForRun ? 6 : 0,
+        allowedAttachmentIds: null,
+        minScore: 0.12,
+      });
+      if (retrievalContextResult.blocks.length > 0) {
+        retrievalContextText = formatRetrievedContextForPrompt(
+          retrievalContextResult.blocks,
+        );
+        ctx.trace("retrieval:context", {
+          conversationId,
+          branchId,
+          blockCount: retrievalContextResult.blocks.length,
+          sources: retrievalContextResult.blocks.map((block) => ({
+            id: block.id,
+            type: block.type,
+            title: block.title,
+            relevance: Number(block.relevance?.toFixed?.(3) ?? block.relevance),
+          })),
+        });
+      }
+    } catch (error) {
+      ctx.trace("retrieval:context:error", {
         conversationId,
         branchId,
-        blockCount: retrievalContextResult.blocks.length,
-        sources: retrievalContextResult.blocks.map((block) => ({
-          id: block.id,
-          type: block.type,
-          title: block.title,
-          relevance: Number(block.relevance?.toFixed?.(3) ?? block.relevance),
-        })),
+        error: error instanceof Error ? error.message : "unknown",
       });
     }
-  } catch (error) {
-    ctx.trace("retrieval:context:error", {
-      conversationId,
-      branchId,
-      error: error instanceof Error ? error.message : "unknown",
-    });
-  }
 
-  if (!retrievalContextText && attachmentIngestions.length > 0) {
-    const summaryLines = attachmentIngestions
-      .map((ingestion) => {
-        const attachment = attachmentLookup.get(ingestion.attachmentId);
-        const name = attachment?.name ?? ingestion.attachmentId;
-        const summary = ingestion.summary?.trim();
-        const fallbackSummary = attachment
-          ? `${attachment.contentType} · ${Math.max(1, Math.round(attachment.size / 1024))} KB`
-          : "Uploaded reference";
-        return `• ${name}: ${summary && summary.length > 0 ? summary : fallbackSummary}`;
-      })
-      .slice(0, 5);
+    if (!retrievalContextText && attachmentIngestions.length > 0) {
+      const summaryLines = attachmentIngestions
+        .map((ingestion) => {
+          const attachment = attachmentLookup.get(ingestion.attachmentId);
+          const name = attachment?.name ?? ingestion.attachmentId;
+          const summary = ingestion.summary?.trim();
+          const fallbackSummary = attachment
+            ? `${attachment.contentType} · ${Math.max(1, Math.round(attachment.size / 1024))} KB`
+            : "Uploaded reference";
+          return `• ${name}: ${summary && summary.length > 0 ? summary : fallbackSummary}`;
+        })
+        .slice(0, 5);
 
-    if (summaryLines.length > 0) {
-      retrievalContextText = `Here is what the user has shared so far:\n${summaryLines.join("\n")}\n\nUse these materials immediately—summarize key themes, surface important facts, and offer a study plan tailored to the document without waiting for more clarification.`;
+      if (summaryLines.length > 0) {
+        retrievalContextText = `Here is what the user has shared so far:\n${summaryLines.join("\n")}\n\nUse these materials immediately—summarize key themes, surface important facts, and offer a study plan tailored to the document without waiting for more clarification.`;
+      }
     }
-  }
 
-  const toolInvocationMap = new Map<string, ToolInvocation>();
-  // NOTE: We intentionally avoid partial Durable Object writes during streaming.
-  // We'll persist once at the end to minimize sequential write overhead.
-  const persistAssistantState = async () => Promise.resolve();
+    const toolInvocationMap = new Map<string, ToolInvocation>();
+    // NOTE: We intentionally avoid partial Durable Object writes during streaming.
+    // We'll persist once at the end to minimize sequential write overhead.
+    const persistAssistantState = async () => Promise.resolve();
 
-  const appendStart = Date.now();
-  const appendedSnapshot = await applyConversationUpdates(ctx, conversationId, [
-    {
-      type: "message:append",
-      conversationId,
-      message: userMessage,
-    },
-    {
-      type: "message:append",
-      conversationId,
-      message: assistantMessage,
-    },
-  ]);
-  ctx.trace("conversation:apply:append-duration", {
-    conversationId,
-    branchId,
-    ms: Date.now() - appendStart,
-  });
-
-  if (selectedToolSet.has("study-and-learn")) {
-    const agentStart = Date.now();
-    ctx.trace("agent:study:start", {
+    const appendStart = Date.now();
+    const appendedSnapshot = await applyConversationUpdates(ctx, conversationId, [
+      {
+        type: "message:append",
+        conversationId,
+        message: userMessage,
+      },
+      {
+        type: "message:append",
+        conversationId,
+        message: assistantMessage,
+      },
+    ]);
+    ctx.trace("conversation:apply:append-duration", {
       conversationId,
       branchId,
-      assistantMessageId: assistantMessage.id,
-      provider: usingOpenRouter ? "openrouter" : "openai",
-      model: modelRequestSettings.model,
+      ms: Date.now() - appendStart,
     });
 
-    let agentOutput = "";
-    let studyGenerationSucceeded = false;
-    const allowWebSearchForAgent =
-      webSearchSupported &&
-      (selectedToolSet.size === 0 ||
-        selectedToolSet.has("web-search") ||
-        selectedToolSet.has("study-and-learn"));
-
-    const studyAgentInput = buildStudyAgentInputFromBranch({
-      snapshot: appendedSnapshot.snapshot,
-      branchId,
-      nextUserContent: userMessage.content,
-      allowWebSearch: allowWebSearchForAgent,
-      allowFileTools: selectedToolSet.has("file-upload"),
-    });
-
-    try {
-      const agentHistory = [...studyAgentInput.messages];
-
-      if (consumedAttachments.length > 0) {
-        const attachmentSummary = consumedAttachments
-          .map((attachment) => {
-            const sizeKb = Math.max(1, Math.round(attachment.size / 1024));
-            return `• ${attachment.name} (${attachment.contentType}, ${sizeKb} KB)`;
-          })
-          .join("\n");
-        agentHistory.push({
-          role: "user",
-          content: `The user attached supporting files:\n${attachmentSummary}`,
-        });
-      }
-
-      if (retrievalContextText) {
-        agentHistory.push({
-          role: "user",
-          content: `Additional context from uploads & searches:\n${retrievalContextText}`,
-        });
-      }
-
-      const result = await runStudyAndLearnAgent({
-        instructions: studyAgentInput.instructions,
-        history: agentHistory,
+    if (selectedToolSet.has("study-and-learn")) {
+      const agentStart = Date.now();
+      ctx.trace("agent:study:start", {
+        conversationId,
+        branchId,
+        assistantMessageId: assistantMessage.id,
+        provider: usingOpenRouter ? "openrouter" : "openai",
         model: modelRequestSettings.model,
-        temperature: settings.temperature,
-        reasoningEffort: supportsReasoningEffortModel(modelRequestSettings.model)
-          ? settings.reasoningEffort ?? undefined
-          : undefined,
-        openaiClient: modelClient,
-        traceMetadata: {
+      });
+
+      let agentOutput = "";
+      let studyGenerationSucceeded = false;
+      const allowWebSearchForAgent =
+        allowWebSearchForRun &&
+        (selectedToolSet.size === 0 ||
+          selectedToolSet.has("web-search") ||
+          selectedToolSet.has("study-and-learn"));
+
+      const studyAgentInput = buildStudyAgentInputFromBranch({
+        snapshot: appendedSnapshot.snapshot,
+        branchId,
+        nextUserContent: userMessage.content,
+        allowWebSearch: allowWebSearchForAgent,
+        allowFileTools: selectedToolSet.has("file-upload"),
+      });
+
+      try {
+        const agentHistory = [...studyAgentInput.messages];
+
+        if (consumedAttachments.length > 0) {
+          const attachmentSummary = consumedAttachments
+            .map((attachment) => {
+              const sizeKb = Math.max(1, Math.round(attachment.size / 1024));
+              return `• ${attachment.name} (${attachment.contentType}, ${sizeKb} KB)`;
+            })
+            .join("\n");
+          agentHistory.push({
+            role: "user",
+            content: `The user attached supporting files:\n${attachmentSummary}`,
+          });
+        }
+
+        if (retrievalContextText) {
+          agentHistory.push({
+            role: "user",
+            content: `Additional context from uploads & searches:\n${retrievalContextText}`,
+          });
+        }
+
+        const result = await runStudyAndLearnAgent({
+          instructions: studyAgentInput.instructions,
+          history: agentHistory,
+          model: modelRequestSettings.model,
+          temperature: settings.temperature,
+          reasoningEffort: supportsReasoningEffortModel(modelRequestSettings.model)
+            ? settings.reasoningEffort ?? undefined
+            : undefined,
+          openaiClient: modelClient,
+          traceMetadata: {
+            conversationId,
+            branchId,
+            assistantMessageId: assistantMessage.id,
+          },
+        });
+
+        agentOutput = result.outputText.trim();
+        studyGenerationSucceeded = true;
+        ctx.trace("agent:study:success", {
           conversationId,
           branchId,
           assistantMessageId: assistantMessage.id,
+          ms: Date.now() - agentStart,
+          characters: agentOutput.length,
+          guardrails: result.guardrails,
+        });
+      } catch (error) {
+        ctx.trace("agent:study:error", {
+          conversationId,
+          branchId,
+          assistantMessageId: assistantMessage.id,
+          ms: Date.now() - agentStart,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+        agentOutput =
+          "We couldn't reach the Study & Learn tutor. Please try again.";
+      }
+
+      if (!agentOutput) {
+        agentOutput = "The Study & Learn tutor did not return a response.";
+      }
+
+      const finalAssistantMessage: Message = {
+        ...assistantMessage,
+        content: agentOutput,
+        toolInvocations: [],
+      };
+
+      const finalPersistStart = Date.now();
+      const applied = await applyConversationUpdates(ctx, conversationId, [
+        {
+          type: "message:update",
+          conversationId,
+          message: finalAssistantMessage,
         },
-      });
-
-      agentOutput = result.outputText.trim();
-      studyGenerationSucceeded = true;
-      ctx.trace("agent:study:success", {
+      ]);
+      ctx.trace("conversation:apply:final-duration", {
         conversationId,
         branchId,
-        assistantMessageId: assistantMessage.id,
-        ms: Date.now() - agentStart,
-        characters: agentOutput.length,
-        guardrails: result.guardrails,
+        ms: Date.now() - finalPersistStart,
       });
-    } catch (error) {
-      ctx.trace("agent:study:error", {
-        conversationId,
-        branchId,
-        assistantMessageId: assistantMessage.id,
-        ms: Date.now() - agentStart,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-      agentOutput =
-        "We couldn't reach the Study & Learn tutor. Please try again.";
-    }
 
-    if (!agentOutput) {
-      agentOutput = "The Study & Learn tutor did not return a response.";
-    }
+      let latestResult = applied;
+      try {
+        const fallbackResult = await maybeApplyRootBranchFallbackTitle({
+          ctx,
+          conversationId,
+          snapshot: applied.snapshot,
+          branchId,
+        });
+        if (fallbackResult) {
+          latestResult = fallbackResult;
+        }
+      } catch (error) {
+        ctx.trace("conversation:auto-title:fallback-error", {
+          conversationId,
+          branchId,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+      }
 
-    const finalAssistantMessage: Message = {
-      ...assistantMessage,
-      content: agentOutput,
-      toolInvocations: [],
-    };
-
-    const finalPersistStart = Date.now();
-    const applied = await applyConversationUpdates(ctx, conversationId, [
-      {
-        type: "message:update",
-        conversationId,
-        message: finalAssistantMessage,
-      },
-    ]);
-    ctx.trace("conversation:apply:final-duration", {
-      conversationId,
-      branchId,
-      ms: Date.now() - finalPersistStart,
-    });
-
-    let latestResult = applied;
-    try {
-      const fallbackResult = await maybeApplyRootBranchFallbackTitle({
+      void maybeAutoSummarizeRootBranchTitle({
         ctx,
         conversationId,
-        snapshot: applied.snapshot,
+        snapshot: latestResult.snapshot,
         branchId,
-      });
-      if (fallbackResult) {
-        latestResult = fallbackResult;
-      }
-    } catch (error) {
-      ctx.trace("conversation:auto-title:fallback-error", {
-        conversationId,
-        branchId,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-    }
-
-    void maybeAutoSummarizeRootBranchTitle({
-      ctx,
-      conversationId,
-      snapshot: latestResult.snapshot,
-      branchId,
-    }).catch((error) => {
-      ctx.trace("conversation:auto-title:deferred-error", {
-        conversationId,
-        branchId,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-    });
-
-    attachmentsToRestore = null;
-    if (quotaReservationId) {
-      if (studyGenerationSucceeded) {
-        quotaSnapshot = await commitDemoPass(ctx, {
-          reservationId: quotaReservationId,
-        });
-        quotaCommitted = true;
-        ctx.trace("quota:commit", {
+      }).catch((error) => {
+        ctx.trace("conversation:auto-title:deferred-error", {
           conversationId,
           branchId,
-          reservationId: quotaReservationId,
-          lane: quotaLane,
-          remainingDemoPasses: quotaSnapshot.remaining,
+          error: error instanceof Error ? error.message : "unknown",
         });
-      } else {
-        quotaSnapshot = await releaseDemoPass(ctx, {
-          reservationId: quotaReservationId,
-        });
-        quotaReservationId = null;
-        ctx.trace("quota:release", {
+      });
+
+      attachmentsToRestore = null;
+      if (quotaReservationId) {
+        if (studyGenerationSucceeded) {
+          quotaSnapshot = await commitDemoPass(ctx, {
+            reservationId: quotaReservationId,
+          });
+          quotaCommitted = true;
+          ctx.trace("quota:commit", {
+            conversationId,
+            branchId,
+            reservationId: quotaReservationId,
+            lane: quotaLane,
+            remainingDemoPasses: quotaSnapshot.remaining,
+          });
+        } else {
+          quotaSnapshot = await releaseDemoPass(ctx, {
+            reservationId: quotaReservationId,
+          });
+          quotaReservationId = null;
+          ctx.trace("quota:release", {
+            conversationId,
+            branchId,
+            reservationId,
+            lane: quotaLane,
+            remainingDemoPasses: quotaSnapshot.remaining,
+            reason: "study-generation-failed",
+          });
+        }
+      }
+      let studyAssistantRenderedHtml: string | null = null;
+      try {
+        studyAssistantRenderedHtml = await renderMarkdownToHtml(
+          finalAssistantMessage.content,
+        );
+      } catch (error) {
+        ctx.trace("markdown:render:error", {
           conversationId,
           branchId,
-          reservationId,
-          lane: quotaLane,
-          remainingDemoPasses: quotaSnapshot.remaining,
-          reason: "study-generation-failed",
+          source: "study-complete",
+          error: error instanceof Error ? error.message : "unknown",
         });
       }
+
+      return {
+        conversationId,
+        snapshot: latestResult.snapshot,
+        version: latestResult.version,
+        appendedMessages: [userMessage, finalAssistantMessage],
+        assistantRenderedHtml: studyAssistantRenderedHtml,
+        quota: {
+          lane: quotaLane,
+          remainingDemoPasses: quotaSnapshot?.remaining ?? null,
+        },
+      };
     }
-    return {
-      conversationId,
-      snapshot: latestResult.snapshot,
-      version: latestResult.version,
-      appendedMessages: [userMessage, finalAssistantMessage],
-      quota: {
-        lane: quotaLane,
-        remainingDemoPasses: quotaSnapshot?.remaining ?? null,
-      },
-    };
-  }
 
   const openaiInput = buildResponseInputFromBranch({
     snapshot: appendedSnapshot.snapshot,
     branchId,
     nextUserContent: userMessage.content,
-    allowWebSearch: enableWebSearchTool,
+    allowWebSearch: allowWebSearchForRun,
     allowFileTools: selectedToolSet.has("file-upload"),
   });
 
@@ -1374,6 +1600,17 @@ export async function sendMessage(
   }
 
   const openai = modelClient;
+
+  if (input.streamId) {
+    const subscriber = await waitForSSESubscriber(input.streamId);
+    ctx.trace("sse:subscriber", {
+      conversationId,
+      branchId,
+      streamId: input.streamId,
+      ready: subscriber.ready,
+      waitedMs: subscriber.waitedMs,
+    });
+  }
 
   const streamStart = Date.now();
   let firstDeltaAt: number | null = null;
@@ -1467,23 +1704,7 @@ export async function sendMessage(
   })();
 
   let buffered = "";
-  let lastPublishedLength = 0;
-  let lastPublishTime = Date.now();
   let latestReasoningSummary = "";
-  const MIN_PUBLISH_CHARS = 16;
-  const MIN_PUBLISH_MS = 120;
-
-  const publishPartialUpdate = async (content: string) => {
-    assistantState = {
-      ...assistantState,
-      content,
-    };
-    await persistAssistantState();
-    if (input.streamId) {
-      const { sendSSE } = await import("@/app/shared/streaming.server");
-      sendSSE(input.streamId, "delta", { content });
-    }
-  };
 
   const publishReasoningSummary = async (delta: string) => {
     if (!delta) {
@@ -1608,19 +1829,9 @@ export async function sendMessage(
             sendSSE(input.streamId, "start", { startedAt: firstDeltaAt });
           }
         }
-        const nowTs = Date.now();
-        if (
-          buffered.length - lastPublishedLength >= MIN_PUBLISH_CHARS ||
-          nowTs - lastPublishTime >= MIN_PUBLISH_MS
-        ) {
-          // We no longer persist partial content to the DO to avoid throttling.
-          // Hook for future SSE streaming could emit here instead.
-          lastPublishedLength = buffered.length;
-          lastPublishTime = nowTs;
-          if (input.streamId) {
-            const { sendSSE } = await import("@/app/shared/streaming.server");
-            sendSSE(input.streamId, "delta", { content: buffered });
-          }
+        if (input.streamId) {
+          const { sendSSE } = await import("@/app/shared/streaming.server");
+          sendSSE(input.streamId, "delta", { delta });
         }
         continue;
       }
@@ -1667,6 +1878,7 @@ export async function sendMessage(
   }
 
   let finalContent = buffered;
+  let finalRenderedHtml: string | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
   let finalResponse: any = null;
@@ -1713,23 +1925,32 @@ export async function sendMessage(
 
   try {
     finalResponse = await stream.finalResponse();
-    finalContent =
-      finalResponse.output_text?.trim() ??
-      finalResponse.output
-        ?.map((item: any) =>
-          item.content
-            ?.map?.((part: any) => part.text ?? "")
-            ?.join("") ?? "",
-        )
-        ?.join("")
-        .trim() ??
-      buffered.trim();
+    const outputText =
+      typeof finalResponse?.output_text === "string"
+        ? finalResponse.output_text.trim()
+        : "";
+    const outputItemsText = Array.isArray(finalResponse?.output)
+      ? finalResponse.output
+          .map((item: any) =>
+            Array.isArray(item?.content)
+              ? item.content
+                  .map((part: any) =>
+                    typeof part?.text === "string" ? part.text : "",
+                  )
+                  .join("")
+              : "",
+          )
+          .join("")
+          .trim()
+      : "";
     promptTokens = finalResponse.usage?.input_tokens ?? 0;
     completionTokens = finalResponse.usage?.output_tokens ?? 0;
     const streamReply =
       typeof finalResponse?.response?.output?.[0]?.content?.[0]?.text === "string"
-        ? finalResponse.response.output[0].content[0].text
-        : buffered;
+        ? finalResponse.response.output[0].content[0].text.trim()
+        : "";
+    finalContent =
+      outputText || outputItemsText || streamReply || buffered.trim();
     const finalReasoningSummary =
       extractReasoningSummaryFromFinalResponse(finalResponse);
     if (finalReasoningSummary) {
@@ -1763,6 +1984,21 @@ export async function sendMessage(
     if (!finalContent.trim()) {
       finalContent = "Assistant response interrupted. Please try again.";
     }
+  }
+
+  if (!finalContent.trim()) {
+    finalContent = "Assistant response interrupted. Please try again.";
+  }
+
+  try {
+    finalRenderedHtml = await renderMarkdownToHtml(finalContent);
+  } catch (error) {
+    ctx.trace("markdown:render:error", {
+      conversationId,
+      branchId,
+      source: "stream-complete",
+      error: error instanceof Error ? error.message : "unknown",
+    });
   }
 
   if (enableWebSearchTool && finalResponse && Array.isArray(finalResponse.output)) {
@@ -1836,6 +2072,7 @@ export async function sendMessage(
     const { sendSSE, closeSSE } = await import("@/app/shared/streaming.server");
     sendSSE(input.streamId, "complete", {
       content: finalContent,
+      renderedHtml: finalRenderedHtml,
       promptTokens,
       completionTokens,
       reasoningSummary: latestReasoningSummary || null,
@@ -1917,6 +2154,7 @@ export async function sendMessage(
     snapshot: latestSnapshot,
     version: latestVersion,
     appendedMessages: [userMessage, finalAssistantMessage],
+    assistantRenderedHtml: finalRenderedHtml,
     quota: {
       lane: quotaLane,
       remainingDemoPasses: quotaSnapshot?.remaining ?? null,

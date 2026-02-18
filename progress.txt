@@ -191,3 +191,203 @@
 - Decisions: captured a live in-app split-view screenshot and shipped a dedicated section (`Product in action`) between hero and demo; kept copy focused on parent/active branch value.
 - Files: public/landing-branching-screenshot.png, src/app/components/landing/ProductScreenshotSection.tsx, src/app/components/landing/LandingShell.tsx, progress.txt.
 - Notes: validation passed (`pnpm types`, `npm run test`, `npm run lint`); screenshot is static asset and can be replaced later without code changes.
+2026-02-18 — Branch-create compare-open + source-context affordance pass. Ref: Docs/PRD.md Core Experience (Branch creation, Branch navigation, UX & A11y affordance clarity).
+- Task: on create-branch, auto-open parent+child; emphasize child header source excerpt; pin source excerpt at composer top for first-prompt context.
+- Decisions: branch-create navigation now sets `compare=1` so new child opens with parent pane visible; hide redundant active-branch header label when source context exists to free horizontal room; promote source excerpt to primary-styled chip and include parent branch title label; surface same excerpt in composer as compact `From parent selection` context line.
+- Files: src/app/components/conversation/BranchableMessage.tsx, src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; next manual smoke = create branch from selection and verify compare-open + header/composer context at desktop/mobile widths.
+2026-02-18 — Composer branch-context auto-hide after first child send. Ref: Docs/PRD.md Core Experience UX affordance follow-up.
+- Task: hide pinned `From parent selection` composer context after first successful message on child branch.
+- Decisions: use persisted branch message presence (`role=user`) rather than optimistic state so context remains on send failures and disappears only after real persist.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Theme toggle relocated to sidebar only. Ref: Docs/PRD.md UX clarity / control discoverability.
+- Task: keep theme button always in conversation sidebar; remove from branch header control row.
+- Decisions: removed `ThemeToggle` from active branch leading actions in layout; inserted compact toggle in sidebar header control group next to sidebar/new-chat actions for consistent placement.
+- Files: src/app/components/conversation/ConversationLayout.tsx, src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Sidebar child-branch click now always opens compare mode. Ref: Docs/PRD.md Core Experience branch navigation + branch creation context affordance.
+- Task: clicking child branch in sidebar should always show parent branch beside child and jump to origin highlight context.
+- Decisions: sidebar child branch href now adds `compare=1`; page forwards compare intent to layout; layout force-opens parent pane on child branch navigation when compare mode requested (same-conversation switches included).
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, src/app/pages/conversation/ConversationPage.tsx, src/app/components/conversation/ConversationLayout.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — True token-delta streaming over SSE + subscriber handshake. Ref: Docs/public-beta-launch-plan.md Phase 1 (P1 interaction and streaming reliability, item 3 true deltas).
+- Task: stop assistant output from landing as one big chunk; stream incremental API deltas to UI.
+- Decisions: wait briefly for SSE subscriber before starting OpenAI stream to reduce first-delta drops; emit `delta` payloads per `response.output_text.delta` event instead of buffered full-content snapshots; keep final `complete` payload for reconciliation.
+- Files: src/app/pages/conversation/functions.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; next manual smoke = send long reply and confirm continuous token flow (no end-only burst).
+2026-02-18 — Agent commit-discipline rule update. Ref: Workflow hygiene / commit policy.
+- Task: update AGENTS.MD to enforce atomic commit after each logical change and ignore untouched work.
+- Decisions: made “commit immediately after completed logical change” explicit; added “stage only touched files, ignore unrelated/untouched worktree files.”
+- Files: AGENTS.MD, progress.txt.
+- Notes: no blockers.
+2026-02-18 — Demo pass-limit UX affordances in composer. Ref: Docs/PRD.md Core Experience (conversation management + UX/A11y), Docs/public-beta-launch-plan.md P1 interaction reliability.
+- Task: add clear notifications/state transitions when free 10-pass demo quota reaches low/zero, avoid dead-end send failures.
+- Decisions: added threshold toasts at 3/1/0 with `[TRACE] quota:ui:threshold`; persistent pass chip in composer header; inline zero-pass blocker panel with CTA to connect/manage BYOK and switch lane; explicit send disabled reason label; dedicated demo-cap error handling now also covers BYOK-connected users still on demo lane; added screen-reader live quota status.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; manual smoke pending for 3->1->0 transitions and BYOK switch CTA flow.
+2026-02-18 — Codex multi-agent role config bootstrap. Ref: Workflow/tooling enablement (multi-agent specialization).
+- Task: configure `~/.codex/config.toml` agent roles for planner/implementer/reviewer plus per-role config layers.
+- Decisions: used schema-backed `agents` table with `max_threads=4`; role configs split to absolute-path files for maintainability; planner/reviewer read-only, implementer workspace-write on-request.
+- Files: /Users/georgestander/.codex/config.toml, /Users/georgestander/.codex/roles/planner.toml, /Users/georgestander/.codex/roles/implementer.toml, /Users/georgestander/.codex/roles/reviewer.toml, progress.txt.
+- Notes: config parse sanity check passed via `codex features list`; no blockers.
+2026-02-18 — Codex agent-role matrix updated to screenshot variant. Ref: Workflow/tooling multi-agent specialization.
+- Task: replace prior planner/implementer/reviewer map with default/planner/explorer/worker/critical/reviewer mapped to `~/.codex/agents/*.toml`.
+- Decisions: set `agents.max_threads=6`; mirrored requested model/effort/summary/verbosity per role; encoded Purpose into `developer_instructions` in each role file.
+- Files: /Users/georgestander/.codex/config.toml, /Users/georgestander/.codex/agents/default.toml, /Users/georgestander/.codex/agents/planner.toml, /Users/georgestander/.codex/agents/explorer.toml, /Users/georgestander/.codex/agents/worker.toml, /Users/georgestander/.codex/agents/critical.toml, /Users/georgestander/.codex/agents/reviewer.toml, progress.txt.
+- Notes: config parse sanity check passed via `codex features list`; legacy /Users/georgestander/.codex/roles/* remains on disk but unreferenced.
+2026-02-18 — BYOK lane persistence across new chats. Ref: Docs/PRD.md Core Experience (conversation management, state resilience).
+- Task: stop new-chat composer from defaulting back to exhausted demo lane after BYOK is connected.
+- Decisions: moved lane preference to global localStorage key with legacy per-conversation fallback; synchronized lane via client event; auto-switch to BYOK when demo remaining hits 0 and key is connected.
+- Files: src/app/components/conversation/lanePreference.ts, src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; manual smoke pending for demo-exhausted -> new-chat -> send flow.
+2026-02-18 — Sidebar account/BYOK menu + default lane control. Ref: Docs/PRD.md Core Experience (conversation management, UX affordance clarity).
+- Task: add a dedicated sidebar account surface to manage BYOK and choose default lane for new chats.
+- Decisions: added account popover in sidebar header with pass balance, demo/BYOK default lane toggle, connect/update/disconnect BYOK controls; refresh account state on open and protect BYOK default selection when no key is connected.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; manual smoke pending for connect key in sidebar and immediate new-chat lane behavior.
+2026-02-18 — Removed unreferenced legacy Codex role files. Ref: Workflow/tooling config hygiene.
+- Task: delete obsolete `~/.codex/roles/{planner,implementer,reviewer}.toml` after migrating to `~/.codex/agents/*.toml`.
+- Decisions: removed files since not referenced by active `agents.*.config_file`; reduces confusion/drift risk.
+- Files: /Users/georgestander/.codex/roles/planner.toml (deleted), /Users/georgestander/.codex/roles/implementer.toml (deleted), /Users/georgestander/.codex/roles/reviewer.toml (deleted), progress.txt.
+- Notes: direct `rm` blocked by policy in this environment; deleted via patch tool; `/Users/georgestander/.codex/roles` now empty.
+2026-02-18 — Sidebar account panel clipping fix via portal overlay. Ref: Docs/PRD.md UX resilience.
+- Task: account/BYOK panel clipped at sidebar boundary and obscured list rows.
+- Decisions: moved panel render to `createPortal(..., document.body)` modal overlay with backdrop + close action; kept Escape close handling and same BYOK controls.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; user screenshot confirmed prior clipping path.
+2026-02-18 — BYOK provider/model mismatch guard in composer. Ref: Docs/PRD.md Core Experience chat engine (model/provider correctness).
+- Task: avoid confusing send failures when BYOK provider and selected model provider differ.
+- Decisions: added pre-send mismatch blocker with explicit error and auto-open advanced controls; added BYOK panel copy clarifying provider-specific model requirement.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — OpenRouter model catalog now uses BYOK and returns full list. Ref: Docs/PRD.md Chat engine model/settings overrides.
+- Task: composer only showed 3 OpenRouter models for BYOK users.
+- Decisions: if server OPENROUTER_API_KEY missing, resolve connected OpenRouter BYOK credential and use it for model catalog fetch; removed selector hard cap to return full deduped/sorted catalog; cache scoped by source/user.
+- Files: src/app/shared/openrouterModels.server.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Demo quota changed to 3 passes with copy refresh. Ref: Docs/PRD.md Conversation management + onboarding copy.
+- Task: reduce free quota from 10 to 3 and update user-facing messaging.
+- Decisions: set Account DO demo total to 3 (including normalization path), update quota-exceeded message to 3/3, update composer/sidebar pass chips and exhausted copy, update sign-in + landing + empty-state copy to 3 passes.
+- Files: src/lib/durable-objects/Account.ts, src/app/shared/account.server.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/pages/conversation/ConversationSidebar.tsx, src/app/pages/sign-in/SignInPage.tsx, src/app/components/landing/HeroSection.tsx, src/app/components/landing/PathCards.tsx, src/app/components/conversation/ConversationEmptyLayout.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Composer footer shows active model at bottom-left. Ref: Docs/PRD.md UX affordance clarity for model context.
+- Task: always display current model without consuming input row space.
+- Decisions: pinned `Model <name>` in composer footer left; kept status/error text on footer right.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Streaming smoke reproduced + fixed UI stream handoff race. Ref: Docs/public-beta-launch-plan.md P1 interaction reliability.
+- Task: smoke showed assistant stayed in pending then dumped full message; no incremental stream bubble despite stream start events.
+- Decisions: persisted active stream IDs in sessionStorage via streaming events, hydrated branch column from storage, cleared stream IDs on completion/failure/persisted assistant; added direct composer -> branch `onStreamStart` callback so active stream ID is set immediately.
+- Files: src/app/components/conversation/streamingEvents.ts, src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: smoke re-run confirms `Connecting…` -> `Streaming response…` -> final message; validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Composer model trigger simplified. Ref: Docs/PRD.md UX affordance clarity.
+- Task: remove selected model name from top dropdown trigger and keep model context in footer bottom-left only.
+- Decisions: changed model trigger button label to static `Model`; retained selected model visibility in composer footer.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Composer BYOK chip color contrast fix for dark mode. Ref: Docs/PRD.md UX readability/accessibility.
+- Task: remove green BYOK chip color that was low-contrast in dark mode.
+- Decisions: replaced emerald class with neutral high-contrast composer text/border styling while preserving BYOK/unlimited state semantics.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — OpenRouter stream completion fallback no longer clears streamed text. Ref: Docs/PRD.md Chat engine streaming responses per branch.
+- Task: OpenRouter replies streamed in UI then disappeared on completion (`streamReply` present, persisted `characters:0`).
+- Decisions: updated final response text resolution to choose first non-empty source (`output_text`, output parts, `response.output` text, buffered deltas); added final non-empty guard fallback message to prevent blank assistant persistence.
+- Files: src/app/pages/conversation/functions.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; smoke verified stream persistence on demo lane; BYOK lane not reproducible in local browser session.
+2026-02-18 — Persist composer model defaults across new chats + sign-in via Account DO. Ref: Docs/PRD.md Chat engine model/settings overrides + state persistence.
+- Task: selected OpenRouter model reset to OpenAI on `Start new chat`; preference did not survive sign back in.
+- Decisions: added account-level composer preference (`model`, `reasoningEffort`, `preset`, `tools`) in Account DO; save on conversation settings updates and create flow; apply preference fallback in `createConversation` when explicit overrides missing; trace logs for load/apply/save paths.
+- Files: src/lib/durable-objects/Account.ts, src/app/shared/account.server.ts, src/app/pages/conversation/functions.ts, progress.txt.
+- Notes: manual smoke via agent-browser confirmed new chats keep OpenRouter model (`Model OpenRouter Auto`) across conversation switches; validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Stream/persist markdown parity via server-rendered HTML handoff. Ref: Docs/PRD.md Chat engine streaming responses + UX consistency.
+- Task: streamed assistant showed raw markdown then shifted to styled HTML after persistence/refresh.
+- Decisions: keep delta token streaming unchanged; render final assistant markdown server-side once and include `renderedHtml` in SSE `complete`; include same `renderedHtml` in optimistic persisted assistant event so BranchColumn avoids escaped-text fallback.
+- Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/StreamingBubble.tsx, src/app/components/conversation/messageEvents.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; local browser session had demo exhausted so full send smoke could not be executed in that session.
+2026-02-18 — Sidebar conversation title fit fix with branch counts. Ref: Docs/PRD.md Core Experience (branch navigation) + UX & A11y clarity.
+- Task: ensure long conversation names remain readable in sidebar row even when branch count/menu are present.
+- Decisions: switched row grid track to `minmax(0,1fr)` so title can shrink correctly; made title span `flex-1`; compacted branch count to `N br` badge with full count in tooltip to reclaim horizontal space.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Added demo video to landing home + README. Ref: Docs/public-beta-launch-plan.md #8 (landing conversion) / Docs/PRD.md branch context visibility goal.
+- Task: surface `branch-chat-demo.mov` on home page and repo docs.
+- Decisions: copied source video into `public/` for worker static serving; embedded `<video controls playsInline preload="metadata">` in landing product section; added README inline video block + direct fallback link for renderers that strip video tags.
+- Files: public/branch-chat-demo.mov, src/app/components/landing/ProductScreenshotSection.tsx, README.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Provider-aware preset routing in composer (OpenRouter-compatible Fast/Reasoning). Ref: Docs/PRD.md Chat engine model/settings overrides.
+- Task: Fast/Low/Medium/High controls were hardcoded to OpenAI models and caused mismatch for OpenRouter usage.
+- Decisions: added OpenRouter preset model resolver (ChatGPT-like candidates then `openrouter/auto` fallback); Fast/Reasoning menu actions now route through provider-aware resolver and apply preset intent while keeping live streaming path unchanged.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Sidebar branch-name single-line hardening + branch-count badge removal. Ref: Docs/PRD.md UX & A11y clarity (branch navigation readability).
+- Task: keep sidebar branch names on one line and remove `N BR` chips per UX feedback.
+- Decisions: removed conversation-level branch-count badge entirely; enforced branch-tree row sizing with `grid-cols-[minmax(0,1fr)_auto]` plus `flex-1/min-w-0/overflow-hidden` on branch label path for deterministic ellipsis.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Switched repo demo asset to GitHub-playable MP4. Ref: Docs/public-beta-launch-plan.md #8 (landing conversion UX).
+- Task: make README-hosted demo open as video player rather than `.mov` download.
+- Decisions: transcoded demo to H.264 MP4 (`branch-chat-demo.mp4`) for GitHub/web playback; replaced README inline `<video>` with clickable preview image linking to MP4 blob; updated landing page video source/fallback to MP4; removed MOV asset.
+- Files: public/branch-chat-demo.mp4, public/branch-chat-demo.mov (removed), README.md, src/app/components/landing/ProductScreenshotSection.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Sidebar header brand stays single-line under control-heavy layout. Ref: Docs/PRD.md UX & A11y clarity (navigation readability).
+- Task: fix top-left `Branch-Chat` wrapping onto two lines in sidebar header.
+- Decisions: reduced header control footprint (`h-8/w-8`, tighter gaps), reduced brand size to `text-sm`, enforced `whitespace-nowrap` on brand label.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Conversation-scoped composer tool cache to stop branch-switch preference resets. Ref: Docs/PRD.md Chat engine model/settings overrides + branch navigation continuity.
+- Task: web-search/tool toggles could revert during branch switches when server settings writes were delayed.
+- Decisions: added per-conversation `sessionStorage` cache for composer tools in `ConversationLayout`; hydrate from cache on conversation load, write on local settings change, and restore previous selection on save rollback.
+- Files: src/app/components/conversation/ConversationLayout.tsx, progress.txt.
+- Notes: pending validation before commit.
+2026-02-18 — Temporarily hid sponsor CTA on landing home. Ref: Docs/public-beta-launch-plan.md #8 (landing conversion CTA tuning).
+- Task: comment out `Sponsor via Company` mention/button in home donate section.
+- Decisions: wrapped existing CTA JSX in comment so env wiring stays intact and rollback is one-line uncomment; left other donation CTAs unchanged.
+- Files: src/app/components/landing/DonateSection.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint` in isolated tree; unrelated local edits were stashed to avoid mixing.
+2026-02-18 — Web-search UX auto-enable + OpenRouter ChatGPT default persistence. Ref: Docs/PRD.md Chat engine model/settings overrides + branch continuity.
+- Task: avoid dead-end “web search disabled” replies; support text-intent enablement and keep preference/model sticky across branches.
+- Decisions: added server intent detector (`latest/current/search online` + assent follow-up after assistant prompt) to auto-enable `web-search`; sync/persist composer tools during send; when OpenRouter + web-search, persist model to default OpenRouter ChatGPT and route run model to `:online`; relaxed prompt wording to allow model-native browse when no explicit tool call exists; composer now treats OpenRouter models as web-search-selectable and auto-switches to default OpenRouter chat model when enabling web search.
+- Files: src/lib/conversation/webSearchIntent.ts, src/app/pages/conversation/functions.ts, src/lib/openrouter/models.ts, src/lib/openai/models.ts, src/app/components/conversation/ConversationComposer.tsx, src/lib/openai/agentPrompt.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; local automated smoke for external web providers not executed in this pass.
+2026-02-18 — Removed home hosted/donate/support references and links. Ref: Docs/public-beta-launch-plan.md #8 (landing CTA tuning) + Docs/PRD.md UX clarity.
+- Task: strip remaining hosted, donate, support mentions/links from landing home sections and nav.
+- Decisions: removed entire PathCards + DonateSection from shell and deleted those components; removed hero/topbar hosted-donate-support CTAs; simplified landing links shape to repo/docs/security/license/changelog only; replaced value strip hosted wording with neutral BYOK copy.
+- Files: src/app/components/landing/LandingShell.tsx, src/app/components/landing/TopBarClient.tsx, src/app/components/landing/HeroSection.tsx, src/app/components/landing/ValueStrip.tsx, src/app/components/landing/types.ts, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/PathCards.tsx (deleted), src/app/components/landing/DonateSection.tsx (deleted), progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Refreshed local setup guide to match current app flow. Ref: Docs/PRD.md onboarding/supporting docs hygiene.
+- Task: update stale `Docs/setup.md` so local run instructions match current routes/auth/runtime options.
+- Decisions: documented strict local port `5174`, landing `/` vs app `/app`, auth-required sign-in path, and current validation/deploy commands; linked env var expansion to `Docs/env-vars.md`.
+- Files: Docs/setup.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Refreshed testing report with current validation run. Ref: Docs/PRD.md Testing & QA feedback loops.
+- Task: review `Docs/testing-report.md`, run listed command checks, remove stale/irrelevant entries, publish current status.
+- Decisions: executed all runnable commands in report (`pnpm types`, `npm run types`, `npm run test`, `npm run lint`, `pnpm check`, `pnpm tsc --noEmit`); trimmed legacy 2025 noise + blocked manual items to keep report actionable.
+- Files: Docs/testing-report.md, progress.txt.
+- Notes: all listed commands pass in local run; no blockers.
+2026-02-18 — Restored full testing report history; added latest test run at top. Ref: Docs/PRD.md Testing & QA feedback loops.
+- Task: correct over-pruned testing report by restoring unrelated historical entries and updating latest run date.
+- Decisions: rebuilt `Docs/testing-report.md` from prior version (`HEAD~1`) preserving all sections; inserted new `2026-02-18` run summary at top; kept older pending/manual items untouched except noting they were not re-run today.
+- Files: Docs/testing-report.md, progress.txt.
+- Notes: corrective doc-only update after user clarification; no blockers.
+2026-02-18 — Reframed landing messaging for live capabilities + roadmap. Ref: Docs/public-beta-launch-plan.md #8 (landing conversion narrative) + Docs/PRD.md core experience communication.
+- Task: communicate current features (branching chat, web search, file upload, study mode, OpenAI/OpenRouter) and add coming-soon roadmap (voice/dictation, Sign in with ChatGPT, Canvas), while preserving product demo media.
+- Decisions: kept demo video and screenshot sections untouched; updated hero copy/CTAs to open-source-first framing; replaced value strip with explicit `Live` feature cards, dedicated RedwoodSDK+Cloudflare infra panel, and `Coming soon` card set.
+- Files: src/app/components/landing/HeroSection.tsx, src/app/components/landing/ValueStrip.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; ignored unrelated `worker-configuration.d.ts` modification.
+2026-02-18 — Full manual QA sweep rerun logged with pass/fail/block statuses. Ref: Docs/PRD.md Testing & QA manual validation loops.
+- Task: run outstanding manual checks from `Docs/testing-report.md` end-to-end; update doc with today outcomes; keep history intact.
+- Decisions: executed agent-browser + live trace sweep on localhost:5180 across fresh signed identities to reset demo quotas; marked each pending check as ✅/❌/⚠️ with trace evidence; captured blockers (`STUDY_LEARN_WORKFLOW_ID` unset, no `tools:invoke` handler path observed) and defects (`copy Retry stuck`, `study+gpt-5-mini temperature`, docx/png ingestion issues).
+- Files: Docs/testing-report.md, progress.txt.
+- Notes: reran required loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no unrelated files staged.
+2026-02-18 — Bounded OpenRouter model cache growth for BYOK keys. Ref: Docs/PRD.md Performance & Observability cache health.
+- Task: prevent process-global OpenRouter model cache from unbounded per-user growth.
+- Decisions: added cache pruning on each request path (expire stale entries) + size cap eviction by oldest `lastAccessedAt`; traced evictions via `openrouter:models:cache-pruned`.
+- Files: src/app/shared/openrouterModels.server.ts, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Ignore stale persisted stream IDs when assistant turn is already finalized. Ref: Docs/PRD.md Chat engine stream UX + reload resilience.
+- Task: avoid stuck "awaiting assistant" bubble after reload when session had stale stream id.
+- Decisions: removed render-time sessionStorage fallback; restore persisted stream id only when latest visible message is an unfinished assistant (`tokenUsage` null), otherwise clear stale storage key.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

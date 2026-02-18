@@ -1,5 +1,19 @@
+import type { ComposerPreset } from "@/lib/conversation";
+import type { ConversationComposerTool } from "@/lib/conversation/tools";
+
 const STORAGE_KEY = "account.state.v1";
-const DEFAULT_DEMO_TOTAL_PASSES = 10;
+const DEFAULT_DEMO_TOTAL_PASSES = 3;
+const ALLOWED_COMPOSER_PRESETS = new Set<ComposerPreset>([
+  "fast",
+  "reasoning",
+  "study",
+  "custom",
+]);
+const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
+  "study-and-learn",
+  "web-search",
+  "file-upload",
+]);
 
 type ReservationStatus = "reserved" | "committed" | "released";
 
@@ -21,6 +35,14 @@ export interface AccountByokCredential {
   updatedAt: string;
 }
 
+export interface AccountComposerPreference {
+  model: string;
+  reasoningEffort: "low" | "medium" | "high" | null;
+  preset: ComposerPreset;
+  tools: ConversationComposerTool[];
+  updatedAt: string;
+}
+
 interface AccountState {
   ownerId: string;
   demo: {
@@ -29,6 +51,7 @@ interface AccountState {
     reserved: number;
   };
   byok: AccountByokCredential | null;
+  composerPreference: AccountComposerPreference | null;
   reservations: Record<string, PassReservation>;
   updatedAt: string;
 }
@@ -123,6 +146,69 @@ function sanitizeByokField(value: unknown, label: string): string {
   return normalized;
 }
 
+function normalizeComposerPreset(
+  value: unknown,
+  fallback: ComposerPreset = "custom",
+): ComposerPreset {
+  return typeof value === "string" && ALLOWED_COMPOSER_PRESETS.has(value as ComposerPreset)
+    ? (value as ComposerPreset)
+    : fallback;
+}
+
+function normalizeComposerTools(value: unknown): ConversationComposerTool[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const tools: ConversationComposerTool[] = [];
+  for (const entry of value) {
+    if (
+      typeof entry === "string" &&
+      ALLOWED_COMPOSER_TOOLS.has(entry as ConversationComposerTool) &&
+      !tools.includes(entry as ConversationComposerTool)
+    ) {
+      tools.push(entry as ConversationComposerTool);
+    }
+  }
+  return tools;
+}
+
+function normalizeComposerReasoningEffort(
+  value: unknown,
+): "low" | "medium" | "high" | null {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeComposerPreference(
+  value: unknown,
+  now: string,
+): AccountComposerPreference | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const model =
+    typeof record.model === "string" && record.model.trim().length > 0
+      ? record.model.trim()
+      : null;
+  if (!model) {
+    return null;
+  }
+  const updatedAt =
+    typeof record.updatedAt === "string" && record.updatedAt.trim().length > 0
+      ? record.updatedAt
+      : now;
+  return {
+    model,
+    reasoningEffort: normalizeComposerReasoningEffort(record.reasoningEffort),
+    preset: normalizeComposerPreset(record.preset),
+    tools: normalizeComposerTools(record.tools),
+    updatedAt,
+  };
+}
+
 function normalizeByokCredential(
   value: unknown,
   now: string,
@@ -179,6 +265,7 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
         reserved: 0,
       },
       byok: null,
+      composerPreference: null,
       reservations: {},
       updatedAt: now,
     };
@@ -231,18 +318,18 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
     }
   }
 
-  const totalCandidate = Number(stored.demo?.total);
   const usedCandidate = Number(stored.demo?.used);
-  const total =
-    Number.isFinite(totalCandidate) && totalCandidate > 0
-      ? Math.floor(totalCandidate)
-      : DEFAULT_DEMO_TOTAL_PASSES;
+  const total = DEFAULT_DEMO_TOTAL_PASSES;
   const used =
     Number.isFinite(usedCandidate) && usedCandidate >= 0
-      ? Math.floor(usedCandidate)
+      ? Math.min(Math.floor(usedCandidate), total)
       : 0;
   const byok = normalizeByokCredential(
     (stored as Partial<AccountState>).byok ?? null,
+    now,
+  );
+  const composerPreference = normalizeComposerPreference(
+    (stored as Partial<AccountState>).composerPreference ?? null,
     now,
   );
 
@@ -254,6 +341,7 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
       reserved: recalculatedReserved,
     },
     byok,
+    composerPreference,
     reservations,
     updatedAt:
       typeof stored.updatedAt === "string" && stored.updatedAt.trim().length > 0
@@ -316,6 +404,15 @@ export class AccountDO implements DurableObject {
       return this.handleDeleteByok(payload);
     }
 
+    if (request.method === "GET" && url.pathname === "/preferences/composer") {
+      return this.handleGetComposerPreference(url.searchParams.get("ownerId"));
+    }
+
+    if (request.method === "POST" && url.pathname === "/preferences/composer") {
+      const payload = await request.json().catch(() => null);
+      return this.handleSetComposerPreference(payload);
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -344,6 +441,9 @@ export class AccountDO implements DurableObject {
         ...current,
         demo: { ...current.demo },
         byok: current.byok ? { ...current.byok } : null,
+        composerPreference: current.composerPreference
+          ? { ...current.composerPreference, tools: [...current.composerPreference.tools] }
+          : null,
         reservations: { ...current.reservations },
       });
       this.cache = next;
@@ -728,6 +828,95 @@ export class AccountDO implements DurableObject {
       );
     }
   }
+
+  private async handleGetComposerPreference(ownerId: unknown): Promise<Response> {
+    try {
+      const normalizedOwnerId = sanitizeOwnerId(ownerId);
+      const state = await this.getState(normalizedOwnerId);
+      console.log(
+        "[TRACE] account:composer:get",
+        JSON.stringify({
+          ownerId: normalizedOwnerId,
+          hasPreference: Boolean(state.composerPreference),
+          model: state.composerPreference?.model ?? null,
+          preset: state.composerPreference?.preset ?? null,
+          updatedAt: state.composerPreference?.updatedAt ?? null,
+        }),
+      );
+      return jsonResponse({
+        preference: state.composerPreference,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      if (message === "owner mismatch") {
+        return jsonResponse(
+          { error: "owner-mismatch" },
+          { status: 403 },
+        );
+      }
+      console.error("[ERROR] account:composer:get failed", error);
+      return jsonResponse(
+        { error: "invalid-owner" },
+        { status: 400 },
+      );
+    }
+  }
+
+  private async handleSetComposerPreference(payload: unknown): Promise<Response> {
+    try {
+      if (!payload || typeof payload !== "object") {
+        throw new TypeError("Payload must be an object");
+      }
+      const record = payload as Record<string, unknown>;
+      const ownerId = sanitizeOwnerId(record.ownerId);
+      const model =
+        typeof record.model === "string" && record.model.trim().length > 0
+          ? record.model.trim()
+          : null;
+      if (!model) {
+        throw new TypeError("model is required");
+      }
+      const now = new Date().toISOString();
+      const preference: AccountComposerPreference = {
+        model,
+        reasoningEffort: normalizeComposerReasoningEffort(record.reasoningEffort),
+        preset: normalizeComposerPreset(record.preset),
+        tools: normalizeComposerTools(record.tools),
+        updatedAt: now,
+      };
+      const next = await this.updateState(ownerId, (state) => {
+        state.composerPreference = preference;
+        state.updatedAt = now;
+        return state;
+      });
+      console.log(
+        "[TRACE] account:composer:set",
+        JSON.stringify({
+          ownerId,
+          model: preference.model,
+          preset: preference.preset,
+          toolCount: preference.tools.length,
+          updatedAt: next.composerPreference?.updatedAt ?? now,
+        }),
+      );
+      return jsonResponse({
+        preference: next.composerPreference,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      if (message === "owner mismatch") {
+        return jsonResponse(
+          { error: "owner-mismatch" },
+          { status: 403 },
+        );
+      }
+      console.error("[ERROR] account:composer:set failed", error);
+      return jsonResponse(
+        { error: "invalid-composer-preference-request" },
+        { status: 400 },
+      );
+    }
+  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
@@ -884,6 +1073,59 @@ export class AccountClient {
         body,
       });
     }
+  }
+
+  async getComposerPreference(): Promise<AccountComposerPreference | null> {
+    const params = new URLSearchParams({ ownerId: this.ownerId });
+    const response = await this.stub.fetch(
+      `https://account/preferences/composer?${params.toString()}`,
+    );
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new AccountClientError({
+        message: "Failed to fetch composer preference",
+        status: response.status,
+        body,
+      });
+    }
+    const data = await parseJsonResponse<{
+      preference: AccountComposerPreference | null;
+    }>(response);
+    return data.preference;
+  }
+
+  async setComposerPreference(input: {
+    model: string;
+    reasoningEffort?: "low" | "medium" | "high" | null;
+    preset?: ComposerPreset;
+    tools?: ConversationComposerTool[];
+  }): Promise<AccountComposerPreference> {
+    const response = await this.stub.fetch("https://account/preferences/composer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ownerId: this.ownerId,
+        model: input.model,
+        reasoningEffort: input.reasoningEffort ?? null,
+        preset: input.preset ?? "custom",
+        tools: input.tools ?? [],
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new AccountClientError({
+        message: "Failed to save composer preference",
+        status: response.status,
+        body,
+      });
+    }
+    const data = await parseJsonResponse<{
+      preference: AccountComposerPreference | null;
+    }>(response);
+    if (!data.preference) {
+      throw new Error("Composer preference was missing from response");
+    }
+    return data.preference;
   }
 }
 

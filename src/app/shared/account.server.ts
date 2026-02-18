@@ -2,6 +2,7 @@ import type { AppContext } from "@/app/context";
 import {
   AccountClientError,
   type AccountByokCredential,
+  type AccountComposerPreference,
   type AccountQuotaSnapshot,
   type PassReservationResult,
 } from "@/lib/durable-objects/Account";
@@ -9,11 +10,13 @@ import {
   decryptByokApiKey,
   encryptByokApiKey,
 } from "@/app/shared/byokCrypto.server";
+import type { ComposerPreset } from "@/lib/conversation";
+import type { ConversationComposerTool } from "@/lib/conversation/tools";
 
 export class DemoQuotaExceededError extends Error {
   constructor() {
     super(
-      "Demo pass limit reached (10/10). Add your own API key to continue.",
+      "Demo pass limit reached (3/3). Add your own API key to continue.",
     );
     this.name = "DemoQuotaExceededError";
   }
@@ -57,6 +60,53 @@ function normalizeByokApiKey(value: unknown): string {
   return normalized;
 }
 
+function normalizeComposerModel(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new TypeError("model is required");
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new TypeError("model is required");
+  }
+  return normalized;
+}
+
+function normalizeComposerReasoningEffort(
+  value: unknown,
+): "low" | "medium" | "high" | null {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeComposerPreset(value: unknown): ComposerPreset {
+  return value === "fast" ||
+    value === "reasoning" ||
+    value === "study" ||
+    value === "custom"
+    ? value
+    : "custom";
+}
+
+function normalizeComposerTools(value: unknown): ConversationComposerTool[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const tools: ConversationComposerTool[] = [];
+  for (const entry of value) {
+    if (
+      (entry === "study-and-learn" ||
+        entry === "web-search" ||
+        entry === "file-upload") &&
+      !tools.includes(entry)
+    ) {
+      tools.push(entry);
+    }
+  }
+  return tools;
+}
+
 function toByokStatus(byok: AccountByokCredential | null): {
   provider: string | null;
   connected: boolean;
@@ -80,6 +130,80 @@ export async function getAccountQuotaSnapshot(
   ctx: AppContext,
 ): Promise<AccountQuotaSnapshot> {
   return getClient(ctx).getSnapshot();
+}
+
+export interface ComposerPreferenceInput {
+  model: string;
+  reasoningEffort?: "low" | "medium" | "high" | null;
+  preset?: ComposerPreset;
+  tools?: ConversationComposerTool[];
+}
+
+export async function getComposerPreference(
+  ctx: AppContext,
+): Promise<AccountComposerPreference | null> {
+  try {
+    const preference = await getClient(ctx).getComposerPreference();
+    console.log(
+      "[TRACE] account:composer:status",
+      JSON.stringify({
+        ownerId: ctx.auth.userId,
+        hasPreference: Boolean(preference),
+        model: preference?.model ?? null,
+        preset: preference?.preset ?? null,
+        updatedAt: preference?.updatedAt ?? null,
+      }),
+    );
+    return preference;
+  } catch (error) {
+    console.error(
+      "[ERROR] account:composer:status failed",
+      JSON.stringify({
+        ownerId: ctx.auth.userId,
+        message: error instanceof Error ? error.message : "unknown",
+      }),
+    );
+    throw new Error("Failed to load composer preference");
+  }
+}
+
+export async function saveComposerPreference(
+  ctx: AppContext,
+  input: ComposerPreferenceInput,
+): Promise<AccountComposerPreference> {
+  const model = normalizeComposerModel(input.model);
+  const reasoningEffort = normalizeComposerReasoningEffort(input.reasoningEffort);
+  const preset = normalizeComposerPreset(input.preset);
+  const tools = normalizeComposerTools(input.tools);
+  try {
+    const preference = await getClient(ctx).setComposerPreference({
+      model,
+      reasoningEffort,
+      preset,
+      tools,
+    });
+    console.log(
+      "[TRACE] account:composer:save",
+      JSON.stringify({
+        ownerId: ctx.auth.userId,
+        model: preference.model,
+        preset: preference.preset,
+        toolCount: preference.tools.length,
+        updatedAt: preference.updatedAt,
+      }),
+    );
+    return preference;
+  } catch (error) {
+    console.error(
+      "[ERROR] account:composer:save failed",
+      JSON.stringify({
+        ownerId: ctx.auth.userId,
+        model,
+        message: error instanceof Error ? error.message : "unknown",
+      }),
+    );
+    throw new Error("Failed to save composer preference");
+  }
 }
 
 export async function reserveDemoPass(

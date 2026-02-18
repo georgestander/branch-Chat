@@ -128,6 +128,7 @@ export async function ConversationPage({
       conversationId={result.conversationId}
       initialSidebarCollapsed={false}
       initialParentCollapsed={shouldAutoCollapseParent}
+      compareModeRequested={compareModeRequested}
       activeBranchId={activeBranch.id}
       conversations={summaries}
       openRouterModels={openRouterModels}

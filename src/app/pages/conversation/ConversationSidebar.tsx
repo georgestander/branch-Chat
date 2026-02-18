@@ -9,15 +9,20 @@ import {
   useState,
   useTransition,
 } from "react";
+import { createPortal } from "react-dom";
 
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import {
   archiveConversation,
   createConversation,
+  deleteComposerByokKey,
   deleteConversation,
+  getComposerAccountState,
   loadConversation,
   renameBranch,
+  saveComposerByokKey,
   unarchiveConversation,
+  type ComposerByokProvider,
 } from "@/app/pages/conversation/functions";
 import type {
   Branch,
@@ -36,6 +41,8 @@ import {
   MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
+  UserRound,
+  KeyRound,
   SquarePen,
   Trash2,
 } from "lucide-react";
@@ -45,6 +52,12 @@ import {
   useDirectoryUpdate,
   type DirectoryUpdateDetail,
 } from "@/app/components/conversation/directoryEvents";
+import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
+import {
+  readComposerLanePreference,
+  writeComposerLanePreference,
+  type ComposerLane,
+} from "@/app/components/conversation/lanePreference";
 
 interface ConversationSidebarProps {
   conversation: Conversation;
@@ -61,6 +74,10 @@ interface LoadedConversationData {
   tree: BranchTreeNode;
   conversation: Conversation;
 }
+
+type ComposerAccountStateResponse = Awaited<
+  ReturnType<typeof getComposerAccountState>
+>;
 
 interface DirectoryOverride {
   title?: string;
@@ -81,6 +98,16 @@ const BRANCH_GUIDE_MARGIN_BASE_REM = 0.55;
 const BRANCH_GUIDE_MARGIN_STEP_REM = 0.35;
 const BRANCH_GUIDE_MARGIN_MAX_REM = 3.2;
 const BRANCH_GUIDE_PADDING_REM = 0.7;
+
+function extractErrorMessage(cause: unknown): string {
+  if (cause instanceof Error && typeof cause.message === "string") {
+    return cause.message;
+  }
+  if (typeof cause === "string") {
+    return cause;
+  }
+  return "Unknown error";
+}
 
 export function ConversationSidebar({
   conversation,
@@ -110,6 +137,18 @@ export function ConversationSidebar({
   const [archivingIds, setArchivingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [showArchived, setShowArchived] = useState(false);
+  const [isBrowser, setIsBrowser] = useState(false);
+  const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
+  const [accountState, setAccountState] =
+    useState<ComposerAccountStateResponse | null>(null);
+  const [isAccountStateLoading, setIsAccountStateLoading] = useState(true);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [byokProvider, setByokProvider] = useState<ComposerByokProvider>("openai");
+  const [byokApiKey, setByokApiKey] = useState("");
+  const [isByokSaving, setIsByokSaving] = useState(false);
+  const [preferredLane, setPreferredLane] = useState<ComposerLane>("demo");
+  const accountButtonRef = useRef<HTMLButtonElement | null>(null);
+  const accountStateRequestIdRef = useRef(0);
   const directoryUpdateHandler = useCallback(
     (detail: DirectoryUpdateDetail) => {
       setDirectoryOverrides((current) => {
@@ -172,6 +211,94 @@ export function ConversationSidebar({
   );
 
   useDirectoryUpdate(directoryUpdateHandler);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsBrowser(true);
+    }
+  }, []);
+
+  const loadComposerAccountState = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const showLoading = options?.showLoading ?? true;
+      const requestId = accountStateRequestIdRef.current + 1;
+      accountStateRequestIdRef.current = requestId;
+      if (showLoading) {
+        setIsAccountStateLoading(true);
+      }
+      try {
+        const nextState = await getComposerAccountState();
+        if (accountStateRequestIdRef.current !== requestId) {
+          return null;
+        }
+        setAccountState(nextState);
+        return nextState;
+      } catch (cause) {
+        if (accountStateRequestIdRef.current !== requestId) {
+          return null;
+        }
+        const message = extractErrorMessage(cause);
+        setAccountError((previous) =>
+          previous ?? message ?? "We couldn't load account settings.",
+        );
+        return null;
+      } finally {
+        if (showLoading && accountStateRequestIdRef.current === requestId) {
+          setIsAccountStateLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadComposerAccountState({ showLoading: true });
+  }, [loadComposerAccountState]);
+
+  useEffect(() => {
+    const storedLane = readComposerLanePreference({ conversationId });
+    if (!storedLane) {
+      return;
+    }
+    setPreferredLane(storedLane);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (accountState?.byok.provider) {
+      setByokProvider(accountState.byok.provider);
+    }
+  }, [accountState?.byok.provider]);
+
+  useEffect(() => {
+    if (!accountState) {
+      return;
+    }
+    const byokConnected = Boolean(accountState.byok.enabled && accountState.byok.connected);
+    if (preferredLane !== "byok" || byokConnected) {
+      return;
+    }
+    setPreferredLane("demo");
+    writeComposerLanePreference("demo", { conversationId });
+  }, [accountState, conversationId, preferredLane]);
+
+  useEffect(() => {
+    if (!isAccountPanelOpen) {
+      return;
+    }
+    setAccountError(null);
+    void loadComposerAccountState({ showLoading: false });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsAccountPanelOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAccountPanelOpen, loadComposerAccountState]);
 
   const toggleArchivingState = useCallback(
     (conversationId: ConversationModelId, enable: boolean) => {
@@ -571,6 +698,122 @@ export function ConversationSidebar({
     });
   };
 
+  const byokEnabled = accountState?.byok.enabled ?? false;
+  const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
+  const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
+  const byokProviderLabel =
+    accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const demoTotalPasses = accountState?.quota.total ?? 3;
+  const demoRemainingPasses = accountState?.quota.remaining ?? null;
+  const accountPassesLabel = isAccountStateLoading
+    ? "Passes --"
+    : demoRemainingPasses === null
+      ? "Passes ?"
+      : `Passes ${demoRemainingPasses}/${demoTotalPasses}`;
+
+  const setPreferredLaneWithPersistence = useCallback(
+    (nextLane: ComposerLane) => {
+      if (nextLane === "byok" && (!byokEnabled || !byokConnected)) {
+        setAccountError(
+          byokEnabled
+            ? "Connect a BYOK key before setting BYOK as your default lane."
+            : byokUnavailableReason || "BYOK is disabled for this environment.",
+        );
+        return;
+      }
+      setAccountError(null);
+      setPreferredLane(nextLane);
+      writeComposerLanePreference(nextLane, { conversationId });
+    },
+    [byokConnected, byokEnabled, byokUnavailableReason, conversationId],
+  );
+
+  const handleSaveByokKey = useCallback(async () => {
+    if (isByokSaving) {
+      return;
+    }
+    if (!byokEnabled) {
+      setAccountError(
+        byokUnavailableReason || "BYOK is disabled for this environment.",
+      );
+      return;
+    }
+
+    const normalizedKey = byokApiKey.trim();
+    if (!normalizedKey) {
+      setAccountError("Enter an API key before connecting BYOK.");
+      return;
+    }
+
+    setIsByokSaving(true);
+    setAccountError(null);
+    try {
+      const status = await saveComposerByokKey({
+        provider: byokProvider,
+        apiKey: normalizedKey,
+      });
+      setAccountState((previous) =>
+        previous
+          ? {
+              ...previous,
+              byok: status,
+            }
+          : previous,
+      );
+      setByokApiKey("");
+      setPreferredLaneWithPersistence("byok");
+      await loadComposerAccountState({ showLoading: false });
+    } catch (cause) {
+      setAccountError(
+        extractErrorMessage(cause) || "We couldn't connect your BYOK key.",
+      );
+    } finally {
+      setIsByokSaving(false);
+    }
+  }, [
+    byokApiKey,
+    byokEnabled,
+    byokProvider,
+    byokUnavailableReason,
+    isByokSaving,
+    loadComposerAccountState,
+    setPreferredLaneWithPersistence,
+  ]);
+
+  const handleDeleteByokKey = useCallback(async () => {
+    if (isByokSaving) {
+      return;
+    }
+    setIsByokSaving(true);
+    setAccountError(null);
+    try {
+      await deleteComposerByokKey();
+      setAccountState((previous) =>
+        previous
+          ? {
+              ...previous,
+              byok: {
+                provider: null,
+                connected: false,
+                updatedAt: null,
+                enabled: previous.byok.enabled,
+                unavailableReason: previous.byok.unavailableReason,
+              },
+            }
+          : previous,
+      );
+      setByokApiKey("");
+      setPreferredLaneWithPersistence("demo");
+      await loadComposerAccountState({ showLoading: false });
+    } catch (cause) {
+      setAccountError(
+        extractErrorMessage(cause) || "We couldn't disconnect your BYOK key.",
+      );
+    } finally {
+      setIsByokSaving(false);
+    }
+  }, [isByokSaving, loadComposerAccountState, setPreferredLaneWithPersistence]);
+
   return (
     <aside
       className={cn(
@@ -580,14 +823,33 @@ export function ConversationSidebar({
     >
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+          <h2 className="min-w-0 whitespace-nowrap text-sm font-semibold tracking-tight text-foreground">
             Branch-Chat
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <ThemeToggle compact className="h-8 w-8 rounded-md" />
+            <button
+              ref={accountButtonRef}
+              type="button"
+              onClick={() => {
+                setIsAccountPanelOpen((previous) => !previous);
+                const storedLane = readComposerLanePreference({ conversationId });
+                if (storedLane) {
+                  setPreferredLane(storedLane);
+                }
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-haspopup="dialog"
+              aria-expanded={isAccountPanelOpen}
+              title="Account and BYOK settings"
+            >
+              <UserRound className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">Account and BYOK settings</span>
+            </button>
             <button
               type="button"
               onClick={onToggleSidebar}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               aria-pressed={!isSidebarCollapsed}
               aria-expanded={!isSidebarCollapsed}
               title={
@@ -607,7 +869,7 @@ export function ConversationSidebar({
               type="button"
               onClick={startNewConversation}
               disabled={isCreating}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-70"
               aria-label={isCreating ? "Creating new chat" : "Start a new chat"}
             >
               <SquarePen className="h-4 w-4" aria-hidden="true" />
@@ -620,6 +882,140 @@ export function ConversationSidebar({
           </p>
         ) : null}
       </div>
+      {isBrowser && isAccountPanelOpen
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Account and BYOK settings"
+            >
+              <div className="w-full max-w-md rounded-xl border border-border/70 bg-popover p-4 text-foreground shadow-2xl">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Account
+                  </h3>
+                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {accountPassesLabel}
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {isAccountStateLoading
+                    ? "Loading account status..."
+                    : `Default lane for new chats: ${preferredLane === "byok" ? "BYOK" : "Demo"}.`}
+                </p>
+
+                <div
+                  role="group"
+                  aria-label="Default lane for new chats"
+                  className="mt-2 inline-flex items-center rounded-full border border-border/70 bg-background/80 p-0.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPreferredLaneWithPersistence("demo")}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition",
+                      preferredLane === "demo"
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Demo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreferredLaneWithPersistence("byok")}
+                    disabled={!byokEnabled || !byokConnected}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-50",
+                      preferredLane === "byok"
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    BYOK
+                  </button>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-border/70 bg-background/70 p-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                    BYOK Key
+                  </div>
+                  <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                    <select
+                      value={byokProvider}
+                      onChange={(event) =>
+                        setByokProvider(event.target.value as ComposerByokProvider)
+                      }
+                      disabled={isByokSaving || !byokEnabled}
+                      className="h-8 rounded-md border border-border/70 bg-background px-2 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="BYOK provider"
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveByokKey()}
+                      disabled={isByokSaving || !byokEnabled}
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-border/70 bg-background px-2 text-[10px] font-semibold uppercase tracking-[0.16em] hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isByokSaving
+                        ? "Saving..."
+                        : byokConnected
+                          ? "Update"
+                          : "Connect"}
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    value={byokApiKey}
+                    onChange={(event) => setByokApiKey(event.target.value)}
+                    placeholder="Paste API key"
+                    disabled={isByokSaving || !byokEnabled}
+                    autoComplete="off"
+                    className="mt-2 h-8 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <span>
+                      {!byokEnabled
+                        ? byokUnavailableReason || "BYOK unavailable."
+                        : byokConnected
+                          ? `Connected to ${byokProviderLabel}.`
+                          : "No BYOK key connected."}
+                    </span>
+                    {byokConnected ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteByokKey()}
+                        disabled={isByokSaving}
+                        className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Disconnect
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {accountError ? (
+                  <p className="mt-2 text-xs text-destructive" role="status">
+                    {accountError}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsAccountPanelOpen(false)}
+                    className="inline-flex h-8 items-center rounded-md border border-border/70 bg-background px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         <div className="flex flex-col gap-3">
@@ -794,7 +1190,6 @@ function ConversationCard({
   onUnarchive,
   onDelete,
 }: ConversationCardProps) {
-  const branchCount = entry.branchCount ?? 0;
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(entry.title.trim() || entry.id);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -947,14 +1342,14 @@ function ConversationCard({
       )}
       data-active={isActive}
     >
-      <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <button
           type="button"
           onClick={() => {
             onToggle();
           }}
           className={cn(
-            "flex min-w-0 items-center gap-2 text-left transition",
+            "flex min-w-0 items-center gap-2 overflow-hidden text-left transition",
             isActive
               ? "text-background"
               : expanded
@@ -980,20 +1375,11 @@ function ConversationCard({
               aria-hidden="true"
             />
           )}
-          <span className="min-w-0 truncate font-medium" title={entry.title}>
+          <span className="min-w-0 flex-1 truncate font-medium" title={entry.title}>
             {entry.title.trim() || entry.id}
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={cn(
-              "shrink-0 text-xs text-muted-foreground",
-              isActive && "text-background/70",
-            )}
-          >
-            {branchCount} branch{branchCount === 1 ? "" : "es"}
-          </span>
-          {/* Status pill removed */}
           <div className="relative">
             <button
               ref={menuButtonRef}
@@ -1207,9 +1593,13 @@ function BranchTree({
   return (
     <div className="flex flex-col">
       <a
-        href={buildBranchHref(conversationId, tree.branch.id)}
+        href={buildBranchHref(
+          conversationId,
+          tree.branch.id,
+          Boolean(tree.branch.parentId),
+        )}
         className={cn(
-          "group relative flex max-w-full items-center justify-between rounded-md px-3 py-2 text-sm transition",
+          "group relative grid max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md px-3 py-2 text-sm transition",
           isConversationSelected
             ? isActive
               ? "bg-background/10 text-background shadow-sm hover:bg-background/15"
@@ -1222,7 +1612,7 @@ function BranchTree({
         aria-current={isActive ? "page" : undefined}
         style={{ paddingInlineStart: `${indentRem}rem` }}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <span
             className={cn(
               "h-2 w-2 shrink-0 rounded-full border border-border/60 transition",
@@ -1238,7 +1628,7 @@ function BranchTree({
           />
           <span
             className={cn(
-              "truncate",
+              "min-w-0 flex-1 truncate",
               isConversationSelected ? "text-background" : undefined,
             )}
             title={tree.branch.title?.trim() || UNTITLED_BRANCH}
@@ -1296,10 +1686,14 @@ function BranchTree({
 function buildBranchHref(
   conversationId: ConversationModelId,
   branchId: string,
+  compareMode = false,
 ): string {
   const params = new URLSearchParams({ conversationId });
   if (branchId) {
     params.set("branchId", branchId);
+  }
+  if (compareMode) {
+    params.set("compare", "1");
   }
   return `/app?${params.toString()}`;
 }

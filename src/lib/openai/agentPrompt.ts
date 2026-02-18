@@ -38,10 +38,10 @@ const DEFAULT_MARKDOWN_RULES = [
 const TOOL_DECISIONS_BLOCK = [
   "Tool usage decision flow:",
   "1. Examine the latest user request and available context.",
-  "2. If up-to-date or third-party facts are required and web search is allowed, call the `web_search` tool before finalizing the answer. Summarize findings with citations.",
+  "2. If up-to-date or third-party facts are required and web search is allowed, use the available web capability before finalizing the answer (tool call when available, otherwise model-native browsing). Summarize findings with citations.",
   "3. If uploads or file references are needed and file tools are enabled, call them explicitly.",
-  "4. After each tool call, incorporate results, update the plan or answer, and note sources.",
-  "5. If tools are disallowed for the current run, do not fabricate results—explain the limitation instead.",
+  "4. After each tool call or browse step, incorporate results, update the plan or answer, and note sources.",
+  "5. If web/file capabilities are disallowed for the current run, do not fabricate results—explain the limitation instead.",
 ].join("\n");
 
 const PERSISTENCE_BLOCK = [

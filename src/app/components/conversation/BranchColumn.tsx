@@ -43,7 +43,11 @@ import {
 } from "@/app/components/conversation/messageEvents";
 import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import {
+  COMPLETE_STREAMING_EVENT,
   START_STREAMING_EVENT,
+  clearActiveStreamId,
+  readActiveStreamId,
+  type CompleteStreamingDetail,
   type StartStreamingDetail,
 } from "@/app/components/conversation/streamingEvents";
 import { navigate } from "rwsdk/client";
@@ -69,6 +73,7 @@ interface BranchColumnProps {
   leadingActions?: ReactNode;
   style?: React.CSSProperties;
   highlightedBranchId?: string | null;
+  parentBranchTitle?: string | null;
   conversationModel: string;
   reasoningEffort: "low" | "medium" | "high" | null;
   composerPreset: ComposerPreset;
@@ -151,6 +156,10 @@ function createOptimisticRenderedMessage(
 function createPersistedRenderedMessage(
   detail: PersistedMessagesDetail["messages"][number],
 ): RenderedMessage {
+  const renderedHtml =
+    typeof detail.renderedHtml === "string" && detail.renderedHtml.length > 0
+      ? detail.renderedHtml
+      : formatOptimisticHtml(detail.content);
   return {
     id: detail.id,
     branchId: detail.branchId,
@@ -161,7 +170,7 @@ function createPersistedRenderedMessage(
     attachments: detail.attachments ?? null,
     toolInvocations: detail.toolInvocations ?? null,
     hasBranchHighlight: false,
-    renderedHtml: formatOptimisticHtml(detail.content),
+    renderedHtml,
   };
 }
 
@@ -178,6 +187,15 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function normalizeBranchContextExcerpt(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 export function BranchColumn({
   branch,
   messages,
@@ -189,6 +207,7 @@ export function BranchColumn({
   leadingActions,
   style,
   highlightedBranchId,
+  parentBranchTitle,
   conversationModel,
   reasoningEffort,
   composerPreset,
@@ -227,6 +246,14 @@ export function BranchColumn({
   );
 
   const handleOptimisticClear = useCallback((detail: ClearOptimisticMessageDetail) => {
+    if (detail.reason === "failed") {
+      clearActiveStreamId({
+        conversationId,
+        branchId: branch.id,
+      });
+      setActiveStreamId(null);
+    }
+
     setOptimisticMessages((current) => {
       if (detail.reason === "failed") {
         const next = current.filter(
@@ -258,7 +285,7 @@ export function BranchColumn({
 
       return didUpdate ? next : current;
     });
-  }, []);
+  }, [branch.id, conversationId]);
 
   useOptimisticMessageEvents({
     conversationId,
@@ -285,6 +312,29 @@ export function BranchColumn({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
+      const custom = event as CustomEvent<CompleteStreamingDetail>;
+      const detail = custom.detail;
+      if (!detail) return;
+      if (detail.conversationId !== conversationId || detail.branchId !== branch.id) {
+        return;
+      }
+      clearActiveStreamId({
+        conversationId,
+        branchId: branch.id,
+      });
+      setActiveStreamId((current) =>
+        current === detail.streamId ? null : current,
+      );
+    };
+    window.addEventListener(COMPLETE_STREAMING_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(COMPLETE_STREAMING_EVENT, handler as EventListener);
+    };
+  }, [branch.id, conversationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
       const custom = event as CustomEvent<PersistedMessagesDetail>;
       const detail = custom.detail;
       if (!detail) return;
@@ -302,6 +352,10 @@ export function BranchColumn({
         return [...merged.values()].sort(compareRenderedMessages);
       });
       if (detail.messages.some((message) => message.role === "assistant")) {
+        clearActiveStreamId({
+          conversationId,
+          branchId: branch.id,
+        });
         setActiveStreamId(null);
       }
     };
@@ -409,6 +463,11 @@ export function BranchColumn({
     return [...merged.values()].sort(compareRenderedMessages);
   }, [messages, optimisticMessages, persistedMessages]);
 
+  const hasPersistedUserMessage = useMemo(() => {
+    const persistedBranchMessages = [...messages, ...persistedMessages];
+    return persistedBranchMessages.some((message) => message.role === "user");
+  }, [messages, persistedMessages]);
+
   const visibleMessages = useMemo(
     () => combinedMessages.filter((message) => message.role !== "system"),
     [combinedMessages],
@@ -418,6 +477,9 @@ export function BranchColumn({
     visibleMessages.length > 0
       ? visibleMessages[visibleMessages.length - 1]
       : undefined;
+  const shouldHonorPersistedStreamId =
+    lastMessage?.role === "assistant" && !lastMessage.tokenUsage;
+  const effectiveActiveStreamId = activeStreamId;
   const isStreamingAssistant =
     isActive &&
     !!lastMessage &&
@@ -427,7 +489,30 @@ export function BranchColumn({
     (entry) => entry.status === "pending",
   );
   const awaitingAssistant =
-    isActive && (Boolean(activeStreamId) || hasPendingOptimisticSend);
+    isActive && (Boolean(effectiveActiveStreamId) || hasPendingOptimisticSend);
+
+  useEffect(() => {
+    if (activeStreamId !== null) {
+      return;
+    }
+    const persistedStreamId = readActiveStreamId(conversationId, branch.id);
+    if (!persistedStreamId) {
+      return;
+    }
+    if (!shouldHonorPersistedStreamId) {
+      clearActiveStreamId({
+        conversationId,
+        branchId: branch.id,
+      });
+      return;
+    }
+    setActiveStreamId(persistedStreamId);
+  }, [
+    activeStreamId,
+    branch.id,
+    conversationId,
+    shouldHonorPersistedStreamId,
+  ]);
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
@@ -533,19 +618,35 @@ export function BranchColumn({
 
   const stateLabel = isActive ? "Active" : "Parent";
   const StateIcon = isActive ? PencilLine : CornerUpLeft;
-  const referenceText = branch.createdFrom?.excerpt ?? null;
+  const referenceText = useMemo(
+    () => normalizeBranchContextExcerpt(branch.createdFrom?.excerpt ?? null),
+    [branch.createdFrom?.excerpt],
+  );
 
   const truncatedReference = useMemo(() => {
     if (!referenceText) {
       return "";
     }
 
-    if (referenceText.length <= 20) {
+    if (referenceText.length <= 84) {
       return referenceText;
     }
 
-    return `${referenceText.slice(0, 20).trimEnd()}…`;
+    return `${referenceText.slice(0, 84).trimEnd()}…`;
   }, [referenceText]);
+
+  const sourceBranchLabel = useMemo(() => {
+    const trimmed = parentBranchTitle?.trim();
+    if (!trimmed) {
+      return "parent branch";
+    }
+    if (trimmed.length <= 24) {
+      return trimmed;
+    }
+    return `${trimmed.slice(0, 24).trimEnd()}…`;
+  }, [parentBranchTitle]);
+
+  const shouldShowStateLabel = !isActive || !referenceText;
 
   return (
     <section
@@ -564,19 +665,25 @@ export function BranchColumn({
           <h2 className="truncate text-base font-semibold text-foreground sm:text-[1.05rem]">
             {branch.title || "Untitled Branch"}
           </h2>
-          <span className="hidden h-4 w-px bg-foreground/15 sm:inline" aria-hidden="true" />
-          <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
-            <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{stateLabel} Branch</span>
-          </span>
+          {shouldShowStateLabel ? (
+            <>
+              <span className="hidden h-4 w-px bg-foreground/15 sm:inline" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
+                <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{stateLabel} Branch</span>
+              </span>
+            </>
+          ) : null}
           {referenceText ? (
             <span
-              className="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
-              title={`From parent: “${referenceText}”`}
+              className="inline-flex min-w-0 max-w-[68vw] items-center gap-1.5 rounded-full border border-primary/45 bg-primary/18 px-2.5 py-1 text-xs font-semibold text-primary sm:max-w-[34rem]"
+              title={`From ${sourceBranchLabel}: “${referenceText}”`}
             >
-              <TextQuote aria-hidden className="h-3.5 w-3.5 opacity-70" />
-              <span className="font-semibold text-foreground">From parent:</span>
-              <span className="truncate text-foreground/85">
+              <TextQuote aria-hidden className="h-3.5 w-3.5 text-primary/90" />
+              <span className="hidden shrink-0 text-primary/80 sm:inline">
+                {`From ${sourceBranchLabel}:`}
+              </span>
+              <span className="truncate font-bold text-primary">
                 “{truncatedReference}”
               </span>
             </span>
@@ -618,8 +725,8 @@ export function BranchColumn({
           ))}
           {awaitingAssistant ? (
             <li className="flex w-full justify-start">
-              {activeStreamId ? (
-                <StreamingBubble streamId={activeStreamId} conversationId={conversationId} branchId={branch.id} />
+              {effectiveActiveStreamId ? (
+                <StreamingBubble streamId={effectiveActiveStreamId} conversationId={conversationId} branchId={branch.id} />
               ) : (
                 <AssistantPendingBubble />
               )}
@@ -647,8 +754,10 @@ export function BranchColumn({
                 conversationSettingsSaving={conversationSettingsSaving}
                 conversationSettingsError={conversationSettingsError}
                 onClearConversationSettingsError={onClearConversationSettingsError}
+                branchContextExcerpt={hasPersistedUserMessage ? null : referenceText}
                 bootstrapMessage={composerBootstrapMessage}
                 onBootstrapConsumed={onComposerBootstrapConsumed}
+                onStreamStart={(streamId) => setActiveStreamId(streamId)}
               />
             </div>
           </div>

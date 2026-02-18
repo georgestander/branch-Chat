@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -55,15 +56,22 @@ import { emitStartStreaming } from "@/app/components/conversation/streamingEvent
 import type { ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import {
-  isWebSearchSupportedModel,
+  isWebSearchSelectableModel,
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
 import {
+  OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES,
   isOpenRouterModel,
   stripOpenRouterPrefix,
   type OpenRouterModelOption,
 } from "@/lib/openrouter/models";
+import {
+  readComposerLanePreference,
+  subscribeComposerLanePreference,
+  writeComposerLanePreference,
+  type ComposerLane,
+} from "@/app/components/conversation/lanePreference";
 
 type ToolOption = {
   id: ConversationComposerTool;
@@ -106,7 +114,6 @@ const TOOL_OPTIONS: ToolOption[] = [
   },
 ];
 
-const COMPOSER_LANE_STORAGE_PREFIX = "connexus:composer:lane:";
 const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "study-and-learn",
   "web-search",
@@ -136,8 +143,10 @@ const START_MODE_DEFAULTS: Record<
     tools: ["study-and-learn"],
   },
 };
+const DEFAULT_DEMO_PASS_TOTAL = 3;
+const DEMO_PASS_WARNING_THRESHOLD = 2;
+const DEMO_PASS_CRITICAL_THRESHOLD = 1;
 
-type ComposerLane = "demo" | "byok";
 type ComposerAccountStateResponse = Awaited<
   ReturnType<typeof getComposerAccountState>
 >;
@@ -186,6 +195,26 @@ function isSameToolSelection(
     }
   }
   return true;
+}
+
+function resolveOpenRouterPresetModelId(
+  models: OpenRouterModelOption[],
+  fallbackModel: string,
+): string | null {
+  for (const rawId of OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES) {
+    const match = models.find((model) => model.rawId === rawId);
+    if (match) {
+      return match.id;
+    }
+  }
+  if (isOpenRouterModel(fallbackModel)) {
+    return fallbackModel;
+  }
+  const autoModel = models.find((model) => model.rawId === "openrouter/auto");
+  if (autoModel) {
+    return autoModel.id;
+  }
+  return models[0]?.id ?? null;
 }
 
 function inferComposerPreset(options: {
@@ -249,8 +278,10 @@ interface ConversationComposerProps {
   conversationSettingsSaving: boolean;
   conversationSettingsError: string | null;
   onClearConversationSettingsError: () => void;
+  branchContextExcerpt?: string | null;
   bootstrapMessage?: string | null;
   onBootstrapConsumed?: () => void;
+  onStreamStart?: (streamId: string) => void;
 }
 
 export function ConversationComposer({
@@ -267,8 +298,10 @@ export function ConversationComposer({
   conversationSettingsSaving,
   conversationSettingsError,
   onClearConversationSettingsError,
+  branchContextExcerpt,
   bootstrapMessage,
   onBootstrapConsumed,
+  onStreamStart,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -292,9 +325,9 @@ export function ConversationComposer({
   );
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
-  const laneStorageKey = `${COMPOSER_LANE_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
+  const previousDemoRemainingRef = useRef<number | null>(null);
   const accountStateRequestIdRef = useRef(0);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuId = useId();
@@ -307,7 +340,7 @@ export function ConversationComposer({
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
-  const webSearchSupported = isWebSearchSupportedModel(conversationModel);
+  const webSearchSelectable = isWebSearchSelectableModel(conversationModel);
   const { notify } = useToast();
   const reasoningOptions: Array<"low" | "medium" | "high"> = [
     "low",
@@ -354,6 +387,19 @@ export function ConversationComposer({
   const modelBadgeClassName =
     "inline-flex w-10 shrink-0 items-center justify-end text-[10px] leading-none text-current";
   const BASE_TEXTAREA_HEIGHT = 20;
+  const branchContextLabel = useMemo(() => {
+    if (!branchContextExcerpt) {
+      return null;
+    }
+    const normalized = branchContextExcerpt.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return null;
+    }
+    if (normalized.length <= 110) {
+      return normalized;
+    }
+    return `${normalized.slice(0, 110).trimEnd()}…`;
+  }, [branchContextExcerpt]);
 
   useEffect(() => {
     if (!autoFocus) {
@@ -387,46 +433,27 @@ export function ConversationComposer({
 
   useEffect(() => {
     const defaults = sanitizeStoredComposerTools(composerTools).filter((tool) =>
-      webSearchSupported ? true : tool !== "web-search",
+      webSearchSelectable ? true : tool !== "web-search",
     );
     setSelectedTools((previous) =>
       isSameToolSelection(previous, defaults) ? previous : defaults,
     );
-  }, [composerTools, webSearchSupported]);
+  }, [composerTools, webSearchSelectable]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      const stored = window.sessionStorage.getItem(laneStorageKey);
-      if (stored === "demo" || stored === "byok") {
-        setSelectedLane(stored);
-      } else {
-        setSelectedLane("demo");
-      }
-    } catch (storageError) {
-      console.warn(
-        "[Composer] unable to hydrate persisted lane selection",
-        storageError,
-      );
-      setSelectedLane("demo");
-    }
-  }, [laneStorageKey]);
+    const storedLane = readComposerLanePreference({ conversationId });
+    setSelectedLane(storedLane ?? "demo");
+  }, [conversationId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      window.sessionStorage.setItem(laneStorageKey, selectedLane);
-    } catch (storageError) {
-      console.warn(
-        "[Composer] unable to persist lane selection",
-        storageError,
-      );
-    }
-  }, [laneStorageKey, selectedLane]);
+    writeComposerLanePreference(selectedLane, { conversationId });
+  }, [conversationId, selectedLane]);
+
+  useEffect(() => {
+    return subscribeComposerLanePreference((nextLane) => {
+      setSelectedLane((previous) => (previous === nextLane ? previous : nextLane));
+    });
+  }, []);
 
   useEffect(() => {
     if (!bootstrapMessage) {
@@ -477,6 +504,10 @@ export function ConversationComposer({
   useEffect(() => {
     void loadComposerAccountState({ showLoading: true });
   }, [conversationId, loadComposerAccountState]);
+
+  useEffect(() => {
+    previousDemoRemainingRef.current = null;
+  }, [conversationId]);
 
   useEffect(() => {
     if (accountState?.byok.provider) {
@@ -956,7 +987,7 @@ export function ConversationComposer({
       const normalizedEffort = supportsReasoningEffortModel(nextModel)
         ? (nextEffort ?? "low")
         : null;
-      const webSearchSupportedForModel = isWebSearchSupportedModel(nextModel);
+      const webSearchSupportedForModel = isWebSearchSelectableModel(nextModel);
       const normalizedTools = sanitizeStoredComposerTools(nextToolsInput).filter((tool) =>
         webSearchSupportedForModel ? true : tool !== "web-search",
       );
@@ -976,7 +1007,7 @@ export function ConversationComposer({
   );
 
   useEffect(() => {
-    if (webSearchSupported) {
+    if (webSearchSelectable) {
       return;
     }
     if (!selectedTools.includes("web-search")) {
@@ -985,12 +1016,14 @@ export function ConversationComposer({
     const nextTools = selectedTools.filter((tool) => tool !== "web-search");
     setSelectedTools(nextTools);
     persistComposerDefaults(nextTools);
-  }, [persistComposerDefaults, selectedTools, webSearchSupported]);
+  }, [persistComposerDefaults, selectedTools, webSearchSelectable]);
 
   const handleToolSelect = useCallback(
     (tool: ToolOption["id"]) => {
-      if (tool === "web-search" && !webSearchSupported) {
-        setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+      if (tool === "web-search" && !webSearchSelectable) {
+        setError(
+          "Web search is unavailable for this model. Switch to Fast chat or OpenRouter ChatGPT.",
+        );
         setIsToolMenuOpen(false);
         return;
       }
@@ -1016,7 +1049,27 @@ export function ConversationComposer({
 
       if (!isSameToolSelection(nextTools, selectedTools)) {
         setSelectedTools(nextTools);
-        persistComposerDefaults(nextTools);
+        const selectingWebSearch =
+          tool === "web-search" && !selectedTools.includes("web-search");
+        if (selectingWebSearch && openRouterSelected) {
+          const preferredOpenRouterModel = resolveOpenRouterPresetModelId(
+            openRouterModels,
+            conversationModel,
+          );
+          if (
+            preferredOpenRouterModel &&
+            preferredOpenRouterModel !== conversationModel
+          ) {
+            persistComposerDefaults(nextTools, {
+              model: preferredOpenRouterModel,
+              reasoningEffort: null,
+            });
+          } else {
+            persistComposerDefaults(nextTools);
+          }
+        } else {
+          persistComposerDefaults(nextTools);
+        }
       }
 
       if (tool === "file-upload") {
@@ -1025,7 +1078,15 @@ export function ConversationComposer({
 
       setIsToolMenuOpen(false);
     },
-    [openFilePicker, persistComposerDefaults, selectedTools, webSearchSupported],
+    [
+      conversationModel,
+      openFilePicker,
+      openRouterModels,
+      openRouterSelected,
+      persistComposerDefaults,
+      selectedTools,
+      webSearchSelectable,
+    ],
   );
 
   const handleClearTool = useCallback(() => {
@@ -1054,18 +1115,21 @@ export function ConversationComposer({
     async (
       nextModel: string,
       nextEffort: "low" | "medium" | "high" | null,
+      presetOverride?: ComposerPreset,
     ) => {
       const normalizedEffort = supportsReasoningEffortModel(nextModel)
         ? (nextEffort ?? "low")
         : null;
       const nextTools = sanitizeStoredComposerTools(selectedTools).filter((tool) =>
-        isWebSearchSupportedModel(nextModel) ? true : tool !== "web-search",
+        isWebSearchSelectableModel(nextModel) ? true : tool !== "web-search",
       );
-      const inferredPreset = inferComposerPreset({
-        model: nextModel,
-        reasoningEffort: normalizedEffort,
-        tools: nextTools,
-      });
+      const inferredPreset =
+        presetOverride ??
+        inferComposerPreset({
+          model: nextModel,
+          reasoningEffort: normalizedEffort,
+          tools: nextTools,
+        });
       const success = await onConversationSettingsChange(nextModel, normalizedEffort, {
         preset: inferredPreset,
         tools: nextTools,
@@ -1101,9 +1165,49 @@ export function ConversationComposer({
   const byokEnabled = accountState?.byok.enabled ?? false;
   const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
   const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
+  const connectedByokProvider = accountState?.byok.provider ?? null;
   const byokProviderLabel =
-    accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+    connectedByokProvider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const isByokProviderModelMismatch =
+    selectedLane === "byok" &&
+    byokConnected &&
+    ((connectedByokProvider === "openrouter" && !isOpenRouterModel(conversationModel)) ||
+      (connectedByokProvider === "openai" && isOpenRouterModel(conversationModel)));
+  const byokProviderModelMismatchMessage =
+    connectedByokProvider === "openrouter"
+      ? "Your BYOK key is OpenRouter. Switch to an OpenRouter model before sending."
+      : connectedByokProvider === "openai"
+        ? "Your BYOK key is OpenAI. Switch to an OpenAI model before sending."
+        : "Switch to a model matching your BYOK provider before sending.";
+  const byokProviderModelHint =
+    connectedByokProvider === "openrouter"
+      ? "Use an OpenRouter model when sending in BYOK lane."
+      : connectedByokProvider === "openai"
+        ? "Use an OpenAI model when sending in BYOK lane."
+      : null;
+  const demoTotalPasses = accountState?.quota.total ?? DEFAULT_DEMO_PASS_TOTAL;
   const demoRemainingPasses = accountState?.quota.remaining ?? null;
+  const isDemoLaneExhausted =
+    selectedLane === "demo" &&
+    !isAccountStateLoading &&
+    demoRemainingPasses !== null &&
+    demoRemainingPasses <= 0;
+  const quotaChipText =
+    selectedLane === "byok" && byokConnected
+      ? "Unlimited"
+      : isAccountStateLoading
+        ? "Passes --"
+        : demoRemainingPasses === null
+          ? "Passes ?"
+          : `Passes ${demoRemainingPasses}/${demoTotalPasses}`;
+  const quotaChipClassName =
+    selectedLane === "byok" && byokConnected
+      ? "border-background/55 text-background"
+      : isDemoLaneExhausted
+        ? "border-destructive/70 text-destructive"
+        : demoRemainingPasses !== null && demoRemainingPasses <= DEMO_PASS_CRITICAL_THRESHOLD
+          ? "border-amber-400/70 text-amber-200"
+          : "border-background/35 text-background/85";
   const quotaIndicatorText =
     selectedLane === "byok" && byokConnected
       ? "BYOK lane: unlimited via your key."
@@ -1112,10 +1216,163 @@ export function ConversationComposer({
         : demoRemainingPasses === null
           ? "Demo lane: pass balance unavailable."
           : `Demo lane: ${demoRemainingPasses} pass${demoRemainingPasses === 1 ? "" : "es"} remaining.`;
-  const isSendDisabled = isPending || hasPendingAttachments || hasErroredAttachments;
+  const openRouterPresetModelId = useMemo(
+    () => resolveOpenRouterPresetModelId(openRouterModels, conversationModel),
+    [conversationModel, openRouterModels],
+  );
+  const shouldRoutePresetsToOpenRouter =
+    (selectedLane === "byok" && byokConnected && connectedByokProvider === "openrouter") ||
+    openRouterSelected;
+  const applyPresetModelSelection = useCallback(
+    (
+      preset: "fast" | "reasoning",
+      effort: "low" | "medium" | "high" | null,
+    ) => {
+      if (shouldRoutePresetsToOpenRouter) {
+        if (!openRouterPresetModelId) {
+          setError(
+            "OpenRouter models are still loading. Please try again in a moment.",
+          );
+          return;
+        }
+        const presetLabel: ComposerPreset = preset === "fast" ? "fast" : "reasoning";
+        void handleModelSelection(openRouterPresetModelId, null, presetLabel);
+        return;
+      }
+      const baseModel = START_MODE_DEFAULTS[preset].model;
+      void handleModelSelection(baseModel, preset === "fast" ? null : effort);
+    },
+    [
+      handleModelSelection,
+      openRouterPresetModelId,
+      shouldRoutePresetsToOpenRouter,
+    ],
+  );
+  const sendDisabledReason = isPending
+    ? "Sending..."
+    : hasPendingAttachments
+      ? "Attachments uploading"
+      : hasErroredAttachments
+        ? "Resolve failed attachments"
+        : isDemoLaneExhausted
+          ? "No demo passes left"
+          : null;
+  const isSendDisabled = sendDisabledReason !== null;
+
+  useEffect(() => {
+    if (!byokConnected) {
+      return;
+    }
+    if (selectedLane !== "demo") {
+      return;
+    }
+    if (isAccountStateLoading || demoRemainingPasses === null || demoRemainingPasses > 0) {
+      return;
+    }
+
+    setSelectedLane("byok");
+    notify({
+      title: "Switched to BYOK lane",
+      description: "Demo passes are exhausted, so new sends will use your connected key.",
+    });
+    console.info("[TRACE] quota:ui:auto-switch-byok", {
+      conversationId,
+      remaining: demoRemainingPasses,
+    });
+  }, [
+    byokConnected,
+    conversationId,
+    demoRemainingPasses,
+    isAccountStateLoading,
+    notify,
+    selectedLane,
+  ]);
+
+  useEffect(() => {
+    if (isAccountStateLoading || demoRemainingPasses === null) {
+      return;
+    }
+
+    const previousRemaining = previousDemoRemainingRef.current;
+    previousDemoRemainingRef.current = demoRemainingPasses;
+
+    if (
+      previousRemaining === null ||
+      demoRemainingPasses >= previousRemaining
+    ) {
+      return;
+    }
+
+    if (demoRemainingPasses === DEMO_PASS_WARNING_THRESHOLD) {
+      notify({
+        title: `${DEMO_PASS_WARNING_THRESHOLD} free passes left`,
+        description: "You are nearing the demo cap.",
+      });
+      console.info("[TRACE] quota:ui:threshold", {
+        conversationId,
+        threshold: DEMO_PASS_WARNING_THRESHOLD,
+        remaining: demoRemainingPasses,
+      });
+      return;
+    }
+
+    if (demoRemainingPasses === DEMO_PASS_CRITICAL_THRESHOLD) {
+      notify({
+        variant: "warning",
+        title: "1 free pass left",
+        description: "Your next demo message will consume the final pass.",
+      });
+      console.info("[TRACE] quota:ui:threshold", {
+        conversationId,
+        threshold: DEMO_PASS_CRITICAL_THRESHOLD,
+        remaining: demoRemainingPasses,
+      });
+      return;
+    }
+
+    if (demoRemainingPasses === 0) {
+      notify({
+        variant: "destructive",
+        title:
+          previousRemaining === DEMO_PASS_CRITICAL_THRESHOLD
+            ? "Last free pass used"
+            : "Free passes exhausted",
+        description: byokEnabled
+          ? "Connect your API key and switch to BYOK lane to continue."
+          : `All ${demoTotalPasses} demo passes are used for this account.`,
+      });
+      console.info("[TRACE] quota:ui:threshold", {
+        conversationId,
+        threshold: 0,
+        remaining: demoRemainingPasses,
+      });
+    }
+  }, [
+    byokEnabled,
+    conversationId,
+    demoRemainingPasses,
+    isAccountStateLoading,
+    notify,
+    demoTotalPasses,
+  ]);
 
   const submitMessage = (): boolean => {
     if (isPending) {
+      return false;
+    }
+
+    if (isByokProviderModelMismatch) {
+      setError(byokProviderModelMismatchMessage);
+      setIsAdvancedControlsOpen(true);
+      return false;
+    }
+
+    if (isDemoLaneExhausted) {
+      setError(
+        byokEnabled
+          ? "Demo passes are exhausted. Connect or switch to BYOK to continue."
+          : "Demo passes are exhausted for this account.",
+      );
       return false;
     }
 
@@ -1163,6 +1420,7 @@ export function ConversationComposer({
           typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
             : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        onStreamStart?.(streamId);
         emitStartStreaming({ conversationId, branchId, streamId });
         const result = await sendMessage({
           conversationId,
@@ -1199,6 +1457,15 @@ export function ConversationComposer({
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
           result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+        const persistedAssistantMessage = result.appendedMessages.find(
+          (message) => message.role === "assistant" && message.branchId === branchId,
+        );
+        const assistantRenderedHtml =
+          persistedAssistantMessage &&
+          typeof result.assistantRenderedHtml === "string" &&
+          result.assistantRenderedHtml.length > 0
+            ? result.assistantRenderedHtml
+            : null;
         const persistedBranchMessages = result.appendedMessages.filter(
           (
             message,
@@ -1217,6 +1484,11 @@ export function ConversationComposer({
               branchId: message.branchId,
               role: message.role,
               content: message.content,
+              renderedHtml:
+                message.role === "assistant" &&
+                persistedAssistantMessage?.id === message.id
+                  ? assistantRenderedHtml
+                  : null,
               createdAt: message.createdAt,
               tokenUsage: message.tokenUsage ?? null,
               attachments: message.attachments ?? null,
@@ -1279,7 +1551,7 @@ export function ConversationComposer({
         const demoCapReached =
           errorMessage.includes("Demo pass limit reached") ||
           errorMessage.includes("quota-exhausted");
-        if (demoCapReached && !byokConnected) {
+        if (demoCapReached) {
           setAccountState((previous) =>
             previous
               ? {
@@ -1291,7 +1563,11 @@ export function ConversationComposer({
                 }
               : previous,
           );
-          if (byokEnabled) {
+          if (byokConnected) {
+            setError(
+              "Demo passes are exhausted. Switch to BYOK lane to keep chatting.",
+            );
+          } else if (byokEnabled) {
             setByokProvider(getProviderForModel(conversationModel));
             setIsByokPanelOpen(true);
             setError(
@@ -1352,6 +1628,21 @@ export function ConversationComposer({
           void handleFilesSelected(event.target.files);
         }}
       />
+      {branchContextLabel ? (
+        <div className="px-1">
+          <div
+            className="rounded-xl border border-background/30 bg-background/10 px-3 py-1.5"
+            title={`From parent selection: “${branchContextLabel}”`}
+          >
+            <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-background/70">
+              From parent selection
+            </p>
+            <p className="mt-0.5 truncate text-[11px] font-semibold text-background">
+              “{branchContextLabel}”
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <button
           type="button"
@@ -1362,9 +1653,19 @@ export function ConversationComposer({
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{isAdvancedControlsOpen ? "Hide Controls" : "Show Controls"}</span>
         </button>
-        <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
-          {`Mode ${currentPresetLabel}`}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="inline-flex items-center rounded-full border border-background/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-background/85">
+            {`Mode ${currentPresetLabel}`}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]",
+              quotaChipClassName,
+            )}
+          >
+            {quotaChipText}
+          </span>
+        </div>
       </div>
       {isAdvancedControlsOpen ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-background/20 bg-foreground/90 px-3 py-2">
@@ -1508,7 +1809,7 @@ export function ConversationComposer({
                     ? byokUnavailableReason ||
                       "BYOK is disabled for this environment."
                     : byokConnected
-                    ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.`
+                    ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.${byokProviderModelHint ? ` ${byokProviderModelHint}` : ""}`
                     : "Connect your API key, then switch lanes to BYOK for unlimited sends via your key."}
                 </p>
               </div>
@@ -1516,6 +1817,47 @@ export function ConversationComposer({
             document.body,
           )
         : null}
+      {isDemoLaneExhausted ? (
+        <div className="rounded-2xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-foreground">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-destructive">
+            Free passes exhausted
+          </p>
+          <p className="mt-1 text-xs text-foreground/90">
+            {`You have used all ${demoTotalPasses} demo passes.`}
+            {byokEnabled
+              ? " Connect your API key and switch to BYOK lane to continue."
+              : " BYOK is unavailable in this environment."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!byokEnabled) {
+                  setError(
+                    byokUnavailableReason ||
+                      "BYOK is disabled for this environment.",
+                  );
+                  return;
+                }
+                setIsByokPanelOpen(true);
+              }}
+              disabled={!byokEnabled}
+              className="interactive-target inline-flex items-center rounded-full border border-destructive/50 bg-background px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {byokConnected ? "Manage BYOK key" : "Connect API key"}
+            </button>
+            {byokConnected ? (
+              <button
+                type="button"
+                onClick={() => setSelectedLane("byok")}
+                className="interactive-target inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Switch to BYOK lane
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {(hasSelectedTools || attachments.length > 0) ? (
         <div className="rounded-2xl border border-background/20 bg-background/95 px-3 py-2 text-foreground shadow-sm">
           {hasSelectedTools ? (
@@ -1652,10 +1994,11 @@ export function ConversationComposer({
             >
               {TOOL_OPTIONS.map((option) => {
                 const isSelected = selectedTools.includes(option.id);
-                const isDisabled = option.id === "web-search" && !webSearchSupported;
+                const isDisabled =
+                  option.id === "web-search" && !webSearchSelectable;
                 const optionDescription =
-                  option.id === "web-search" && !webSearchSupported
-                    ? "Requires Fast chat or GPT-5 Mini"
+                  option.id === "web-search" && !webSearchSelectable
+                    ? "Requires Fast chat or OpenRouter ChatGPT"
                     : option.description;
                 return (
                   <button
@@ -1667,7 +2010,9 @@ export function ConversationComposer({
                     disabled={isDisabled}
                     onClick={() => {
                       if (isDisabled) {
-                        setError("Web search is unavailable for this model. Switch to Fast chat or GPT-5 Mini.");
+                        setError(
+                          "Web search is unavailable for this model. Switch to Fast chat or OpenRouter ChatGPT.",
+                        );
                         setIsToolMenuOpen(false);
                         return;
                       }
@@ -1796,9 +2141,7 @@ export function ConversationComposer({
               aria-controls={isModelMenuOpen ? modelMenuId : undefined}
               disabled={conversationSettingsSaving}
             >
-              <span className="text-xs font-semibold text-background">
-                {currentModelLabel}
-              </span>
+              <span className="text-xs font-semibold text-background">Model</span>
               <ChevronDown
                 className={cn(
                   "h-3 w-3 text-background transition-transform",
@@ -1830,7 +2173,7 @@ export function ConversationComposer({
                 role="menuitemradio"
                 aria-checked={!isReasoningModel}
                 onClick={() => {
-                  void handleModelSelection("gpt-5-chat-latest", null);
+                  applyPresetModelSelection("fast", null);
                 }}
                 disabled={conversationSettingsSaving}
                 className={cn(
@@ -1858,7 +2201,7 @@ export function ConversationComposer({
                     role="menuitemradio"
                     aria-checked={isSelected}
                     onClick={() => {
-                      void handleModelSelection("gpt-5-mini", option);
+                      applyPresetModelSelection("reasoning", option);
                     }}
                     disabled={conversationSettingsSaving}
                     className={cn(
@@ -1916,6 +2259,15 @@ export function ConversationComposer({
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {sendDisabledReason && !error ? (
+          <span
+            className="hidden text-[10px] font-medium uppercase tracking-[0.16em] text-background/65 md:inline-flex"
+            aria-live="polite"
+          >
+            {sendDisabledReason}
+          </span>
         ) : null}
 
         <button
@@ -1978,17 +2330,34 @@ export function ConversationComposer({
           )
         : null}
 
-      <div className="flex items-center justify-center px-2">
+      <div className="flex items-center justify-between gap-2 px-2">
+        <span
+          className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-background/75"
+          title={currentModelLabel}
+        >
+          {`Model ${currentModelLabel}`}
+        </span>
         {error ? (
-          <p className="text-xs text-destructive" role="status">
+          <p className="text-right text-xs text-destructive" role="status">
             {error}
           </p>
+        ) : sendDisabledReason ? (
+          <span className="text-right text-xs text-background/75">
+            {sendDisabledReason}
+          </span>
         ) : (
-          <span className="text-xs text-background/70">
+          <span className="text-right text-xs text-background/70">
             {quotaIndicatorText} · Enter to send · Shift+Enter for line break
           </span>
         )}
       </div>
+      <p
+        className="sr-only"
+        role="status"
+        aria-live={isDemoLaneExhausted ? "assertive" : "polite"}
+      >
+        {quotaIndicatorText}
+      </p>
     </div>
   );
 }

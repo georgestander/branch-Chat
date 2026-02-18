@@ -16,21 +16,40 @@ export function ProductScreenshotSection() {
           Real branching workflow, side-by-side
         </h2>
         <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-          Parent context stays visible while the active branch explores a new
-          direction. This is the actual Branch-Chat workspace captured from the
-          running product.
+          Watch the live branching workflow, then inspect the high-fidelity
+          screenshot of the same split-view workspace.
         </p>
       </div>
 
-      <figure className="overflow-hidden rounded-2xl border border-foreground/20 bg-background shadow-sm">
-        <img
-          src="/landing-branching-screenshot.png"
-          alt="Branch-Chat split view showing parent branch context on the left and active branch content on the right."
-          className="block h-auto w-full"
-          loading="lazy"
-          decoding="async"
-        />
-      </figure>
+      <div className="space-y-4">
+        <figure className="overflow-hidden rounded-2xl border border-foreground/20 bg-background shadow-sm">
+          <video
+            className="block h-auto w-full"
+            controls
+            playsInline
+            preload="metadata"
+            aria-label="Branch-Chat product demo showing message branching and split-view navigation."
+          >
+            <source src="/branch-chat-demo.mp4" type="video/mp4" />
+            <p className="p-4 text-sm text-muted-foreground">
+              Your browser cannot play this video. Open{" "}
+              <a href="/branch-chat-demo.mp4" className="underline underline-offset-2">
+                the demo file directly
+              </a>
+              .
+            </p>
+          </video>
+        </figure>
+        <figure className="overflow-hidden rounded-2xl border border-foreground/20 bg-background shadow-sm">
+          <img
+            src="/landing-branching-screenshot.png"
+            alt="Branch-Chat split view showing parent branch context on the left and active branch content on the right."
+            className="block h-auto w-full"
+            loading="lazy"
+            decoding="async"
+          />
+        </figure>
+      </div>
     </section>
   );
 }

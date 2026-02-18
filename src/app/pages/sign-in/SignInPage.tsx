@@ -75,7 +75,7 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">Sign in to continue</h1>
           <p className="text-sm text-muted-foreground">
-            Use your account identifier to unlock the free 10-pass demo flow.
+            Use your account identifier to unlock the free 3-pass demo flow.
           </p>
         </div>
 

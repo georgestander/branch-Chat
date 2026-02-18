@@ -4,6 +4,12 @@ Branch Chat is a server-first, non-linear branching chat app built with RedwoodS
 
 The project is designed around branchable conversations, Durable Object persistence, and server-owned chat orchestration.
 
+## Demo Video
+
+[![Watch the Branch Chat demo video](./public/landing-branching-screenshot.png)](./public/branch-chat-demo.mp4)
+
+Click the preview image to open the GitHub video player.
+
 ## Documentation
 
 - Architecture: [`Docs/architecture.md`](Docs/architecture.md)
