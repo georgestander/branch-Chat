@@ -421,7 +421,7 @@ export function ConversationEmptyLayout({
       <main className="flex flex-1 items-center justify-center px-6">
         <div className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Start free with 10 demo passes</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Start free with 3 demo passes</h1>
             <p className="text-sm text-muted-foreground">
               Sign in, choose a start mode, and launch a branching chat in seconds.
             </p>
@@ -449,7 +449,7 @@ export function ConversationEmptyLayout({
             </a>
           </div>
           <p className="text-xs text-muted-foreground">
-            Demo lane includes 10 completed replies. Connect BYOK later for unlimited usage.
+            Demo lane includes 3 completed replies. Connect BYOK later for unlimited usage.
           </p>
           <form
             onSubmit={handleDraftSubmit}

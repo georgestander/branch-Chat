@@ -30,7 +30,7 @@ export function HeroSection({ links }: HeroSectionProps) {
               eventData={{ cta: "hosted", location: "hero" }}
               className="inline-flex h-10 items-center rounded-full bg-primary px-5 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground transition hover:bg-primary/90"
             >
-              Start Free (10 passes)
+              Start Free (3 passes)
             </LandingTrackedLink>
             <LandingTrackedLink
               href={links.repoHref}

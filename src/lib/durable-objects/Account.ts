@@ -1,5 +1,5 @@
 const STORAGE_KEY = "account.state.v1";
-const DEFAULT_DEMO_TOTAL_PASSES = 10;
+const DEFAULT_DEMO_TOTAL_PASSES = 3;
 
 type ReservationStatus = "reserved" | "committed" | "released";
 
@@ -231,15 +231,11 @@ function normalizeState(stored: AccountState | null, ownerId: string): AccountSt
     }
   }
 
-  const totalCandidate = Number(stored.demo?.total);
   const usedCandidate = Number(stored.demo?.used);
-  const total =
-    Number.isFinite(totalCandidate) && totalCandidate > 0
-      ? Math.floor(totalCandidate)
-      : DEFAULT_DEMO_TOTAL_PASSES;
+  const total = DEFAULT_DEMO_TOTAL_PASSES;
   const used =
     Number.isFinite(usedCandidate) && usedCandidate >= 0
-      ? Math.floor(usedCandidate)
+      ? Math.min(Math.floor(usedCandidate), total)
       : 0;
   const byok = normalizeByokCredential(
     (stored as Partial<AccountState>).byok ?? null,

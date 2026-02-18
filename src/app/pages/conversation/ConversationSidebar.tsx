@@ -703,12 +703,13 @@ export function ConversationSidebar({
   const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
   const byokProviderLabel =
     accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const demoTotalPasses = accountState?.quota.total ?? 3;
   const demoRemainingPasses = accountState?.quota.remaining ?? null;
   const accountPassesLabel = isAccountStateLoading
     ? "Passes --"
     : demoRemainingPasses === null
       ? "Passes ?"
-      : `Passes ${demoRemainingPasses}/10`;
+      : `Passes ${demoRemainingPasses}/${demoTotalPasses}`;
 
   const setPreferredLaneWithPersistence = useCallback(
     (nextLane: ComposerLane) => {

@@ -13,7 +13,7 @@ import {
 export class DemoQuotaExceededError extends Error {
   constructor() {
     super(
-      "Demo pass limit reached (10/10). Add your own API key to continue.",
+      "Demo pass limit reached (3/3). Add your own API key to continue.",
     );
     this.name = "DemoQuotaExceededError";
   }

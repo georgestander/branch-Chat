@@ -22,7 +22,7 @@ export function PathCards({ links }: PathCardsProps) {
           </p>
           <h3 className="mt-1 text-xl font-semibold tracking-tight">Launch Hosted</h3>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Sign in and start with 10 free demo passes. Perfect for testing branching workflows in
+            Sign in and start with 3 free demo passes. Perfect for testing branching workflows in
             minutes.
           </p>
           <LandingTrackedLink

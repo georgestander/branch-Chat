@@ -142,7 +142,8 @@ const START_MODE_DEFAULTS: Record<
     tools: ["study-and-learn"],
   },
 };
-const DEMO_PASS_WARNING_THRESHOLD = 3;
+const DEFAULT_DEMO_PASS_TOTAL = 3;
+const DEMO_PASS_WARNING_THRESHOLD = 2;
 const DEMO_PASS_CRITICAL_THRESHOLD = 1;
 
 type ComposerAccountStateResponse = Awaited<
@@ -1127,7 +1128,8 @@ export function ConversationComposer({
       ? "Use an OpenRouter model when sending in BYOK lane."
       : connectedByokProvider === "openai"
         ? "Use an OpenAI model when sending in BYOK lane."
-        : null;
+      : null;
+  const demoTotalPasses = accountState?.quota.total ?? DEFAULT_DEMO_PASS_TOTAL;
   const demoRemainingPasses = accountState?.quota.remaining ?? null;
   const isDemoLaneExhausted =
     selectedLane === "demo" &&
@@ -1141,7 +1143,7 @@ export function ConversationComposer({
         ? "Passes --"
         : demoRemainingPasses === null
           ? "Passes ?"
-          : `Passes ${demoRemainingPasses}/10`;
+          : `Passes ${demoRemainingPasses}/${demoTotalPasses}`;
   const quotaChipClassName =
     selectedLane === "byok" && byokConnected
       ? "border-emerald-400/40 text-emerald-200"
@@ -1215,7 +1217,7 @@ export function ConversationComposer({
 
     if (demoRemainingPasses === DEMO_PASS_WARNING_THRESHOLD) {
       notify({
-        title: "3 free passes left",
+        title: `${DEMO_PASS_WARNING_THRESHOLD} free passes left`,
         description: "You are nearing the demo cap.",
       });
       console.info("[TRACE] quota:ui:threshold", {
@@ -1249,7 +1251,7 @@ export function ConversationComposer({
             : "Free passes exhausted",
         description: byokEnabled
           ? "Connect your API key and switch to BYOK lane to continue."
-          : "All 10 demo passes are used for this account.",
+          : `All ${demoTotalPasses} demo passes are used for this account.`,
       });
       console.info("[TRACE] quota:ui:threshold", {
         conversationId,
@@ -1263,6 +1265,7 @@ export function ConversationComposer({
     demoRemainingPasses,
     isAccountStateLoading,
     notify,
+    demoTotalPasses,
   ]);
 
   const submitMessage = (): boolean => {
@@ -1717,7 +1720,7 @@ export function ConversationComposer({
             Free passes exhausted
           </p>
           <p className="mt-1 text-xs text-foreground/90">
-            You have used all 10 demo passes.
+            {`You have used all ${demoTotalPasses} demo passes.`}
             {byokEnabled
               ? " Connect your API key and switch to BYOK lane to continue."
               : " BYOK is unavailable in this environment."}
