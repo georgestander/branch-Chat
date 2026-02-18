@@ -396,3 +396,8 @@
 - Decisions: keep existing trust gate (`AUTH_TRUST_IDENTITY_HEADERS`); when no user-id header exists, derive stable user id from lower-cased CF email header; keep default deny behavior when trust disabled or no trusted identity present.
 - Files: src/app/shared/auth.server.ts, src/app/shared/auth.server.test.ts, progress.txt, Docs/private-personal-prod-oss-plan.md (tracker status update, local/ignored).
 - Notes: validation pass after dependency bootstrap (`pnpm install` in this worktree): `pnpm types`, `npm run test`, `npm run lint`; review pass against main for touched diff found no additional issues.
+2026-02-18 — Completed P2 sendMessage contract cleanup (removed demo lane contract). Ref: Docs/private-personal-prod-oss-plan.md P2, AC-02.
+- Task: remove demo lane fields from send server contract and align caller usage.
+- Decisions: replaced `SendMessageInput.lane` with `byok?: boolean` intent flag to avoid exposing demo lane semantics; removed `quota.lane` from `SendMessageResponse`; kept internal quota/pass flow unchanged for now to avoid behavior regression before P3.
+- Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/ConversationComposer.tsx, Docs/private-personal-prod-oss-plan.md (tracker status update), progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; review pass on touched diff found no additional issues.

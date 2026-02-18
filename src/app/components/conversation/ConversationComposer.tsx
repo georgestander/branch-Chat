@@ -1427,7 +1427,7 @@ export function ConversationComposer({
           branchId,
           content,
           streamId,
-          lane: selectedLane,
+          byok: selectedLane === "byok",
           tools: selectedTools,
           attachmentIds: readyAttachmentIds,
         });

@@ -401,7 +401,7 @@ export interface SendMessageInput extends ConversationPayload {
   branchId?: BranchId;
   content: string;
   streamId?: string;
-  lane?: "demo" | "byok";
+  byok?: boolean;
   tools?: ConversationComposerTool[];
   attachmentIds?: string[];
 }
@@ -410,7 +410,6 @@ export interface SendMessageResponse extends LoadConversationResponse {
   appendedMessages: Message[];
   assistantRenderedHtml?: string | null;
   quota: {
-    lane: "demo" | "byok";
     remainingDemoPasses: number | null;
   };
 }
@@ -986,7 +985,7 @@ export async function sendMessage(
     ...settings,
     model: requestModel,
   };
-  const requestedLane: "demo" | "byok" = input.lane === "byok" ? "byok" : "demo";
+  const requestedLane: "demo" | "byok" = input.byok ? "byok" : "demo";
   let quotaLane: "demo" | "byok" = "demo";
   let byokCredential: Awaited<ReturnType<typeof resolveByokCredential>> = null;
   let selectedTools = normalizeComposerTools(
@@ -1578,7 +1577,6 @@ export async function sendMessage(
         appendedMessages: [userMessage, finalAssistantMessage],
         assistantRenderedHtml: studyAssistantRenderedHtml,
         quota: {
-          lane: quotaLane,
           remainingDemoPasses: quotaSnapshot?.remaining ?? null,
         },
       };
@@ -2156,7 +2154,6 @@ export async function sendMessage(
     appendedMessages: [userMessage, finalAssistantMessage],
     assistantRenderedHtml: finalRenderedHtml,
     quota: {
-      lane: quotaLane,
       remainingDemoPasses: quotaSnapshot?.remaining ?? null,
     },
   };

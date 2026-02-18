@@ -72,7 +72,7 @@ Owner: george
 | ID | Workstream | Deliverable | Status | Acceptance Criteria | Evidence / Notes |
 |---|---|---|---|---|---|
 | P1 | Auth | Support Cloudflare Access email header identity | Done | AC-01 | Added trusted CF Access email fallback in auth header parser + tests for trusted/denied paths in `src/app/shared/auth.server.test.ts` |
-| P2 | Server APIs | Remove demo lane from send contracts | Not Started | AC-02 | Update `sendMessage` input/output types and callers |
+| P2 | Server APIs | Remove demo lane from send contracts | Done | AC-02 | `sendMessage` now accepts `byok?: boolean` instead of `lane`; response contract no longer returns `quota.lane`; composer caller updated accordingly |
 | P3 | Account DO | Remove quota/pass endpoints, keep BYOK + prefs | Not Started | AC-02, AC-03 | Backward-safe state normalization for existing records |
 | P4 | Composer UX | Add BYOK-required gate in `/app`, remove pass UI | Not Started | AC-02, AC-05 | Block send until BYOK available; provider mismatch guidance |
 | P5 | Sidebar UX | Remove lane preference and pass labels | Not Started | AC-02 | Delete lane preference module and references |
