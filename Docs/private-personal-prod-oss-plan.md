@@ -78,7 +78,7 @@ Owner: george
 | P5 | Sidebar UX | Remove lane preference and pass labels | Done | AC-02 | Removed sidebar lane preference/pass UI, deleted lane preference module, and kept sidebar account modal focused on BYOK connection status only |
 | P6 | Sign-in Copy | Remove demo wording, keep optional fallback role | Done | AC-06 | Updated `/sign-in` helper text to neutral fallback wording without demo/pass language |
 | P7 | Docs | Update setup/env/readme for prod vs self-host | Done | AC-06 | Added deployment-profile matrices + BYOK persistence/session behavior details across `Docs/setup.md`, `Docs/env-vars.md`, and `README.md` (plus `Docs/architecture.md` AccountDO wording alignment) |
-| P8 | Validation | Run all feedback loops after each logical change | Not Started | AC-01..AC-06 | `pnpm types`, `npm run test`, `npm run lint` |
+| P8 | Validation | Run all feedback loops after each logical change | Done | AC-01..AC-06 | Ran `pnpm types`, `npm run test`, `npm run lint` after each P4/P5-6/P7 slice and again at final HEAD; review pass against `main` surfaced one session-BYOK loading edge case, fixed in `732f096` |
 
 ## Execution Notes
 - Keep commits small and focused, one logical change at a time.

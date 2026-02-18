@@ -421,3 +421,8 @@
 - Decisions: added explicit deployment-profile matrices; documented BYOK persistence (`BYOK_ENCRYPTION_SECRET`) vs session-only fallback behavior; aligned architecture wording so `AccountDO` no longer references removed quota/pass concepts.
 - Files: Docs/env-vars.md, Docs/setup.md, README.md, Docs/architecture.md, Docs/private-personal-prod-oss-plan.md, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Completed P8 validation + review closure. Ref: Docs/private-personal-prod-oss-plan.md P8, AC-01..AC-06.
+- Task: execute required feedback loops after each logical change and run review pass against `main` before finalizing.
+- Decisions: reran full loops at final `HEAD`; review surfaced one edge case where session BYOK could look connected during account-load race when persistence was actually enabled; fixed by gating session-connected state to non-persistent mode and adding a loading guard before save.
+- Files: src/app/components/conversation/ConversationComposer.tsx, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: all final checks pass (`pnpm types`, `npm run test`, `npm run lint`); no unresolved findings from review pass.
