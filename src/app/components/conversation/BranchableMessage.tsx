@@ -138,7 +138,7 @@ export function BranchableMessage({
             )
           }
           disabled={isPending}
-          className="interactive-target inline-flex items-center gap-1 rounded-md border border-foreground/15 bg-background/90 px-3 py-1 text-xs font-medium text-foreground hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55"
+          className="interactive-target inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
         >
           {isPending ? "Creating…" : "Branch Message"}
         </button>
@@ -182,7 +182,7 @@ function SelectionPopover({
   return (
     <div
       style={style}
-      className="rounded-xl border border-foreground/15 bg-popover/95 px-3 py-2 shadow-xl backdrop-blur-[2px]"
+      className="rounded border border-border bg-popover px-3 py-2 shadow-sm"
     >
       <div className="flex flex-col gap-2">
         <span className="max-w-xs text-xs text-muted-foreground">
@@ -193,7 +193,7 @@ function SelectionPopover({
             type="button"
             onClick={onCreate}
             disabled={isPending}
-            className="interactive-target inline-flex items-center rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-55"
+            className="interactive-target inline-flex items-center rounded bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {isPending ? "Creating…" : "Branch Selection"}
           </button>
