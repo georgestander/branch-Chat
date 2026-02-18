@@ -9,8 +9,35 @@
   - ✅ `npm run lint` passes.
   - ✅ `pnpm check` passes.
   - ✅ `pnpm tsc --noEmit` passes.
-- Outstanding/pending manual checks
-  - ⚠️ Not re-run in this pass; prior manual status entries remain below for continuity.
+- Manual sweep rerun (`agent-browser` + local traces on `http://localhost:5180`)
+  - ✅ Conversation directory updates: created multiple chats, switched activity between chats, verified active list/ordering refresh on latest activity.
+  - ✅ New chat completion (`gpt-5-mini`): trace confirms `openai:stream:start` with `model:\"gpt-5-mini\"` and successful completion.
+  - ✅ Branch navigation: branching in a secondary conversation preserved the same `conversationId` in URL + sidebar links.
+  - ✅ Markdown pipeline smoke: verified rendered fenced code block, table, and KaTeX-style inline math output in assistant message.
+  - ✅ Branch selection offsets: branching from formatted assistant content produced the expected excerpt in child branch metadata.
+  - ❌ Code block copy UX: copy control entered `Retry` state and did not reset back to normal in the browser automation run.
+  - ✅ Trace volume review: inspected `conversation:apply:*`, `openai:stream:first-token`, quota events, and retrieval traces; reasoning first-token latency spikes (~19-23s) observed.
+  - ⚠️ Tool invocation scaffolding: no `tools:invoke` execution-handler path observed in this sweep; remains pending until handler wiring is exercised.
+  - ✅ Composer attachments: uploaded files persisted and rendered as chips with filename + size in composer and timeline.
+  - ✅ Web search result rendering: assistant output rendered source URLs and `Web Results` section with clickable links.
+  - ✅ Plan-format markdown contract: response included `Short answer`, `# Plan`, structured sections, and references.
+  - ✅ Agent prompt enforcement: non-plan message rendered normal markdown; plan request rendered required plan contract format.
+  - ✅ Composer tool picker: verified plus-menu open, multi-selection, active tool pills, and persisted selection across send flows.
+  - ✅ Study & Learn agent send (chat model): `agent:study:start`/`agent:study:success` traces observed with `gpt-5-chat-latest`.
+  - ❌ Study & Learn agent send (reasoning model): `agent:study:error` with `400 Unsupported parameter: 'temperature'` on `gpt-5-mini`.
+  - ✅ Root branch auto-title: fallback titling applied immediately after first message in new chats.
+  - ✅ Empty-state landing: verified no-conversation landing and deferred chat creation until explicit start action.
+  - ✅ Study & Learn context retention: fast-chat study run retained prior turn context across follow-up tutoring prompt.
+  - ⚠️ Composer attachment retry: explicit upload transport failure + retry interaction not reproduced in this run.
+  - ⚠️ Attachment cleanup on navigation: staged-upload cleanup-on-leave behavior not revalidated in this run.
+  - ✅ Dev-mode upload proxy: traces show `uploads:presign:fallback` and `uploads:fallback:put` for local direct uploads.
+  - ⚠️ Attachment ingestion pipeline (partial): PDF ingestion succeeded (`chunkCount:1`), DOCX ingestion failed (unsupported extension for current parse path), PNG ingest failed with OpenAI image-input parameter error.
+  - ✅ Retrieval context injection: `retrieval:context` traces included both persisted web snippets and attachment chunk matches.
+  - ✅ Attachment cards in timeline: message timeline rendered uploaded file metadata chips above user bubble.
+  - ✅ Study & Learn workflow routing with `BUSINESSES.pdf`: file-aware tutoring response succeeded with attachment context.
+  - ✅ Web search persistence behavior: follow-up question reused stored web snippets (`retrieval:context` included prior web result IDs).
+  - ⚠️ `web-search:persist` success trace: explicit success marker not emitted in this run (only result + retrieval traces observed).
+  - ⚠️ Study workflow wiring (`workflow_id=wf_69022bcfbab881908732f2f06cf859070311893ee1e40203`): not observed locally because `STUDY_LEARN_WORKFLOW_ID` is unset in `.dev.vars`.
 
 ## 2026-02-17
 

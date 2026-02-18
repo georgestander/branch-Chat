@@ -376,3 +376,8 @@
 - Decisions: kept demo video and screenshot sections untouched; updated hero copy/CTAs to open-source-first framing; replaced value strip with explicit `Live` feature cards, dedicated RedwoodSDK+Cloudflare infra panel, and `Coming soon` card set.
 - Files: src/app/components/landing/HeroSection.tsx, src/app/components/landing/ValueStrip.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; ignored unrelated `worker-configuration.d.ts` modification.
+2026-02-18 — Full manual QA sweep rerun logged with pass/fail/block statuses. Ref: Docs/PRD.md Testing & QA manual validation loops.
+- Task: run outstanding manual checks from `Docs/testing-report.md` end-to-end; update doc with today outcomes; keep history intact.
+- Decisions: executed agent-browser + live trace sweep on localhost:5180 across fresh signed identities to reset demo quotas; marked each pending check as ✅/❌/⚠️ with trace evidence; captured blockers (`STUDY_LEARN_WORKFLOW_ID` unset, no `tools:invoke` handler path observed) and defects (`copy Retry stuck`, `study+gpt-5-mini temperature`, docx/png ingestion issues).
+- Files: Docs/testing-report.md, progress.txt.
+- Notes: reran required loops before commit (`pnpm types`, `npm run test`, `npm run lint`); no unrelated files staged.
