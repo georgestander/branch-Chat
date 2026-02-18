@@ -7,7 +7,7 @@ interface LandingFooterProps {
 
 export function LandingFooter({ links }: LandingFooterProps) {
   return (
-    <footer className="mx-auto w-full max-w-6xl border border-t-0 border-foreground/15 bg-background/85 px-4 py-5 md:px-6">
+    <footer className="mx-auto w-full max-w-6xl border border-t-0 border-border bg-background px-4 py-5 md:px-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground">Branch-Chat</p>
@@ -21,7 +21,7 @@ export function LandingFooter({ links }: LandingFooterProps) {
             rel="noopener noreferrer"
             eventName="landing_cta_click"
             eventData={{ cta: "repo", location: "footer" }}
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             Repo
           </LandingTrackedLink>
@@ -29,7 +29,7 @@ export function LandingFooter({ links }: LandingFooterProps) {
             href={links.docsHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             Docs
           </a>
@@ -37,7 +37,7 @@ export function LandingFooter({ links }: LandingFooterProps) {
             href={links.securityHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             Security
           </a>
@@ -45,7 +45,7 @@ export function LandingFooter({ links }: LandingFooterProps) {
             href={links.licenseHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             License
           </a>
@@ -53,7 +53,7 @@ export function LandingFooter({ links }: LandingFooterProps) {
             href={links.changelogHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-full border border-foreground/20 px-3 py-1.5 text-foreground transition hover:bg-foreground hover:text-background"
+            className="rounded border border-border px-3 py-1.5 text-foreground transition hover:bg-secondary hover:text-foreground"
           >
             Changelog
           </a>
