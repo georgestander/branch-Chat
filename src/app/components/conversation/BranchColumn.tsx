@@ -295,14 +295,6 @@ export function BranchColumn({
   });
 
   useEffect(() => {
-    const activeStream = readActiveStreamId(conversationId, branch.id);
-    if (!activeStream) {
-      return;
-    }
-    setActiveStreamId(activeStream);
-  }, [branch.id, conversationId]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
       const custom = event as CustomEvent<StartStreamingDetail>;
@@ -485,6 +477,9 @@ export function BranchColumn({
     visibleMessages.length > 0
       ? visibleMessages[visibleMessages.length - 1]
       : undefined;
+  const shouldHonorPersistedStreamId =
+    lastMessage?.role === "assistant" && !lastMessage.tokenUsage;
+  const effectiveActiveStreamId = activeStreamId;
   const isStreamingAssistant =
     isActive &&
     !!lastMessage &&
@@ -493,34 +488,30 @@ export function BranchColumn({
   const hasPendingOptimisticSend = optimisticMessages.some(
     (entry) => entry.status === "pending",
   );
-  const persistedActiveStreamId = readActiveStreamId(conversationId, branch.id);
-  const effectiveActiveStreamId =
-    isStreamingAssistant || hasPendingOptimisticSend
-      ? (activeStreamId ?? persistedActiveStreamId)
-      : null;
   const awaitingAssistant =
     isActive && (Boolean(effectiveActiveStreamId) || hasPendingOptimisticSend);
 
   useEffect(() => {
-    if (!persistedActiveStreamId) {
+    if (activeStreamId !== null) {
       return;
     }
-    if (isStreamingAssistant || hasPendingOptimisticSend) {
+    const persistedStreamId = readActiveStreamId(conversationId, branch.id);
+    if (!persistedStreamId) {
       return;
     }
-    clearActiveStreamId({
-      conversationId,
-      branchId: branch.id,
-    });
-    setActiveStreamId((current) =>
-      current === persistedActiveStreamId ? null : current,
-    );
+    if (!shouldHonorPersistedStreamId) {
+      clearActiveStreamId({
+        conversationId,
+        branchId: branch.id,
+      });
+      return;
+    }
+    setActiveStreamId(persistedStreamId);
   }, [
+    activeStreamId,
     branch.id,
     conversationId,
-    hasPendingOptimisticSend,
-    isStreamingAssistant,
-    persistedActiveStreamId,
+    shouldHonorPersistedStreamId,
   ]);
 
   const scrollSignature = useMemo(() => {

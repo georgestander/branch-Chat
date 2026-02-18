@@ -486,3 +486,8 @@
 - Decisions: documented `AUTH_ACCESS_JWKS_URL` + `AUTH_ACCESS_AUDIENCE` as required for trusted-header production mode; documented `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN` and `AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE` as explicit fallback flags; updated private-prod plan wording/evidence.
 - Files: .dev.vars.example, Docs/env-vars.md, Docs/setup.md, README.md, Docs/private-personal-prod-oss-plan.md, progress.txt.
 - Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Resolved PR #32 merge conflicts against main with selective keep strategy. Ref: Docs/PRD.md integration stability + security hardening continuity.
+- Task: reconcile dirty merge (`origin/main` into `codex/security-hardening-auth-upload-csp`) and choose side per file.
+- Decisions: kept branch side for BYOK-only/auth-hardening flow files; kept main side for newer stream-id stale-state fix, OpenRouter cache-size pruning, and generated worker types; updated README demo preview to YouTube thumbnail/link.
+- Files: README.md, src/app/components/conversation/BranchColumn.tsx, src/app/shared/openrouterModels.server.ts, worker-configuration.d.ts, progress.txt.
+- Notes: feedback loops pass on merged state (`pnpm types`, `npm run test`, `npm run lint`); no blockers.

@@ -12,6 +12,7 @@ import {
 
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 64;
 
 const FALLBACK_MODELS: OpenRouterModelOption[] = [
   {
@@ -43,16 +44,43 @@ const FALLBACK_MODELS: OpenRouterModelOption[] = [
 type CachedModels = {
   models: OpenRouterModelOption[];
   expiresAt: number;
+  lastAccessedAt: number;
 };
 
 const cache = new Map<string, CachedModels>();
 
-function pruneExpiredCacheEntries(now: number): void {
+function pruneModelCache(now: number): {
+  expiredEvictions: number;
+  sizeEvictions: number;
+} {
+  let expiredEvictions = 0;
   for (const [key, entry] of cache.entries()) {
     if (entry.expiresAt <= now) {
       cache.delete(key);
+      expiredEvictions += 1;
     }
   }
+
+  let sizeEvictions = 0;
+  if (cache.size > MAX_CACHE_ENTRIES) {
+    const overflow = cache.size - MAX_CACHE_ENTRIES;
+    const evictionCandidates = [...cache.entries()].sort(
+      (left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt,
+    );
+    for (let index = 0; index < overflow; index += 1) {
+      const candidate = evictionCandidates[index];
+      if (!candidate) {
+        break;
+      }
+      cache.delete(candidate[0]);
+      sizeEvictions += 1;
+    }
+  }
+
+  return {
+    expiredEvictions,
+    sizeEvictions,
+  };
 }
 
 function parseNumericPrice(value: unknown): number | null {
@@ -203,9 +231,19 @@ export async function listOpenRouterModels(
         : "fallback";
 
   const now = Date.now();
-  pruneExpiredCacheEntries(now);
+  const pruned = pruneModelCache(now);
+  if (pruned.expiredEvictions > 0 || pruned.sizeEvictions > 0) {
+    ctx.trace("openrouter:models:cache-pruned", {
+      expiredEvictions: pruned.expiredEvictions,
+      sizeEvictions: pruned.sizeEvictions,
+      size: cache.size,
+    });
+  }
+
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
+    cached.lastAccessedAt = now;
+    cache.set(cacheKey, cached);
     ctx.trace("openrouter:models:cache-hit", {
       source: apiKeyResolution.source,
       count: cached.models.length,
@@ -250,6 +288,7 @@ export async function listOpenRouterModels(
     cache.set(cacheKey, {
       models,
       expiresAt: now + CACHE_TTL_MS,
+      lastAccessedAt: now,
     });
 
     ctx.trace("openrouter:models:fetched", {
@@ -273,6 +312,7 @@ export async function listOpenRouterModels(
       cache.set(cacheKey, {
         models: [],
         expiresAt: now + CACHE_TTL_MS,
+        lastAccessedAt: now,
       });
       return [];
     }
@@ -285,6 +325,7 @@ export async function listOpenRouterModels(
     cache.set(cacheKey, {
       models: FALLBACK_MODELS,
       expiresAt: now + CACHE_TTL_MS,
+      lastAccessedAt: now,
     });
     return FALLBACK_MODELS;
   }
