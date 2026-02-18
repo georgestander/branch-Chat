@@ -401,3 +401,8 @@
 - Decisions: replaced `SendMessageInput.lane` with `byok?: boolean` intent flag to avoid exposing demo lane semantics; removed `quota.lane` from `SendMessageResponse`; kept internal quota/pass flow unchanged for now to avoid behavior regression before P3.
 - Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/ConversationComposer.tsx, Docs/private-personal-prod-oss-plan.md (tracker status update), progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; review pass on touched diff found no additional issues.
+2026-02-18 — Completed P3 Account DO simplification (removed quota/pass endpoints). Ref: Docs/private-personal-prod-oss-plan.md P3, AC-02/AC-03.
+- Task: remove quota/pass API surface from Account DO and server helpers while preserving BYOK + composer preference behavior.
+- Decisions: deleted `/quota*` endpoints and reserve/commit/release client/server helpers; removed send-path quota reservation lifecycle and now return `remainingDemoPasses: null`; kept backward-safe normalization via `normalizeAccountState` so legacy records with `demo`/`reservations` still load and preserve BYOK/composer preference.
+- Files: src/lib/durable-objects/Account.ts, src/lib/durable-objects/Account.test.ts, src/app/shared/account.server.ts, src/app/pages/conversation/functions.ts, Docs/private-personal-prod-oss-plan.md (tracker status update), progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; added normalization unit tests for legacy-state compatibility.

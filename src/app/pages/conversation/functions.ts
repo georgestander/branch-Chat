@@ -23,14 +23,10 @@ import {
   deleteConversationDirectoryEntry,
 } from "@/app/shared/conversationDirectory.server";
 import {
-  commitDemoPass,
   deleteByokKey,
-  getAccountQuotaSnapshot,
   getByokStatus,
   getComposerPreference,
   isByokConfigured,
-  releaseDemoPass,
-  reserveDemoPass,
   resolveByokCredential,
   saveComposerPreference,
   saveByokKey,
@@ -66,7 +62,6 @@ import type {
   ToolInvocationStatus,
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
-import type { AccountQuotaSnapshot } from "@/lib/durable-objects/Account";
 import {
   WEB_SEARCH_TOOL_NAME,
   type ConversationComposerTool,
@@ -495,7 +490,7 @@ export interface ComposerAccountState {
     total: number;
     used: number;
     reserved: number;
-    remaining: number;
+    remaining: number | null;
   };
   byok: ComposerByokStatus;
 }
@@ -547,7 +542,6 @@ export async function getComposerAccountState(): Promise<ComposerAccountState> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
 
-  const quota = await getAccountQuotaSnapshot(ctx);
   const byokEnabled = isByokConfigured(ctx);
   const byokStatus: Awaited<ReturnType<typeof getByokStatus>> = byokEnabled
     ? await getByokStatus(ctx)
@@ -559,10 +553,10 @@ export async function getComposerAccountState(): Promise<ComposerAccountState> {
 
   return {
     quota: {
-      total: quota.total,
-      used: quota.used,
-      reserved: quota.reserved,
-      remaining: quota.remaining,
+      total: 3,
+      used: 0,
+      reserved: 0,
+      remaining: null,
     },
     byok: normalizeComposerByokStatus(byokStatus, byokEnabled),
   };
@@ -953,9 +947,6 @@ export async function sendMessage(
 
   let attachmentsToRestore: PendingAttachment[] | null =
     consumedAttachments.length > 0 ? [...consumedAttachments] : null;
-  let quotaSnapshot: AccountQuotaSnapshot | null = null;
-  let quotaReservationId: string | null = null;
-  let quotaCommitted = false;
   const normalizedContent = input.content.trim();
   let activeSnapshot = ensured.snapshot;
   let settings = activeSnapshot.conversation.settings;
@@ -1140,33 +1131,6 @@ export async function sendMessage(
         routedModel: modelRequestSettings.model,
         configuredPrimaryModel: demoOpenRouterPrimaryModel,
         configuredBackupModel: demoOpenRouterBackupModel,
-      });
-    }
-
-    const reservationId =
-      (typeof input.streamId === "string" && input.streamId.trim().length > 0
-        ? input.streamId.trim()
-        : null) ?? crypto.randomUUID();
-    if (quotaLane === "demo") {
-      ctx.trace("quota:reserve:start", {
-        conversationId,
-        branchId,
-        reservationId,
-        lane: quotaLane,
-      });
-      const reservation = await reserveDemoPass(ctx, {
-        reservationId,
-        conversationId,
-        branchId,
-      });
-      quotaReservationId = reservation.reservationId;
-      quotaSnapshot = reservation.snapshot;
-      ctx.trace("quota:reserve:success", {
-        conversationId,
-        branchId,
-        reservationId: quotaReservationId,
-        lane: quotaLane,
-        remainingDemoPasses: quotaSnapshot.remaining,
       });
     }
 
@@ -1528,34 +1492,12 @@ export async function sendMessage(
       });
 
       attachmentsToRestore = null;
-      if (quotaReservationId) {
-        if (studyGenerationSucceeded) {
-          quotaSnapshot = await commitDemoPass(ctx, {
-            reservationId: quotaReservationId,
-          });
-          quotaCommitted = true;
-          ctx.trace("quota:commit", {
-            conversationId,
-            branchId,
-            reservationId: quotaReservationId,
-            lane: quotaLane,
-            remainingDemoPasses: quotaSnapshot.remaining,
-          });
-        } else {
-          quotaSnapshot = await releaseDemoPass(ctx, {
-            reservationId: quotaReservationId,
-          });
-          quotaReservationId = null;
-          ctx.trace("quota:release", {
-            conversationId,
-            branchId,
-            reservationId,
-            lane: quotaLane,
-            remainingDemoPasses: quotaSnapshot.remaining,
-            reason: "study-generation-failed",
-          });
-        }
-      }
+      ctx.trace("quota:skipped", {
+        conversationId,
+        branchId,
+        lane: quotaLane,
+        reason: studyGenerationSucceeded ? "study-generation-succeeded" : "study-generation-failed",
+      });
       let studyAssistantRenderedHtml: string | null = null;
       try {
         studyAssistantRenderedHtml = await renderMarkdownToHtml(
@@ -1577,7 +1519,7 @@ export async function sendMessage(
         appendedMessages: [userMessage, finalAssistantMessage],
         assistantRenderedHtml: studyAssistantRenderedHtml,
         quota: {
-          remainingDemoPasses: quotaSnapshot?.remaining ?? null,
+          remainingDemoPasses: null,
         },
       };
     }
@@ -2119,34 +2061,12 @@ export async function sendMessage(
   });
 
   attachmentsToRestore = null;
-  if (quotaReservationId) {
-    if (streamingGenerationSucceeded) {
-      quotaSnapshot = await commitDemoPass(ctx, {
-        reservationId: quotaReservationId,
-      });
-      quotaCommitted = true;
-      ctx.trace("quota:commit", {
-        conversationId,
-        branchId,
-        reservationId: quotaReservationId,
-        lane: quotaLane,
-        remainingDemoPasses: quotaSnapshot.remaining,
-      });
-    } else {
-      quotaSnapshot = await releaseDemoPass(ctx, {
-        reservationId: quotaReservationId,
-      });
-      quotaReservationId = null;
-      ctx.trace("quota:release", {
-        conversationId,
-        branchId,
-        reservationId,
-        lane: quotaLane,
-        remainingDemoPasses: quotaSnapshot.remaining,
-        reason: "stream-generation-failed",
-      });
-    }
-  }
+  ctx.trace("quota:skipped", {
+    conversationId,
+    branchId,
+    lane: quotaLane,
+    reason: streamingGenerationSucceeded ? "stream-generation-succeeded" : "stream-generation-failed",
+  });
   return {
     conversationId,
     snapshot: latestSnapshot,
@@ -2154,35 +2074,10 @@ export async function sendMessage(
     appendedMessages: [userMessage, finalAssistantMessage],
     assistantRenderedHtml: finalRenderedHtml,
     quota: {
-      remainingDemoPasses: quotaSnapshot?.remaining ?? null,
+      remainingDemoPasses: null,
     },
   };
   } catch (error) {
-    if (quotaReservationId && !quotaCommitted) {
-      try {
-        quotaSnapshot = await releaseDemoPass(ctx, {
-          reservationId: quotaReservationId,
-        });
-        ctx.trace("quota:release", {
-          conversationId,
-          branchId,
-          reservationId: quotaReservationId,
-          lane: quotaLane,
-          remainingDemoPasses: quotaSnapshot.remaining,
-          reason: "send-message-error",
-        });
-      } catch (releaseError) {
-        ctx.trace("quota:release:error", {
-          conversationId,
-          branchId,
-          reservationId: quotaReservationId,
-          error:
-            releaseError instanceof Error
-              ? releaseError.message
-              : "unknown",
-        });
-      }
-    }
     if (attachmentsToRestore && attachmentsToRestore.length > 0) {
       for (const attachment of attachmentsToRestore) {
         try {
