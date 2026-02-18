@@ -36,8 +36,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={t.id}
             role="status"
             className={cn(
-              "rounded-lg border px-3 py-2 text-sm shadow-sm",
-              t.variant === "destructive" && "border-red-400 bg-red-50 text-red-900",
+              "rounded border px-3 py-2 text-sm shadow-sm",
+              t.variant === "destructive" && "border-destructive/60 bg-destructive/10 text-destructive",
               t.variant === "warning" && "border-amber-300 bg-amber-50 text-amber-950",
               (!t.variant || t.variant === "default") && "border-border bg-card text-foreground",
             )}
