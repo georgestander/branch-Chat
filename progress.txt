@@ -371,3 +371,8 @@
 - Decisions: rebuilt `Docs/testing-report.md` from prior version (`HEAD~1`) preserving all sections; inserted new `2026-02-18` run summary at top; kept older pending/manual items untouched except noting they were not re-run today.
 - Files: Docs/testing-report.md, progress.txt.
 - Notes: corrective doc-only update after user clarification; no blockers.
+2026-02-18 — Reframed landing messaging for live capabilities + roadmap. Ref: Docs/public-beta-launch-plan.md #8 (landing conversion narrative) + Docs/PRD.md core experience communication.
+- Task: communicate current features (branching chat, web search, file upload, study mode, OpenAI/OpenRouter) and add coming-soon roadmap (voice/dictation, Sign in with ChatGPT, Canvas), while preserving product demo media.
+- Decisions: kept demo video and screenshot sections untouched; updated hero copy/CTAs to open-source-first framing; replaced value strip with explicit `Live` feature cards, dedicated RedwoodSDK+Cloudflare infra panel, and `Coming soon` card set.
+- Files: src/app/components/landing/HeroSection.tsx, src/app/components/landing/ValueStrip.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; ignored unrelated `worker-configuration.d.ts` modification.

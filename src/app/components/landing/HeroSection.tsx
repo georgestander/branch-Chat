@@ -19,11 +19,21 @@ export function HeroSection({ links }: HeroSectionProps) {
             <span className="block text-primary">Keep context. Explore alternatives fast.</span>
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
-            Branch-Chat lets you split conversations into parent and child tracks without losing your
-            place. Compare paths side-by-side and push deeper where it matters.
+            One conversation, many paths. Use branching chat with web search, file upload, and study
+            mode, powered by OpenAI API or OpenRouter API.
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
+            <LandingTrackedLink
+              href={links.docsHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              eventName="landing_cta_click"
+              eventData={{ cta: "open_source", location: "hero" }}
+              className="inline-flex h-10 items-center rounded-full border border-foreground/20 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-foreground transition hover:bg-foreground hover:text-background"
+            >
+              Run Open Source
+            </LandingTrackedLink>
             <LandingTrackedLink
               href={links.repoHref}
               target="_blank"
@@ -32,15 +42,15 @@ export function HeroSection({ links }: HeroSectionProps) {
               eventData={{ cta: "repo", location: "hero" }}
               className="inline-flex h-10 items-center rounded-full border border-foreground/20 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-foreground transition hover:bg-foreground hover:text-background"
             >
-              Run Open Source
+              View Source
             </LandingTrackedLink>
           </div>
 
           <div className="grid max-w-2xl grid-cols-2 gap-2 pt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground md:grid-cols-4">
-            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">OSS First</div>
-            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">BYOK Ready</div>
-            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">Branch Native</div>
-            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">No Lock-In</div>
+            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">Branching Chat</div>
+            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">Web Search</div>
+            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">File Upload</div>
+            <div className="rounded-lg border border-foreground/15 bg-background/75 px-3 py-2">Study & Learn</div>
           </div>
         </div>
       </div>
