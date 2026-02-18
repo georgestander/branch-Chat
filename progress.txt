@@ -426,3 +426,8 @@
 - Decisions: reran full loops at final `HEAD`; review surfaced one edge case where session BYOK could look connected during account-load race when persistence was actually enabled; fixed by gating session-connected state to non-persistent mode and adding a loading guard before save.
 - Files: src/app/components/conversation/ConversationComposer.tsx, Docs/private-personal-prod-oss-plan.md, progress.txt.
 - Notes: all final checks pass (`pnpm types`, `npm run test`, `npm run lint`); no unresolved findings from review pass.
+2026-02-18 — Review hygiene cleanup after P8. Ref: Docs/private-personal-prod-oss-plan.md P8.
+- Task: close remaining diff-check nit from `main..HEAD` review (`.gitignore` blank line at EOF).
+- Decisions: removed trailing blank line to keep `git diff --check` clean.
+- Files: .gitignore, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
