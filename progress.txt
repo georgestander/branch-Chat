@@ -356,3 +356,8 @@
 - Decisions: removed entire PathCards + DonateSection from shell and deleted those components; removed hero/topbar hosted-donate-support CTAs; simplified landing links shape to repo/docs/security/license/changelog only; replaced value strip hosted wording with neutral BYOK copy.
 - Files: src/app/components/landing/LandingShell.tsx, src/app/components/landing/TopBarClient.tsx, src/app/components/landing/HeroSection.tsx, src/app/components/landing/ValueStrip.tsx, src/app/components/landing/types.ts, src/app/pages/landing/LandingPage.tsx, src/app/components/landing/PathCards.tsx (deleted), src/app/components/landing/DonateSection.tsx (deleted), progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Refreshed local setup guide to match current app flow. Ref: Docs/PRD.md onboarding/supporting docs hygiene.
+- Task: update stale `Docs/setup.md` so local run instructions match current routes/auth/runtime options.
+- Decisions: documented strict local port `5174`, landing `/` vs app `/app`, auth-required sign-in path, and current validation/deploy commands; linked env var expansion to `Docs/env-vars.md`.
+- Files: Docs/setup.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
