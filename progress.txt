@@ -406,3 +406,8 @@
 - Decisions: deleted `/quota*` endpoints and reserve/commit/release client/server helpers; removed send-path quota reservation lifecycle and now return `remainingDemoPasses: null`; kept backward-safe normalization via `normalizeAccountState` so legacy records with `demo`/`reservations` still load and preserve BYOK/composer preference.
 - Files: src/lib/durable-objects/Account.ts, src/lib/durable-objects/Account.test.ts, src/app/shared/account.server.ts, src/app/pages/conversation/functions.ts, Docs/private-personal-prod-oss-plan.md (tracker status update), progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; added normalization unit tests for legacy-state compatibility.
+2026-02-18 — Completed P4 composer BYOK-only gate + removed demo/pass UX. Ref: Docs/private-personal-prod-oss-plan.md P4, AC-02/AC-05.
+- Task: block sends in `/app` until BYOK is available and remove remaining demo lane/pass messaging in composer/empty state.
+- Decisions: enforced provider-family mismatch guard client+server; removed lane/pass chips, toggles, and exhausted-pass paths; added session-only BYOK connect/send flow when `BYOK_ENCRYPTION_SECRET` is absent; kept server response contract stable (`remainingDemoPasses: null`) to avoid churn outside this slice.
+- Files: src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/ConversationEmptyLayout.tsx, src/app/pages/conversation/functions.ts, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

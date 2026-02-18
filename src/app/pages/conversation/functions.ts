@@ -397,6 +397,10 @@ export interface SendMessageInput extends ConversationPayload {
   content: string;
   streamId?: string;
   byok?: boolean;
+  sessionByok?: {
+    provider: "openai" | "openrouter";
+    apiKey: string;
+  };
   tools?: ConversationComposerTool[];
   attachmentIds?: string[];
 }
@@ -958,26 +962,11 @@ export async function sendMessage(
   let requestModel = usingOpenRouter
     ? stripOpenRouterPrefix(settings.model)
     : settings.model;
-  const normalizeOpenRouterDemoModel = (value: unknown): string | null => {
-    if (typeof value !== "string") {
-      return null;
-    }
-    const normalized = stripOpenRouterPrefix(value.trim());
-    return normalized.length > 0 ? normalized : null;
-  };
-  const envRecord = ctx.env as unknown as Record<string, unknown>;
-  const demoOpenRouterPrimaryModel = normalizeOpenRouterDemoModel(
-    envRecord.OPENROUTER_DEMO_PRIMARY_MODEL,
-  );
-  const demoOpenRouterBackupModel = normalizeOpenRouterDemoModel(
-    envRecord.OPENROUTER_DEMO_BACKUP_MODEL,
-  );
   const modelRequestSettings = {
     ...settings,
     model: requestModel,
   };
-  const requestedLane: "demo" | "byok" = input.byok ? "byok" : "demo";
-  let quotaLane: "demo" | "byok" = "demo";
+  const requestedByok = input.byok === true || Boolean(input.sessionByok);
   let byokCredential: Awaited<ReturnType<typeof resolveByokCredential>> = null;
   let selectedTools = normalizeComposerTools(
     input.tools ?? settings.composerDefaults?.tools ?? [],
@@ -1071,7 +1060,31 @@ export async function sendMessage(
       });
     }
 
-    if (requestedLane === "byok") {
+    if (!requestedByok) {
+      throw new Error(
+        `Connect your ${providerLabel} BYOK API key before sending.`,
+      );
+    }
+
+    const sessionProvider =
+      input.sessionByok?.provider === "openrouter" || input.sessionByok?.provider === "openai"
+        ? input.sessionByok.provider
+        : null;
+    const sessionApiKey =
+      typeof input.sessionByok?.apiKey === "string"
+        ? input.sessionByok.apiKey.trim()
+        : "";
+    if (sessionProvider && sessionApiKey.length > 0) {
+      byokCredential = {
+        provider: sessionProvider,
+        apiKey: sessionApiKey,
+      };
+      ctx.trace("byok:session:credential", {
+        conversationId,
+        branchId,
+        provider: sessionProvider,
+      });
+    } else {
       try {
         byokCredential = await resolveByokCredential(ctx);
       } catch (error) {
@@ -1082,113 +1095,90 @@ export async function sendMessage(
           provider: modelProvider,
           error: error instanceof Error ? error.message : "unknown",
         });
+        if (
+          error instanceof Error &&
+          error.message.includes("BYOK is not configured in this environment")
+        ) {
+          throw new Error(
+            "Server-side BYOK persistence is disabled. Add a session BYOK key and try again.",
+          );
+        }
         throw new Error(
           `Unable to load your ${providerLabel} BYOK credentials. Reconnect your key and try again.`,
         );
       }
-
-      if (!byokCredential) {
-        ctx.trace("quota:lane:byok:missing-key", {
-          conversationId,
-          branchId,
-          model: settings.model,
-          provider: modelProvider,
-        });
-        throw new Error(
-          `BYOK lane requested, but no ${providerLabel} API key is connected. Add your key and try again.`,
-        );
-      }
-
-      const normalizedByokProvider = byokCredential.provider.trim().toLowerCase();
-      if (normalizedByokProvider !== modelProvider) {
-        ctx.trace("quota:lane:byok:provider-mismatch", {
-          conversationId,
-          branchId,
-          model: settings.model,
-          provider: modelProvider,
-          byokProvider: normalizedByokProvider,
-          action: "continue-with-model-provider",
-        });
-      }
-
-      quotaLane = "byok";
     }
 
-    ctx.trace("quota:lane:resolved", {
+    if (!byokCredential) {
+      ctx.trace("quota:lane:byok:missing-key", {
+        conversationId,
+        branchId,
+        model: settings.model,
+        provider: modelProvider,
+      });
+      throw new Error(
+        `No ${providerLabel} BYOK API key is connected. Add your key and try again.`,
+      );
+    }
+
+    const normalizedByokProvider = byokCredential.provider.trim().toLowerCase();
+    if (normalizedByokProvider !== modelProvider) {
+      ctx.trace("quota:lane:byok:provider-mismatch", {
+        conversationId,
+        branchId,
+        model: settings.model,
+        provider: modelProvider,
+        byokProvider: normalizedByokProvider,
+        action: "block-send",
+      });
+      throw new Error(
+        `Your connected BYOK key is ${normalizedByokProvider}, but this model requires ${modelProvider}. Switch models or update your BYOK key.`,
+      );
+    }
+
+    ctx.trace("byok:resolved", {
       conversationId,
       branchId,
-      requestedLane,
-      lane: quotaLane,
       provider: modelProvider,
       model: settings.model,
     });
-    if (quotaLane === "demo" && usingOpenRouter) {
-      modelRequestSettings.model = demoOpenRouterPrimaryModel ?? requestModel;
-      ctx.trace("openrouter:demo:model-route", {
-        conversationId,
-        branchId,
-        requestedModel: requestModel,
-        routedModel: modelRequestSettings.model,
-        configuredPrimaryModel: demoOpenRouterPrimaryModel,
-        configuredBackupModel: demoOpenRouterBackupModel,
-      });
-    }
-
     const modelClient = (() => {
-      if (quotaLane === "byok") {
-        if (!byokCredential) {
-          ctx.trace("quota:lane:byok:credential-missing", {
-            conversationId,
-            branchId,
-            model: settings.model,
-            provider: modelProvider,
-          });
-          throw new Error(
-            "BYOK lane requested, but credentials were unavailable at send time. Please retry.",
-          );
-        }
-
-        ctx.trace("quota:lane:byok:client", {
+      if (!byokCredential) {
+        ctx.trace("quota:lane:byok:credential-missing", {
           conversationId,
           branchId,
+          model: settings.model,
           provider: modelProvider,
-          model: modelRequestSettings.model,
-        });
-
-        if (modelProvider === "openrouter") {
-          const requestUrl = new URL(requestInfo.request.url);
-          const referer = ctx.env.OPENROUTER_SITE_URL ?? requestUrl.origin;
-          const title = ctx.env.OPENROUTER_APP_NAME ?? "Branch Chat";
-          return createOpenAIClient({
-            apiKey: byokCredential.apiKey,
-            baseURL: ctx.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
-            defaultHeaders: {
-              "HTTP-Referer": referer,
-              "X-Title": title,
-            },
-          });
-        }
-
-        return createOpenAIClient({
-          apiKey: byokCredential.apiKey,
-        });
-      }
-
-      if (!usingOpenRouter) {
-        return ctx.getOpenAIClient();
-      }
-      try {
-        return ctx.getOpenRouterClient();
-      } catch (error) {
-        ctx.trace("openrouter:client:error", {
-          conversationId,
-          branchId,
-          error: error instanceof Error ? error.message : "unknown",
         });
         throw new Error(
-          "OpenRouter is not configured for this environment. Add OPENROUTER_API_KEY to enable OpenRouter models.",
+          "BYOK credentials were unavailable at send time. Please retry.",
         );
       }
+
+      ctx.trace("quota:lane:byok:client", {
+        conversationId,
+        branchId,
+        provider: modelProvider,
+        model: modelRequestSettings.model,
+      });
+
+      if (modelProvider === "openrouter") {
+        const requestUrl = new URL(requestInfo.request.url);
+        const referer = ctx.env.OPENROUTER_SITE_URL ?? requestUrl.origin;
+        const title = ctx.env.OPENROUTER_APP_NAME ?? "Branch Chat";
+        return createOpenAIClient({
+          apiKey: byokCredential.apiKey,
+          baseURL: ctx.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+          defaultHeaders: {
+            "HTTP-Referer": referer,
+            "X-Title": title,
+          },
+        });
+      }
+
+      return createOpenAIClient({
+        apiKey: byokCredential.apiKey,
+      });
     })();
     const openRouterWebSearchRequested =
       usingOpenRouter && selectedToolSet.has("web-search");
@@ -1492,10 +1482,9 @@ export async function sendMessage(
       });
 
       attachmentsToRestore = null;
-      ctx.trace("quota:skipped", {
+      ctx.trace("byok:send:complete", {
         conversationId,
         branchId,
-        lane: quotaLane,
         reason: studyGenerationSucceeded ? "study-generation-succeeded" : "study-generation-failed",
       });
       let studyAssistantRenderedHtml: string | null = null;
@@ -1580,13 +1569,6 @@ export async function sendMessage(
       ? { type: webSearchToolType }
       : null;
 
-  const demoOpenRouterFallbackModel =
-    quotaLane === "demo" &&
-    usingOpenRouter &&
-    demoOpenRouterBackupModel &&
-    demoOpenRouterBackupModel !== modelRequestSettings.model
-      ? demoOpenRouterBackupModel
-      : null;
   const startResponseStream = (model: string) =>
     openai.responses.stream({
       ...buildResponseOptions({
@@ -1599,49 +1581,7 @@ export async function sendMessage(
       ...(streamInclude.length > 0 ? { include: streamInclude } : {}),
     });
 
-  const stream = await (async () => {
-    const primaryStreamModel = modelRequestSettings.model;
-    try {
-      return await startResponseStream(primaryStreamModel);
-    } catch (primaryError) {
-      if (!demoOpenRouterFallbackModel) {
-        throw primaryError;
-      }
-
-      ctx.trace("openrouter:demo:fallback:attempt", {
-        conversationId,
-        branchId,
-        primaryModel: primaryStreamModel,
-        backupModel: demoOpenRouterFallbackModel,
-        error:
-          primaryError instanceof Error ? primaryError.message : "unknown",
-      });
-
-      try {
-        const backupStream = await startResponseStream(demoOpenRouterFallbackModel);
-        modelRequestSettings.model = demoOpenRouterFallbackModel;
-        ctx.trace("openrouter:demo:fallback:success", {
-          conversationId,
-          branchId,
-          primaryModel: primaryStreamModel,
-          activeModel: modelRequestSettings.model,
-        });
-        return backupStream;
-      } catch (backupError) {
-        ctx.trace("openrouter:demo:fallback:failure", {
-          conversationId,
-          branchId,
-          primaryModel: primaryStreamModel,
-          backupModel: demoOpenRouterFallbackModel,
-          primaryError:
-            primaryError instanceof Error ? primaryError.message : "unknown",
-          backupError:
-            backupError instanceof Error ? backupError.message : "unknown",
-        });
-        throw backupError;
-      }
-    }
-  })();
+  const stream = await startResponseStream(modelRequestSettings.model);
 
   let buffered = "";
   let latestReasoningSummary = "";
@@ -2061,10 +2001,9 @@ export async function sendMessage(
   });
 
   attachmentsToRestore = null;
-  ctx.trace("quota:skipped", {
+  ctx.trace("byok:send:complete", {
     conversationId,
     branchId,
-    lane: quotaLane,
     reason: streamingGenerationSucceeded ? "stream-generation-succeeded" : "stream-generation-failed",
   });
   return {
