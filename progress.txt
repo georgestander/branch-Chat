@@ -306,3 +306,8 @@
 - Decisions: keep delta token streaming unchanged; render final assistant markdown server-side once and include `renderedHtml` in SSE `complete`; include same `renderedHtml` in optimistic persisted assistant event so BranchColumn avoids escaped-text fallback.
 - Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/StreamingBubble.tsx, src/app/components/conversation/messageEvents.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; local browser session had demo exhausted so full send smoke could not be executed in that session.
+2026-02-18 — Sidebar conversation title fit fix with branch counts. Ref: Docs/PRD.md Core Experience (branch navigation) + UX & A11y clarity.
+- Task: ensure long conversation names remain readable in sidebar row even when branch count/menu are present.
+- Decisions: switched row grid track to `minmax(0,1fr)` so title can shrink correctly; made title span `flex-1`; compacted branch count to `N br` badge with full count in tooltip to reclaim horizontal space.
+- Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.

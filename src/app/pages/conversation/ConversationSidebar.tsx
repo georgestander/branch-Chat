@@ -1343,7 +1343,7 @@ function ConversationCard({
       )}
       data-active={isActive}
     >
-      <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <button
           type="button"
           onClick={() => {
@@ -1376,18 +1376,19 @@ function ConversationCard({
               aria-hidden="true"
             />
           )}
-          <span className="min-w-0 truncate font-medium" title={entry.title}>
+          <span className="min-w-0 flex-1 truncate font-medium" title={entry.title}>
             {entry.title.trim() || entry.id}
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
           <span
             className={cn(
-              "shrink-0 text-xs text-muted-foreground",
-              isActive && "text-background/70",
+              "inline-flex h-6 shrink-0 items-center rounded-full border border-foreground/15 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground",
+              isActive && "border-background/30 text-background/70",
             )}
+            title={`${branchCount} branch${branchCount === 1 ? "" : "es"}`}
           >
-            {branchCount} branch{branchCount === 1 ? "" : "es"}
+            {branchCount} br
           </span>
           {/* Status pill removed */}
           <div className="relative">
