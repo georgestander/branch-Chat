@@ -341,3 +341,8 @@
 - Decisions: added per-conversation `sessionStorage` cache for composer tools in `ConversationLayout`; hydrate from cache on conversation load, write on local settings change, and restore previous selection on save rollback.
 - Files: src/app/components/conversation/ConversationLayout.tsx, progress.txt.
 - Notes: pending validation before commit.
+2026-02-18 — Temporarily hid sponsor CTA on landing home. Ref: Docs/public-beta-launch-plan.md #8 (landing conversion CTA tuning).
+- Task: comment out `Sponsor via Company` mention/button in home donate section.
+- Decisions: wrapped existing CTA JSX in comment so env wiring stays intact and rollback is one-line uncomment; left other donation CTAs unchanged.
+- Files: src/app/components/landing/DonateSection.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint` in isolated tree; unrelated local edits were stashed to avoid mixing.

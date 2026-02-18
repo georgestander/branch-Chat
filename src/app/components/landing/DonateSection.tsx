@@ -46,16 +46,18 @@ export function DonateSection({ links }: DonateSectionProps) {
         >
           Donate (Backup)
         </LandingTrackedLink>
-        <LandingTrackedLink
-          href={links.sponsorCompanyHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          eventName="landing_donate_click"
-          eventData={{ provider: "company" }}
-          className="inline-flex h-10 items-center rounded-full border border-foreground/20 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-foreground transition hover:bg-foreground hover:text-background"
-        >
-          Sponsor via Company
-        </LandingTrackedLink>
+        {/*
+          <LandingTrackedLink
+            href={links.sponsorCompanyHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            eventName="landing_donate_click"
+            eventData={{ provider: "company" }}
+            className="inline-flex h-10 items-center rounded-full border border-foreground/20 px-5 text-xs font-semibold uppercase tracking-[0.18em] text-foreground transition hover:bg-foreground hover:text-background"
+          >
+            Sponsor via Company
+          </LandingTrackedLink>
+        */}
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
