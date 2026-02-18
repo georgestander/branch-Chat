@@ -466,3 +466,8 @@
 - Decisions: trust only `cf-access-authenticated-user-email` + verified `cf-access-jwt-assertion` (JWKS + audience); added secure default to reject unsigned cookies unless explicitly allowed by caller; disabled self-asserted `/sign-in` POST when auth-required unless opt-in flag set.
 - Files: src/app/shared/auth.server.ts, src/app/shared/auth.server.test.ts, src/worker.tsx, src/app/pages/sign-in/SignInPage.tsx, types/env.d.ts, progress.txt.
 - Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Enforced upload byte limits in fallback path. Ref: Docs/PRD.md Non-functional (security + resilience).
+- Task: close upload-size bypass when `Content-Length` is absent/misleading.
+- Decisions: wrapped direct upload stream with server-side byte counter and abort > `UPLOAD_MAX_SIZE_BYTES`; added finalize guard to delete + reject oversized stored objects.
+- Files: src/app/shared/uploadsProxy.server.ts, src/app/shared/uploads.server.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).

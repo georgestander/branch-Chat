@@ -163,6 +163,14 @@ export async function finalizeAttachmentUpload(
   if (!object) {
     throw new Error("Uploaded file not found in storage");
   }
+  if (object.size > UPLOAD_MAX_SIZE_BYTES) {
+    try {
+      await uploadsBucket.delete(staged.storageKey);
+    } catch {
+      // Best effort cleanup only.
+    }
+    throw new Error("Uploaded file exceeds maximum allowed size");
+  }
 
   const uploadedAt = object.uploaded?.toISOString?.() ?? new Date().toISOString();
   let finalized = await store.finalizeAttachment(staged.id, {

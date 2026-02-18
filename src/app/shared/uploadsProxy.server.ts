@@ -8,6 +8,31 @@ import type { AppContext } from "@/app/context";
 import { UPLOAD_MAX_SIZE_BYTES } from "@/app/shared/uploads.config";
 import type { AppRequestInfo } from "@/worker";
 
+class UploadLimitExceededError extends Error {
+  constructor() {
+    super("upload-limit-exceeded");
+    this.name = "UploadLimitExceededError";
+  }
+}
+
+function createSizeLimitedBodyStream(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number,
+): ReadableStream<Uint8Array> {
+  let totalBytes = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        totalBytes += chunk.byteLength;
+        if (totalBytes > maxBytes) {
+          throw new UploadLimitExceededError();
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
 export async function handleDirectUploadRequest(
   requestInfo: AppRequestInfo,
 ): Promise<Response> {
@@ -65,9 +90,10 @@ export async function handleDirectUploadRequest(
   if (!body) {
     return new Response("Missing upload body", { status: 400 });
   }
+  const limitedBody = createSizeLimitedBodyStream(body, UPLOAD_MAX_SIZE_BYTES);
 
   try {
-    await uploadsBucket.put(staged.storageKey, body, {
+    await uploadsBucket.put(staged.storageKey, limitedBody, {
       httpMetadata: {
         contentType,
       },
@@ -80,6 +106,18 @@ export async function handleDirectUploadRequest(
         : staged.size,
     });
   } catch (error) {
+    if (error instanceof UploadLimitExceededError) {
+      appCtx.trace("uploads:fallback:payload-too-large", {
+        conversationId,
+        attachmentId,
+      });
+      try {
+        await uploadsBucket.delete(staged.storageKey);
+      } catch {
+        // Best effort cleanup only.
+      }
+      return new Response("Payload too large", { status: 413 });
+    }
     console.error("[Uploads] direct upload failed", error);
     return new Response("Failed to store upload", { status: 500 });
   }
