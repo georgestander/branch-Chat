@@ -11,7 +11,7 @@
 | Mode | Goal | Key env setup |
 | --- | --- | --- |
 | OSS self-host quickstart | Run locally with minimal setup | `OPENAI_API_KEY` only; keep `AUTH_REQUIRED` unset/false |
-| Personal production-like | Match private Cloudflare Access deployment defaults | `AUTH_REQUIRED=true`, `AUTH_COOKIE_SECRET`, `AUTH_TRUST_IDENTITY_HEADERS=true`, `BYOK_ENCRYPTION_SECRET` |
+| Personal production-like | Match private Cloudflare Access deployment defaults | `AUTH_REQUIRED=true`, `AUTH_COOKIE_SECRET`, `AUTH_TRUST_IDENTITY_HEADERS=true`, `AUTH_ACCESS_JWKS_URL`, `AUTH_ACCESS_AUDIENCE`, `BYOK_ENCRYPTION_SECRET` |
 
 See `Docs/env-vars.md` for full details.
 
@@ -27,7 +27,8 @@ See `Docs/env-vars.md` for full details.
    ```
 3. Set `.dev.vars`:
    - Required: `OPENAI_API_KEY`
-   - Optional auth hardening: `AUTH_REQUIRED`, `AUTH_COOKIE_SECRET`, `AUTH_TRUST_IDENTITY_HEADERS`, `AUTH_ALLOW_LEGACY_COOKIE`
+   - Optional auth hardening: `AUTH_REQUIRED`, `AUTH_COOKIE_SECRET`, `AUTH_TRUST_IDENTITY_HEADERS`, `AUTH_ACCESS_JWKS_URL`, `AUTH_ACCESS_AUDIENCE`, `AUTH_ALLOW_LEGACY_COOKIE`
+   - Optional auth fallback toggles (insecure outside local/dev): `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN`, `AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE`
    - Optional BYOK persistence: `BYOK_ENCRYPTION_SECRET`
    - Optional OpenRouter routing: `OPENROUTER_API_KEY` plus related `OPENROUTER_*` vars
 4. Start the dev server:
@@ -38,7 +39,7 @@ See `Docs/env-vars.md` for full details.
    - `/` is the landing page.
    - `Log In` on the landing page routes to `/sign-in?redirectTo=/app` (or `LANDING_HOSTED_URL` if configured).
    - `/app` is the chat app.
-   - `/sign-in` remains available as an optional fallback sign-in flow.
+   - `/sign-in` self-asserted POST is available by default only when `AUTH_REQUIRED` is off (or when `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN=true`).
 
 ## BYOK Behavior
 

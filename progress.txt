@@ -481,3 +481,8 @@
 - Decisions: split CSP by env; keep `unsafe-eval` only in dev server mode; production `script-src` now nonce-based without eval.
 - Files: src/app/headers.ts, progress.txt.
 - Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-02-18 — Updated auth/security docs to match hardened runtime behavior. Ref: Docs/private-personal-prod-oss-plan.md AC-01/AC-06.
+- Task: align setup/env/readme guidance with verified Access JWT identity and guarded fallback auth toggles.
+- Decisions: documented `AUTH_ACCESS_JWKS_URL` + `AUTH_ACCESS_AUDIENCE` as required for trusted-header production mode; documented `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN` and `AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE` as explicit fallback flags; updated private-prod plan wording/evidence.
+- Files: .dev.vars.example, Docs/env-vars.md, Docs/setup.md, README.md, Docs/private-personal-prod-oss-plan.md, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).

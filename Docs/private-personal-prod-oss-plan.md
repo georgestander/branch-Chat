@@ -12,7 +12,7 @@ Owner: george
 ## Locked Product Decisions
 1. Production access model: Cloudflare Access invite list.
 2. Production route scope: keep landing public, protect `/app` and app mutations.
-3. App identity source in production: trusted Cloudflare Access email header.
+3. App identity source in production: Cloudflare Access email header with verified JWT assertion.
 4. Invite enforcement: Cloudflare policy only (no app-level allowlist).
 5. ChatGPT/OpenAI OAuth: deferred for now.
 6. Existing `/sign-in` page: keep as optional fallback for OSS self-hosters.
@@ -43,7 +43,7 @@ Owner: george
 ## Acceptance Criteria
 ### AC-01 Production Access
 - When production env has `AUTH_REQUIRED=true` and trusted headers enabled, unauthenticated `/app` requests are denied.
-- When `cf-access-authenticated-user-email` is present and trusted, user identity resolves and app loads.
+- When `cf-access-authenticated-user-email` is present and paired with a valid `cf-access-jwt-assertion` (`aud` + signature), user identity resolves and app loads.
 - Landing route remains public while `/app` is protected.
 
 ### AC-02 BYOK Requirement
@@ -71,7 +71,7 @@ Owner: george
 ## Progress Tracker
 | ID | Workstream | Deliverable | Status | Acceptance Criteria | Evidence / Notes |
 |---|---|---|---|---|---|
-| P1 | Auth | Support Cloudflare Access email header identity | Done | AC-01 | Added trusted CF Access email fallback in auth header parser + tests for trusted/denied paths in `src/app/shared/auth.server.test.ts` |
+| P1 | Auth | Support Cloudflare Access email header identity | Done | AC-01 | Trusted CF Access flow now requires `cf-access-jwt-assertion` verification (JWKS + audience) before header identity is accepted; covered by auth tests in `src/app/shared/auth.server.test.ts` |
 | P2 | Server APIs | Remove demo lane from send contracts | Done | AC-02 | `sendMessage` now accepts `byok?: boolean` instead of `lane`; response contract no longer returns `quota.lane`; composer caller updated accordingly |
 | P3 | Account DO | Remove quota/pass endpoints, keep BYOK + prefs | Done | AC-02, AC-03 | Removed DO quota/pass endpoints + server/client helpers; legacy account state normalization now ignores old quota/reservation fields and preserves BYOK/composer prefs (covered by `src/lib/durable-objects/Account.test.ts`) |
 | P4 | Composer UX | Add BYOK-required gate in `/app`, remove pass UI | Done | AC-02, AC-05 | Composer now blocks sends until persisted/session BYOK exists, enforces provider mismatch guidance, removes demo/pass lane UI, and supports session-only keys when server BYOK persistence is unavailable |
