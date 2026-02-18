@@ -2114,7 +2114,7 @@ export function ConversationComposer({
           </span>
         ) : (
           <span className="text-right text-xs text-muted-foreground">
-            {byokIndicatorText} · Enter to send · Shift+Enter for line break
+            Enter to send · Shift+Enter for line break
           </span>
         )}
       </div>
