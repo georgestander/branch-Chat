@@ -156,6 +156,10 @@ function createOptimisticRenderedMessage(
 function createPersistedRenderedMessage(
   detail: PersistedMessagesDetail["messages"][number],
 ): RenderedMessage {
+  const renderedHtml =
+    typeof detail.renderedHtml === "string" && detail.renderedHtml.length > 0
+      ? detail.renderedHtml
+      : formatOptimisticHtml(detail.content);
   return {
     id: detail.id,
     branchId: detail.branchId,
@@ -166,7 +170,7 @@ function createPersistedRenderedMessage(
     attachments: detail.attachments ?? null,
     toolInvocations: detail.toolInvocations ?? null,
     hasBranchHighlight: false,
-    renderedHtml: formatOptimisticHtml(detail.content),
+    renderedHtml,
   };
 }
 

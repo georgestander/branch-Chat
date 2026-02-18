@@ -156,7 +156,11 @@ export function StreamingBubble({
         const data = JSON.parse(event.data);
         if (typeof data?.content === "string") {
           setContent(data.content);
-          setHtml(renderMarkdownClient(data.content));
+          if (typeof data?.renderedHtml === "string" && data.renderedHtml.length > 0) {
+            setHtml(data.renderedHtml);
+          } else {
+            setHtml(renderMarkdownClient(data.content));
+          }
         }
         if (typeof data?.reasoningSummary === "string") {
           setReasoningSummary(data.reasoningSummary);

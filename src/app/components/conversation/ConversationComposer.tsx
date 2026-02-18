@@ -1371,6 +1371,15 @@ export function ConversationComposer({
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
           result.snapshot.branches[result.snapshot.conversation.rootBranchId];
+        const persistedAssistantMessage = result.appendedMessages.find(
+          (message) => message.role === "assistant" && message.branchId === branchId,
+        );
+        const assistantRenderedHtml =
+          persistedAssistantMessage &&
+          typeof result.assistantRenderedHtml === "string" &&
+          result.assistantRenderedHtml.length > 0
+            ? result.assistantRenderedHtml
+            : null;
         const persistedBranchMessages = result.appendedMessages.filter(
           (
             message,
@@ -1389,6 +1398,11 @@ export function ConversationComposer({
               branchId: message.branchId,
               role: message.role,
               content: message.content,
+              renderedHtml:
+                message.role === "assistant" &&
+                persistedAssistantMessage?.id === message.id
+                  ? assistantRenderedHtml
+                  : null,
               createdAt: message.createdAt,
               tokenUsage: message.tokenUsage ?? null,
               attachments: message.attachments ?? null,

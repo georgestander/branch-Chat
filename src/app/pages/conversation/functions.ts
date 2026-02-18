@@ -43,6 +43,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   removeStagedAttachment as removeStagedAttachmentHelper,
 } from "@/app/shared/uploads.server";
+import { renderMarkdownToHtml } from "@/app/shared/markdown.server";
 import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import {
   buildRetrievalContext,
@@ -404,6 +405,7 @@ export interface SendMessageInput extends ConversationPayload {
 
 export interface SendMessageResponse extends LoadConversationResponse {
   appendedMessages: Message[];
+  assistantRenderedHtml?: string | null;
   quota: {
     lane: "demo" | "byok";
     remainingDemoPasses: number | null;
@@ -1441,11 +1443,26 @@ export async function sendMessage(
         });
       }
     }
+    let studyAssistantRenderedHtml: string | null = null;
+    try {
+      studyAssistantRenderedHtml = await renderMarkdownToHtml(
+        finalAssistantMessage.content,
+      );
+    } catch (error) {
+      ctx.trace("markdown:render:error", {
+        conversationId,
+        branchId,
+        source: "study-complete",
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+
     return {
       conversationId,
       snapshot: latestResult.snapshot,
       version: latestResult.version,
       appendedMessages: [userMessage, finalAssistantMessage],
+      assistantRenderedHtml: studyAssistantRenderedHtml,
       quota: {
         lane: quotaLane,
         remainingDemoPasses: quotaSnapshot?.remaining ?? null,
@@ -1747,6 +1764,7 @@ export async function sendMessage(
   }
 
   let finalContent = buffered;
+  let finalRenderedHtml: string | null = null;
   let promptTokens = 0;
   let completionTokens = 0;
   let finalResponse: any = null;
@@ -1858,6 +1876,17 @@ export async function sendMessage(
     finalContent = "Assistant response interrupted. Please try again.";
   }
 
+  try {
+    finalRenderedHtml = await renderMarkdownToHtml(finalContent);
+  } catch (error) {
+    ctx.trace("markdown:render:error", {
+      conversationId,
+      branchId,
+      source: "stream-complete",
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+
   if (enableWebSearchTool && finalResponse && Array.isArray(finalResponse.output)) {
     for (const item of finalResponse.output) {
       if (item.type === "web_search_call") {
@@ -1929,6 +1958,7 @@ export async function sendMessage(
     const { sendSSE, closeSSE } = await import("@/app/shared/streaming.server");
     sendSSE(input.streamId, "complete", {
       content: finalContent,
+      renderedHtml: finalRenderedHtml,
       promptTokens,
       completionTokens,
       reasoningSummary: latestReasoningSummary || null,
@@ -2010,6 +2040,7 @@ export async function sendMessage(
     snapshot: latestSnapshot,
     version: latestVersion,
     appendedMessages: [userMessage, finalAssistantMessage],
+    assistantRenderedHtml: finalRenderedHtml,
     quota: {
       lane: quotaLane,
       remainingDemoPasses: quotaSnapshot?.remaining ?? null,

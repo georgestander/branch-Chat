@@ -301,3 +301,8 @@
 - Decisions: added account-level composer preference (`model`, `reasoningEffort`, `preset`, `tools`) in Account DO; save on conversation settings updates and create flow; apply preference fallback in `createConversation` when explicit overrides missing; trace logs for load/apply/save paths.
 - Files: src/lib/durable-objects/Account.ts, src/app/shared/account.server.ts, src/app/pages/conversation/functions.ts, progress.txt.
 - Notes: manual smoke via agent-browser confirmed new chats keep OpenRouter model (`Model OpenRouter Auto`) across conversation switches; validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Stream/persist markdown parity via server-rendered HTML handoff. Ref: Docs/PRD.md Chat engine streaming responses + UX consistency.
+- Task: streamed assistant showed raw markdown then shifted to styled HTML after persistence/refresh.
+- Decisions: keep delta token streaming unchanged; render final assistant markdown server-side once and include `renderedHtml` in SSE `complete`; include same `renderedHtml` in optimistic persisted assistant event so BranchColumn avoids escaped-text fallback.
+- Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/StreamingBubble.tsx, src/app/components/conversation/messageEvents.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; local browser session had demo exhausted so full send smoke could not be executed in that session.

@@ -32,6 +32,7 @@ export interface PersistedBranchMessage {
   branchId: string;
   role: "user" | "assistant";
   content: string;
+  renderedHtml?: string | null;
   createdAt: string;
   tokenUsage?: {
     prompt: number;
