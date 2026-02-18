@@ -2038,9 +2038,7 @@ export function ConversationComposer({
               aria-controls={isModelMenuOpen ? modelMenuId : undefined}
               disabled={conversationSettingsSaving}
             >
-              <span className="text-xs font-semibold text-background">
-                {currentModelLabel}
-              </span>
+              <span className="text-xs font-semibold text-background">Model</span>
               <ChevronDown
                 className={cn(
                   "h-3 w-3 text-background transition-transform",
