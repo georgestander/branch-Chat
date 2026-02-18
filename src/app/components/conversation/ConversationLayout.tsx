@@ -303,7 +303,7 @@ export function ConversationLayout({
   const effectiveActiveMinWidth = getActiveMinWidth(usableWidth);
   const hasMeasuredWidth = usableWidth > 0;
   const toggleButtonClass =
-    "inline-flex h-8 w-8 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm backdrop-blur transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+    "inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-foreground shadow-sm transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
   const effectiveParentMinWidth =
     usableWidth > 0
       ? Math.min(
