@@ -35,7 +35,6 @@ import { supportsReasoningEffortModel } from "@/lib/openai/models";
 
 import { BranchColumn } from "./BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
-import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 import { ParentContextSheet } from "@/app/components/conversation/ParentContextSheet";
 import {
   createConversation,
@@ -769,13 +768,9 @@ export function ConversationLayout({
                   <span className="sr-only">Open parent context panel</span>
                 </button>
               ) : null;
-              const themeToggleControl = (
-                <ThemeToggle compact className="h-9 w-9" />
-              );
 
               return (
                 <>
-                  {themeToggleControl}
                   {parentContextControl}
                   {parentToggleControl}
                 </>

@@ -45,6 +45,7 @@ import {
   useDirectoryUpdate,
   type DirectoryUpdateDetail,
 } from "@/app/components/conversation/directoryEvents";
+import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 
 interface ConversationSidebarProps {
   conversation: Conversation;
@@ -584,6 +585,7 @@ export function ConversationSidebar({
             Branch-Chat
           </h2>
           <div className="flex items-center gap-2">
+            <ThemeToggle compact className="h-9 w-9 rounded-md" />
             <button
               type="button"
               onClick={onToggleSidebar}

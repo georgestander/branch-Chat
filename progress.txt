@@ -201,3 +201,8 @@
 - Decisions: use persisted branch message presence (`role=user`) rather than optimistic state so context remains on send failures and disappears only after real persist.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
+2026-02-18 — Theme toggle relocated to sidebar only. Ref: Docs/PRD.md UX clarity / control discoverability.
+- Task: keep theme button always in conversation sidebar; remove from branch header control row.
+- Decisions: removed `ThemeToggle` from active branch leading actions in layout; inserted compact toggle in sidebar header control group next to sidebar/new-chat actions for consistent placement.
+- Files: src/app/components/conversation/ConversationLayout.tsx, src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
+- Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`.
