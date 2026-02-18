@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { createPortal } from "react-dom";
 
 import type { BranchTreeNode } from "@/app/shared/conversation.server";
 import {
@@ -136,6 +137,7 @@ export function ConversationSidebar({
   const [archivingIds, setArchivingIds] = useState<Set<string>>(new Set());
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [showArchived, setShowArchived] = useState(false);
+  const [isBrowser, setIsBrowser] = useState(false);
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [accountState, setAccountState] =
     useState<ComposerAccountStateResponse | null>(null);
@@ -145,7 +147,6 @@ export function ConversationSidebar({
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
   const [preferredLane, setPreferredLane] = useState<ComposerLane>("demo");
-  const accountPanelRef = useRef<HTMLDivElement | null>(null);
   const accountButtonRef = useRef<HTMLButtonElement | null>(null);
   const accountStateRequestIdRef = useRef(0);
   const directoryUpdateHandler = useCallback(
@@ -210,6 +211,12 @@ export function ConversationSidebar({
   );
 
   useDirectoryUpdate(directoryUpdateHandler);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsBrowser(true);
+    }
+  }, []);
 
   const loadComposerAccountState = useCallback(
     async (options?: { showLoading?: boolean }) => {
@@ -281,27 +288,14 @@ export function ConversationSidebar({
     setAccountError(null);
     void loadComposerAccountState({ showLoading: false });
 
-    const handlePointer = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (
-        accountPanelRef.current?.contains(target) ||
-        accountButtonRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setIsAccountPanelOpen(false);
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsAccountPanelOpen(false);
       }
     };
 
-    window.addEventListener("mousedown", handlePointer);
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("mousedown", handlePointer);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isAccountPanelOpen, loadComposerAccountState]);
@@ -833,146 +827,24 @@ export function ConversationSidebar({
           </h2>
           <div className="flex items-center gap-2">
             <ThemeToggle compact className="h-9 w-9 rounded-md" />
-            <div className="relative">
-              <button
-                ref={accountButtonRef}
-                type="button"
-                onClick={() => {
-                  setIsAccountPanelOpen((previous) => !previous);
-                  const storedLane = readComposerLanePreference({ conversationId });
-                  if (storedLane) {
-                    setPreferredLane(storedLane);
-                  }
-                }}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-haspopup="dialog"
-                aria-expanded={isAccountPanelOpen}
-                title="Account and BYOK settings"
-              >
-                <UserRound className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only">Account and BYOK settings</span>
-              </button>
-              {isAccountPanelOpen ? (
-                <div
-                  ref={accountPanelRef}
-                  className="absolute right-0 top-full z-50 mt-2 w-[340px] rounded-xl border border-border/70 bg-popover p-3 text-foreground shadow-xl"
-                  role="dialog"
-                  aria-label="Account and BYOK settings"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Account
-                    </h3>
-                    <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      {accountPassesLabel}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    {isAccountStateLoading
-                      ? "Loading account status..."
-                      : `Default lane for new chats: ${preferredLane === "byok" ? "BYOK" : "Demo"}.`}
-                  </p>
-
-                  <div
-                    role="group"
-                    aria-label="Default lane for new chats"
-                    className="mt-2 inline-flex items-center rounded-full border border-border/70 bg-background/80 p-0.5"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setPreferredLaneWithPersistence("demo")}
-                      className={cn(
-                        "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition",
-                        preferredLane === "demo"
-                          ? "bg-foreground text-background"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      Demo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreferredLaneWithPersistence("byok")}
-                      disabled={!byokEnabled || !byokConnected}
-                      className={cn(
-                        "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-50",
-                        preferredLane === "byok"
-                          ? "bg-foreground text-background"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      BYOK
-                    </button>
-                  </div>
-
-                  <div className="mt-3 rounded-lg border border-border/70 bg-background/70 p-2">
-                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-                      BYOK Key
-                    </div>
-                    <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                      <select
-                        value={byokProvider}
-                        onChange={(event) =>
-                          setByokProvider(event.target.value as ComposerByokProvider)
-                        }
-                        disabled={isByokSaving || !byokEnabled}
-                        className="h-8 rounded-md border border-border/70 bg-background px-2 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="BYOK provider"
-                      >
-                        <option value="openai">OpenAI</option>
-                        <option value="openrouter">OpenRouter</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveByokKey()}
-                        disabled={isByokSaving || !byokEnabled}
-                        className="inline-flex h-8 items-center justify-center rounded-md border border-border/70 bg-background px-2 text-[10px] font-semibold uppercase tracking-[0.16em] hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isByokSaving
-                          ? "Saving..."
-                          : byokConnected
-                            ? "Update"
-                            : "Connect"}
-                      </button>
-                    </div>
-                    <input
-                      type="password"
-                      value={byokApiKey}
-                      onChange={(event) => setByokApiKey(event.target.value)}
-                      placeholder="Paste API key"
-                      disabled={isByokSaving || !byokEnabled}
-                      autoComplete="off"
-                      className="mt-2 h-8 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                      <span>
-                        {!byokEnabled
-                          ? byokUnavailableReason || "BYOK unavailable."
-                          : byokConnected
-                            ? `Connected to ${byokProviderLabel}.`
-                            : "No BYOK key connected."}
-                      </span>
-                      {byokConnected ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteByokKey()}
-                          disabled={isByokSaving}
-                          className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Disconnect
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                  {accountError ? (
-                    <p className="mt-2 text-xs text-destructive" role="status">
-                      {accountError}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            <button
+              ref={accountButtonRef}
+              type="button"
+              onClick={() => {
+                setIsAccountPanelOpen((previous) => !previous);
+                const storedLane = readComposerLanePreference({ conversationId });
+                if (storedLane) {
+                  setPreferredLane(storedLane);
+                }
+              }}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-foreground/20 bg-background/70 text-foreground shadow-sm transition hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-haspopup="dialog"
+              aria-expanded={isAccountPanelOpen}
+              title="Account and BYOK settings"
+            >
+              <UserRound className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">Account and BYOK settings</span>
+            </button>
             <button
               type="button"
               onClick={onToggleSidebar}
@@ -1009,6 +881,140 @@ export function ConversationSidebar({
           </p>
         ) : null}
       </div>
+      {isBrowser && isAccountPanelOpen
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Account and BYOK settings"
+            >
+              <div className="w-full max-w-md rounded-xl border border-border/70 bg-popover p-4 text-foreground shadow-2xl">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Account
+                  </h3>
+                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {accountPassesLabel}
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {isAccountStateLoading
+                    ? "Loading account status..."
+                    : `Default lane for new chats: ${preferredLane === "byok" ? "BYOK" : "Demo"}.`}
+                </p>
+
+                <div
+                  role="group"
+                  aria-label="Default lane for new chats"
+                  className="mt-2 inline-flex items-center rounded-full border border-border/70 bg-background/80 p-0.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPreferredLaneWithPersistence("demo")}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition",
+                      preferredLane === "demo"
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Demo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreferredLaneWithPersistence("byok")}
+                    disabled={!byokEnabled || !byokConnected}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-50",
+                      preferredLane === "byok"
+                        ? "bg-foreground text-background"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    BYOK
+                  </button>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-border/70 bg-background/70 p-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                    BYOK Key
+                  </div>
+                  <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                    <select
+                      value={byokProvider}
+                      onChange={(event) =>
+                        setByokProvider(event.target.value as ComposerByokProvider)
+                      }
+                      disabled={isByokSaving || !byokEnabled}
+                      className="h-8 rounded-md border border-border/70 bg-background px-2 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="BYOK provider"
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveByokKey()}
+                      disabled={isByokSaving || !byokEnabled}
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-border/70 bg-background px-2 text-[10px] font-semibold uppercase tracking-[0.16em] hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isByokSaving
+                        ? "Saving..."
+                        : byokConnected
+                          ? "Update"
+                          : "Connect"}
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    value={byokApiKey}
+                    onChange={(event) => setByokApiKey(event.target.value)}
+                    placeholder="Paste API key"
+                    disabled={isByokSaving || !byokEnabled}
+                    autoComplete="off"
+                    className="mt-2 h-8 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <span>
+                      {!byokEnabled
+                        ? byokUnavailableReason || "BYOK unavailable."
+                        : byokConnected
+                          ? `Connected to ${byokProviderLabel}.`
+                          : "No BYOK key connected."}
+                    </span>
+                    {byokConnected ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteByokKey()}
+                        disabled={isByokSaving}
+                        className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Disconnect
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {accountError ? (
+                  <p className="mt-2 text-xs text-destructive" role="status">
+                    {accountError}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsAccountPanelOpen(false)}
+                    className="inline-flex h-8 items-center rounded-md border border-border/70 bg-background px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <nav className="flex-1 overflow-y-auto px-2 py-3">
         <div className="flex flex-col gap-3">
