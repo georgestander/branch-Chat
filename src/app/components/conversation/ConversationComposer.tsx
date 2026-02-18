@@ -65,6 +65,12 @@ import {
   stripOpenRouterPrefix,
   type OpenRouterModelOption,
 } from "@/lib/openrouter/models";
+import {
+  readComposerLanePreference,
+  subscribeComposerLanePreference,
+  writeComposerLanePreference,
+  type ComposerLane,
+} from "@/app/components/conversation/lanePreference";
 
 type ToolOption = {
   id: ConversationComposerTool;
@@ -107,7 +113,6 @@ const TOOL_OPTIONS: ToolOption[] = [
   },
 ];
 
-const COMPOSER_LANE_STORAGE_PREFIX = "connexus:composer:lane:";
 const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "study-and-learn",
   "web-search",
@@ -140,7 +145,6 @@ const START_MODE_DEFAULTS: Record<
 const DEMO_PASS_WARNING_THRESHOLD = 3;
 const DEMO_PASS_CRITICAL_THRESHOLD = 1;
 
-type ComposerLane = "demo" | "byok";
 type ComposerAccountStateResponse = Awaited<
   ReturnType<typeof getComposerAccountState>
 >;
@@ -297,7 +301,6 @@ export function ConversationComposer({
   );
   const [byokApiKey, setByokApiKey] = useState("");
   const [isByokSaving, setIsByokSaving] = useState(false);
-  const laneStorageKey = `${COMPOSER_LANE_STORAGE_PREFIX}${conversationId}`;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
   const previousDemoRemainingRef = useRef<number | null>(null);
@@ -414,38 +417,19 @@ export function ConversationComposer({
   }, [composerTools, webSearchSupported]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      const stored = window.sessionStorage.getItem(laneStorageKey);
-      if (stored === "demo" || stored === "byok") {
-        setSelectedLane(stored);
-      } else {
-        setSelectedLane("demo");
-      }
-    } catch (storageError) {
-      console.warn(
-        "[Composer] unable to hydrate persisted lane selection",
-        storageError,
-      );
-      setSelectedLane("demo");
-    }
-  }, [laneStorageKey]);
+    const storedLane = readComposerLanePreference({ conversationId });
+    setSelectedLane(storedLane ?? "demo");
+  }, [conversationId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    try {
-      window.sessionStorage.setItem(laneStorageKey, selectedLane);
-    } catch (storageError) {
-      console.warn(
-        "[Composer] unable to persist lane selection",
-        storageError,
-      );
-    }
-  }, [laneStorageKey, selectedLane]);
+    writeComposerLanePreference(selectedLane, { conversationId });
+  }, [conversationId, selectedLane]);
+
+  useEffect(() => {
+    return subscribeComposerLanePreference((nextLane) => {
+      setSelectedLane((previous) => (previous === nextLane ? previous : nextLane));
+    });
+  }, []);
 
   useEffect(() => {
     if (!bootstrapMessage) {
@@ -1166,6 +1150,35 @@ export function ConversationComposer({
           ? "No demo passes left"
           : null;
   const isSendDisabled = sendDisabledReason !== null;
+
+  useEffect(() => {
+    if (!byokConnected) {
+      return;
+    }
+    if (selectedLane !== "demo") {
+      return;
+    }
+    if (isAccountStateLoading || demoRemainingPasses === null || demoRemainingPasses > 0) {
+      return;
+    }
+
+    setSelectedLane("byok");
+    notify({
+      title: "Switched to BYOK lane",
+      description: "Demo passes are exhausted, so new sends will use your connected key.",
+    });
+    console.info("[TRACE] quota:ui:auto-switch-byok", {
+      conversationId,
+      remaining: demoRemainingPasses,
+    });
+  }, [
+    byokConnected,
+    conversationId,
+    demoRemainingPasses,
+    isAccountStateLoading,
+    notify,
+    selectedLane,
+  ]);
 
   useEffect(() => {
     if (isAccountStateLoading || demoRemainingPasses === null) {
