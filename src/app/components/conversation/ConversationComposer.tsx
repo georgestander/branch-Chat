@@ -260,6 +260,7 @@ interface ConversationComposerProps {
   branchContextExcerpt?: string | null;
   bootstrapMessage?: string | null;
   onBootstrapConsumed?: () => void;
+  onStreamStart?: (streamId: string) => void;
 }
 
 export function ConversationComposer({
@@ -279,6 +280,7 @@ export function ConversationComposer({
   branchContextExcerpt,
   bootstrapMessage,
   onBootstrapConsumed,
+  onStreamStart,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1332,6 +1334,7 @@ export function ConversationComposer({
           typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
             : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        onStreamStart?.(streamId);
         emitStartStreaming({ conversationId, branchId, streamId });
         const result = await sendMessage({
           conversationId,

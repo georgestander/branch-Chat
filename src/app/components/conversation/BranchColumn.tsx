@@ -43,7 +43,11 @@ import {
 } from "@/app/components/conversation/messageEvents";
 import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import {
+  COMPLETE_STREAMING_EVENT,
   START_STREAMING_EVENT,
+  clearActiveStreamId,
+  readActiveStreamId,
+  type CompleteStreamingDetail,
   type StartStreamingDetail,
 } from "@/app/components/conversation/streamingEvents";
 import { navigate } from "rwsdk/client";
@@ -238,6 +242,14 @@ export function BranchColumn({
   );
 
   const handleOptimisticClear = useCallback((detail: ClearOptimisticMessageDetail) => {
+    if (detail.reason === "failed") {
+      clearActiveStreamId({
+        conversationId,
+        branchId: branch.id,
+      });
+      setActiveStreamId(null);
+    }
+
     setOptimisticMessages((current) => {
       if (detail.reason === "failed") {
         const next = current.filter(
@@ -269,7 +281,7 @@ export function BranchColumn({
 
       return didUpdate ? next : current;
     });
-  }, []);
+  }, [branch.id, conversationId]);
 
   useOptimisticMessageEvents({
     conversationId,
@@ -277,6 +289,14 @@ export function BranchColumn({
     onAppend: handleOptimisticAppend,
     onClear: handleOptimisticClear,
   });
+
+  useEffect(() => {
+    const activeStream = readActiveStreamId(conversationId, branch.id);
+    if (!activeStream) {
+      return;
+    }
+    setActiveStreamId(activeStream);
+  }, [branch.id, conversationId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -290,6 +310,29 @@ export function BranchColumn({
     window.addEventListener(START_STREAMING_EVENT, handler as EventListener);
     return () => {
       window.removeEventListener(START_STREAMING_EVENT, handler as EventListener);
+    };
+  }, [branch.id, conversationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<CompleteStreamingDetail>;
+      const detail = custom.detail;
+      if (!detail) return;
+      if (detail.conversationId !== conversationId || detail.branchId !== branch.id) {
+        return;
+      }
+      clearActiveStreamId({
+        conversationId,
+        branchId: branch.id,
+      });
+      setActiveStreamId((current) =>
+        current === detail.streamId ? null : current,
+      );
+    };
+    window.addEventListener(COMPLETE_STREAMING_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(COMPLETE_STREAMING_EVENT, handler as EventListener);
     };
   }, [branch.id, conversationId]);
 
@@ -313,6 +356,10 @@ export function BranchColumn({
         return [...merged.values()].sort(compareRenderedMessages);
       });
       if (detail.messages.some((message) => message.role === "assistant")) {
+        clearActiveStreamId({
+          conversationId,
+          branchId: branch.id,
+        });
         setActiveStreamId(null);
       }
     };
@@ -434,6 +481,8 @@ export function BranchColumn({
     visibleMessages.length > 0
       ? visibleMessages[visibleMessages.length - 1]
       : undefined;
+  const persistedActiveStreamId = readActiveStreamId(conversationId, branch.id);
+  const effectiveActiveStreamId = activeStreamId ?? persistedActiveStreamId;
   const isStreamingAssistant =
     isActive &&
     !!lastMessage &&
@@ -443,7 +492,7 @@ export function BranchColumn({
     (entry) => entry.status === "pending",
   );
   const awaitingAssistant =
-    isActive && (Boolean(activeStreamId) || hasPendingOptimisticSend);
+    isActive && (Boolean(effectiveActiveStreamId) || hasPendingOptimisticSend);
 
   const scrollSignature = useMemo(() => {
     if (!lastMessage) {
@@ -656,8 +705,8 @@ export function BranchColumn({
           ))}
           {awaitingAssistant ? (
             <li className="flex w-full justify-start">
-              {activeStreamId ? (
-                <StreamingBubble streamId={activeStreamId} conversationId={conversationId} branchId={branch.id} />
+              {effectiveActiveStreamId ? (
+                <StreamingBubble streamId={effectiveActiveStreamId} conversationId={conversationId} branchId={branch.id} />
               ) : (
                 <AssistantPendingBubble />
               )}
@@ -688,6 +737,7 @@ export function BranchColumn({
                 branchContextExcerpt={hasPersistedUserMessage ? null : referenceText}
                 bootstrapMessage={composerBootstrapMessage}
                 onBootstrapConsumed={onComposerBootstrapConsumed}
+                onStreamStart={(streamId) => setActiveStreamId(streamId)}
               />
             </div>
           </div>
