@@ -66,6 +66,7 @@ const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "web-search",
   "file-upload",
 ]);
+const CONVERSATION_TOOL_PREFERENCE_STORAGE_PREFIX = "connexus:composer:tools:";
 
 type ConversationReasoningEffort = "low" | "medium" | "high" | null;
 
@@ -109,6 +110,51 @@ function sanitizeComposerTools(value: unknown): ConversationComposerTool[] {
     }
   }
   return tools;
+}
+
+function getConversationToolPreferenceStorageKey(conversationId: string): string {
+  return `${CONVERSATION_TOOL_PREFERENCE_STORAGE_PREFIX}${conversationId}`;
+}
+
+function readConversationToolPreference(
+  conversationId: string,
+): ConversationComposerTool[] | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const key = getConversationToolPreferenceStorageKey(conversationId);
+    const stored = window.sessionStorage.getItem(key);
+    if (stored === null) {
+      return null;
+    }
+    return sanitizeComposerTools(JSON.parse(stored));
+  } catch (storageError) {
+    console.warn(
+      "[ConversationLayout] unable to read composer tool preference",
+      storageError,
+    );
+    return null;
+  }
+}
+
+function writeConversationToolPreference(
+  conversationId: string,
+  tools: ConversationComposerTool[],
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const key = getConversationToolPreferenceStorageKey(conversationId);
+    const normalizedTools = sanitizeComposerTools(tools);
+    window.sessionStorage.setItem(key, JSON.stringify(normalizedTools));
+  } catch (storageError) {
+    console.warn(
+      "[ConversationLayout] unable to persist composer tool preference",
+      storageError,
+    );
+  }
 }
 
 function isSameToolSelection(
@@ -327,9 +373,11 @@ export function ConversationLayout({
     const nextEffort = supportsReasoningEffortModel(nextModel)
       ? ((conversation.settings as any).reasoningEffort ?? "low")
       : null;
-    const nextTools = sanitizeComposerTools(
+    const serverTools = sanitizeComposerTools(
       conversation.settings.composerDefaults?.tools ?? [],
     );
+    const cachedTools = readConversationToolPreference(conversationId);
+    const nextTools = cachedTools ?? serverTools;
     const nextPreset = resolvePresetFromConversation({
       model: nextModel,
       reasoningEffort: nextEffort,
@@ -340,6 +388,7 @@ export function ConversationLayout({
     setSettingsEffort(nextEffort);
     setSettingsPreset(nextPreset);
     setSettingsTools(nextTools);
+    writeConversationToolPreference(conversationId, nextTools);
   }, [conversation.settings, conversationId]);
 
   const handleConversationSettingsChange = useCallback(
@@ -371,6 +420,7 @@ export function ConversationLayout({
       setSettingsEffort(normalizedEffort);
       setSettingsPreset(normalizedPreset);
       setSettingsTools(normalizedTools);
+      writeConversationToolPreference(conversationId, normalizedTools);
       try {
         await updateConversationSettings({
           conversationId,
@@ -390,6 +440,7 @@ export function ConversationLayout({
         setSettingsEffort(previousEffort);
         setSettingsPreset(previousPreset);
         setSettingsTools(previousTools);
+        writeConversationToolPreference(conversationId, previousTools);
         return false;
       } finally {
         setIsSavingSettings(false);

@@ -336,3 +336,8 @@
 - Decisions: reduced header control footprint (`h-8/w-8`, tighter gaps), reduced brand size to `text-sm`, enforced `whitespace-nowrap` on brand label.
 - Files: src/app/pages/conversation/ConversationSidebar.tsx, progress.txt.
 - Notes: validation passed `pnpm types`, `npm run test`, `npm run lint`; no blockers.
+2026-02-18 — Conversation-scoped composer tool cache to stop branch-switch preference resets. Ref: Docs/PRD.md Chat engine model/settings overrides + branch navigation continuity.
+- Task: web-search/tool toggles could revert during branch switches when server settings writes were delayed.
+- Decisions: added per-conversation `sessionStorage` cache for composer tools in `ConversationLayout`; hydrate from cache on conversation load, write on local settings change, and restore previous selection on save rollback.
+- Files: src/app/components/conversation/ConversationLayout.tsx, progress.txt.
+- Notes: pending validation before commit.
