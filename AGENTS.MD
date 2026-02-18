@@ -58,6 +58,8 @@ After completing each task, append to progress.txt:
 Keep entries concise. Sacrifice grammar for the sake of concision. This file helps future iterations skip exploration.
 Keep changes small and focused:
 - One logical change per commit
+- Always commit immediately after each completed logical change once feedback loops pass
+- Stage only files changed for that logical change; ignore untouched or unrelated worktree changes
 - If a task feels too large, break it into subtasks
 - Prefer multiple small commits over one large commit
 - Run feedback loops after each change, not at the end
