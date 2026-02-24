@@ -132,6 +132,27 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestI
   });
 
   if (!auth) {
+    if (
+      request.method.toUpperCase() === "GET" &&
+      (requestPath === "/app" || requestPath.startsWith("/app/"))
+    ) {
+      const redirectTarget = new URL("/sign-in", requestUrl);
+      redirectTarget.searchParams.set(
+        "redirectTo",
+        `${requestUrl.pathname}${requestUrl.search}`,
+      );
+      console.log(
+        "[TRACE] auth.required.redirect_signin",
+        JSON.stringify({
+          requestId,
+          path: requestPath,
+          method: request.method,
+          redirectTo: redirectTarget.pathname + redirectTarget.search,
+        }),
+      );
+      return Response.redirect(redirectTarget.toString(), 303);
+    }
+
     console.log(
       "[TRACE] auth.required.denied",
       JSON.stringify({
