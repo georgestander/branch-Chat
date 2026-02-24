@@ -501,3 +501,10 @@
 - Decisions: listed required checks by exact name to match branch protection; documented preflight lockfile/merge-marker guard; reminded contributors to wait for green checks before merge.
 - Files: CONTRIBUTING.md, progress.txt.
 - Notes: docs-only change; run standard feedback loops before commit.
+[2026-02-24] SFE-01 auth redirect hardening (PRD: auth/session gate)
+- Task: enforce anonymous redirect at app root path under auth-required mode.
+- Decision: redirect unauthenticated GET /app(/...) to /sign-in with redirectTo preserved; keep non-page unauthorized responses as 401.
+- Why: scenario requires auth-route redirect before protected app payload render.
+- Files: src/worker.tsx
+- Validation: runtime probe (before: /app 401 Unauthorized; after: /app 303 -> /sign-in?redirectTo=%2Fapp), pnpm types, npm run test, npm run lint all pass.
+- Notes: .dev.vars added locally for deterministic auth-required probe (AUTH_REQUIRED=1, AUTH_COOKIE_SECRET, AUTH_ALLOW_SELF_ASSERTED_SIGN_IN=1).
