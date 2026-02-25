@@ -19,11 +19,11 @@ export function getWebSearchToolTypeForModel(
     return null;
   }
 
-  if (normalized.startsWith("gpt-5-chat")) {
+  if (normalized.startsWith("gpt-5.2-2025-12-11")) {
     return "web_search";
   }
 
-  if (normalized.startsWith("gpt-5-mini")) {
+  if (normalized.startsWith("gpt-5.2-2025-12-11")) {
     return "web_search";
   }
 
@@ -68,5 +68,5 @@ export function supportsReasoningEffortModel(
     return false;
   }
 
-  return modelId === "gpt-5" || modelId.startsWith("gpt-5-");
+  return modelId === "gpt-5.2-2025-12-11" || modelId.startsWith("ggpt-5.2");
 }
