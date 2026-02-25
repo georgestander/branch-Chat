@@ -63,6 +63,8 @@ import {
 import { useToast } from "@/app/components/ui/Toast";
 import {
   OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES,
+  OPENROUTER_DEFAULT_REASONING_MODEL_CANDIDATES,
+  OPENROUTER_WEB_SEARCH_SUFFIX,
   isOpenRouterModel,
   stripOpenRouterPrefix,
   type OpenRouterModelOption,
@@ -209,16 +211,64 @@ function isSameToolSelection(
   return true;
 }
 
+function normalizeOpenRouterRawModelId(rawModelId: string): string {
+  const normalized = rawModelId.trim().toLowerCase();
+  if (normalized.endsWith(OPENROUTER_WEB_SEARCH_SUFFIX)) {
+    return normalized.slice(0, -OPENROUTER_WEB_SEARCH_SUFFIX.length);
+  }
+  return normalized;
+}
+
+function isReasoningCapableOpenRouterRawModel(rawModelId: string): boolean {
+  const normalizedRaw = normalizeOpenRouterRawModelId(rawModelId);
+  const modelId = normalizedRaw.includes("/")
+    ? (normalizedRaw.split("/").at(-1) ?? normalizedRaw)
+    : normalizedRaw;
+
+  if (modelId.includes("chat")) {
+    return false;
+  }
+
+  return modelId === "gpt-5" || modelId.startsWith("gpt-5-");
+}
+
 function resolveOpenRouterPresetModelId(
   models: OpenRouterModelOption[],
   fallbackModel: string,
+  preset: "fast" | "reasoning",
 ): string | null {
-  for (const rawId of OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES) {
-    const match = models.find((model) => model.rawId === rawId);
+  const modelsByRawId = new Map(
+    models.map((model) => [model.rawId.trim().toLowerCase(), model] as const),
+  );
+  const candidates =
+    preset === "reasoning"
+      ? OPENROUTER_DEFAULT_REASONING_MODEL_CANDIDATES
+      : OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES;
+
+  if (preset === "reasoning" && isOpenRouterModel(fallbackModel)) {
+    const fallbackRaw = stripOpenRouterPrefix(fallbackModel);
+    if (isReasoningCapableOpenRouterRawModel(fallbackRaw)) {
+      return fallbackModel;
+    }
+  }
+
+  for (const rawId of candidates) {
+    const match = modelsByRawId.get(rawId);
     if (match) {
       return match.id;
     }
   }
+
+  if (preset === "reasoning") {
+    const reasoningMatch = models.find((model) =>
+      isReasoningCapableOpenRouterRawModel(model.rawId),
+    );
+    if (reasoningMatch) {
+      return reasoningMatch.id;
+    }
+    return null;
+  }
+
   if (isOpenRouterModel(fallbackModel)) {
     return fallbackModel;
   }
@@ -1064,27 +1114,7 @@ export function ConversationComposer({
 
       if (!isSameToolSelection(nextTools, selectedTools)) {
         setSelectedTools(nextTools);
-        const selectingWebSearch =
-          tool === "web-search" && !selectedTools.includes("web-search");
-        if (selectingWebSearch && openRouterSelected) {
-          const preferredOpenRouterModel = resolveOpenRouterPresetModelId(
-            openRouterModels,
-            conversationModel,
-          );
-          if (
-            preferredOpenRouterModel &&
-            preferredOpenRouterModel !== conversationModel
-          ) {
-            persistComposerDefaults(nextTools, {
-              model: preferredOpenRouterModel,
-              reasoningEffort: null,
-            });
-          } else {
-            persistComposerDefaults(nextTools);
-          }
-        } else {
-          persistComposerDefaults(nextTools);
-        }
+        persistComposerDefaults(nextTools);
       }
 
       if (tool === "file-upload") {
@@ -1094,10 +1124,7 @@ export function ConversationComposer({
       setIsToolMenuOpen(false);
     },
     [
-      conversationModel,
       openFilePicker,
-      openRouterModels,
-      openRouterSelected,
       persistComposerDefaults,
       selectedTools,
       webSearchSelectable,
@@ -1220,27 +1247,45 @@ export function ConversationComposer({
       : byokEnabled
         ? "Connect your BYOK API key before sending."
         : "Server-side BYOK persistence is disabled. Add a session API key (clears on reload).";
-  const openRouterPresetModelId = useMemo(
-    () => resolveOpenRouterPresetModelId(openRouterModels, conversationModel),
+  const openRouterFastPresetModelId = useMemo(
+    () => resolveOpenRouterPresetModelId(openRouterModels, conversationModel, "fast"),
+    [conversationModel, openRouterModels],
+  );
+  const openRouterReasoningPresetModelId = useMemo(
+    () =>
+      resolveOpenRouterPresetModelId(
+        openRouterModels,
+        conversationModel,
+        "reasoning",
+      ),
     [conversationModel, openRouterModels],
   );
   const shouldRoutePresetsToOpenRouter =
-    (byokConnected && connectedByokProvider === "openrouter") ||
-    openRouterSelected;
+    byokConnected && connectedByokProvider === "openrouter";
   const applyPresetModelSelection = useCallback(
     (
       preset: "fast" | "reasoning",
       effort: "low" | "medium" | "high" | null,
     ) => {
       if (shouldRoutePresetsToOpenRouter) {
+        const openRouterPresetModelId =
+          preset === "fast"
+            ? openRouterFastPresetModelId
+            : openRouterReasoningPresetModelId;
         if (!openRouterPresetModelId) {
           setError(
-            "OpenRouter models are still loading. Please try again in a moment.",
+            preset === "reasoning"
+              ? "No OpenRouter reasoning-capable model is available yet. Choose Fast or pick a specific OpenRouter model."
+              : "OpenRouter models are still loading. Please try again in a moment.",
           );
           return;
         }
         const presetLabel: ComposerPreset = preset === "fast" ? "fast" : "reasoning";
-        void handleModelSelection(openRouterPresetModelId, null, presetLabel);
+        void handleModelSelection(
+          openRouterPresetModelId,
+          preset === "fast" ? null : effort,
+          presetLabel,
+        );
         return;
       }
       const baseModel = START_MODE_DEFAULTS[preset].model;
@@ -1248,7 +1293,8 @@ export function ConversationComposer({
     },
     [
       handleModelSelection,
-      openRouterPresetModelId,
+      openRouterFastPresetModelId,
+      openRouterReasoningPresetModelId,
       shouldRoutePresetsToOpenRouter,
     ],
   );

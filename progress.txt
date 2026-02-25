@@ -501,3 +501,8 @@
 - Decisions: listed required checks by exact name to match branch protection; documented preflight lockfile/merge-marker guard; reminded contributors to wait for green checks before merge.
 - Files: CONTRIBUTING.md, progress.txt.
 - Notes: docs-only change; run standard feedback loops before commit.
+2026-02-25 — Fixed OpenRouter/OpenAI composer model+reasoning/tool persistence across branch switches. Ref: docs/public-beta-launch-plan.md P3-T4 + core branch UX persistence targets.
+- Task: stop child-branch resets of model/reasoning/tool selections; make reasoning mode selection visible + preserved when BYOK provider is OpenRouter; unblock switching back to OpenAI presets after key change.
+- Decisions: treat OpenRouter `gpt-5*` non-chat ids as reasoning-capable; add OpenRouter reasoning preset candidate list + resolver; route presets by active BYOK provider (not current model) so OpenAI keys can exit OpenRouter; remove implicit OpenRouter model rewrites during web-search sends so tool usage does not overwrite chosen model/reasoning defaults; normalize model IDs for temperature/verbosity checks with provider-prefixed IDs.
+- Files: src/lib/openai/models.ts, src/lib/openrouter/models.ts, src/app/components/conversation/ConversationComposer.tsx, src/app/pages/conversation/functions.ts, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`); verify manually with OpenRouter BYOK + OpenAI BYOK key swap flows.

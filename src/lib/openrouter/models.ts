@@ -7,6 +7,12 @@ export const OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES = [
   "openai/gpt-4o-mini",
   "openrouter/auto",
 ] as const;
+export const OPENROUTER_DEFAULT_REASONING_MODEL_CANDIDATES = [
+  "openai/gpt-5-mini",
+  "openai/gpt-5",
+  "openai/o4-mini",
+  "openrouter/auto",
+] as const;
 
 export interface OpenRouterModelOption {
   id: string;

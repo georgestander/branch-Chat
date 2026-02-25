@@ -77,10 +77,9 @@ import { createOpenAIClient } from "@/lib/openai/client";
 import type { AppRequestInfo } from "@/worker";
 import {
   isOpenRouterModel,
+  OPENROUTER_WEB_SEARCH_SUFFIX,
   resolveOpenRouterWebSearchModel,
-  resolvePreferredOpenRouterChatModel,
   stripOpenRouterPrefix,
-  withOpenRouterPrefix,
 } from "@/lib/openrouter/models";
 
 const TEMPERATURE_UNSUPPORTED_MODELS = new Set<string>(["gpt-5-nano", "gpt-5-mini"]);
@@ -95,6 +94,20 @@ const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "web-search",
   "file-upload",
 ]);
+
+function normalizeModelIdForCapabilityChecks(model: string): string {
+  let normalized = model.trim().toLowerCase();
+  if (isOpenRouterModel(normalized)) {
+    normalized = stripOpenRouterPrefix(normalized);
+  }
+  if (normalized.endsWith(OPENROUTER_WEB_SEARCH_SUFFIX)) {
+    normalized = normalized.slice(0, -OPENROUTER_WEB_SEARCH_SUFFIX.length);
+  }
+  if (normalized.includes("/")) {
+    normalized = normalized.split("/").at(-1) ?? normalized;
+  }
+  return normalized;
+}
 
 function buildResponseOptions(settings: {
   model: string;
@@ -114,8 +127,9 @@ function buildResponseOptions(settings: {
   } = {
     model: settings.model,
   };
+  const normalizedModelId = normalizeModelIdForCapabilityChecks(settings.model);
 
-  if (!TEMPERATURE_UNSUPPORTED_MODELS.has(settings.model)) {
+  if (!TEMPERATURE_UNSUPPORTED_MODELS.has(normalizedModelId)) {
     request.temperature = settings.temperature;
   }
 
@@ -124,9 +138,12 @@ function buildResponseOptions(settings: {
   }
 
   // gpt-5-chat currently rejects `low` verbosity and only accepts `medium`.
-  if (settings.model.startsWith("gpt-5-chat")) {
+  if (normalizedModelId.startsWith("gpt-5-chat")) {
     request.text = { verbosity: "medium" };
-  } else if (settings.model.startsWith("gpt-5-")) {
+  } else if (
+    normalizedModelId.startsWith("gpt-5-") ||
+    normalizedModelId === "gpt-5"
+  ) {
     request.text = { verbosity: "low" };
   }
 
@@ -1012,25 +1029,8 @@ export async function sendMessage(
   });
 
   try {
-    let modelOverride: string | undefined;
-    if (usingOpenRouter && selectedToolSet.has("web-search")) {
-      const preferredOpenRouterModel = withOpenRouterPrefix(
-        resolvePreferredOpenRouterChatModel(settings.model),
-      );
-      if (preferredOpenRouterModel !== settings.model) {
-        modelOverride = preferredOpenRouterModel;
-        ctx.trace("openrouter:web-search:model-default", {
-          conversationId,
-          branchId,
-          previousModel: settings.model,
-          nextModel: preferredOpenRouterModel,
-        });
-      }
-    }
-
     const settingsWithToolSync = buildNextConversationSettings({
       settings,
-      ...(modelOverride ? { model: modelOverride } : {}),
       tools: selectedTools,
     });
     if (JSON.stringify(settingsWithToolSync) !== JSON.stringify(settings)) {

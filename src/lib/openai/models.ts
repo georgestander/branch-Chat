@@ -1,4 +1,8 @@
-import { isOpenRouterModel } from "@/lib/openrouter/models";
+import {
+  isOpenRouterModel,
+  OPENROUTER_WEB_SEARCH_SUFFIX,
+  stripOpenRouterPrefix,
+} from "@/lib/openrouter/models";
 
 export type WebSearchToolType = "web_search" | "web_search_preview";
 
@@ -47,10 +51,22 @@ export function supportsReasoningEffortModel(
     return false;
   }
 
-  if (isOpenRouterModel(model)) {
+  let normalized = model.trim().toLowerCase();
+  if (isOpenRouterModel(normalized)) {
+    normalized = stripOpenRouterPrefix(normalized);
+  }
+
+  if (normalized.endsWith(OPENROUTER_WEB_SEARCH_SUFFIX)) {
+    normalized = normalized.slice(0, -OPENROUTER_WEB_SEARCH_SUFFIX.length);
+  }
+
+  const modelId = normalized.includes("/")
+    ? (normalized.split("/").at(-1) ?? normalized)
+    : normalized;
+
+  if (modelId.includes("chat")) {
     return false;
   }
 
-  const normalized = model.toLowerCase();
-  return normalized.startsWith("gpt-5-") && !normalized.includes("chat");
+  return modelId === "gpt-5" || modelId.startsWith("gpt-5-");
 }
