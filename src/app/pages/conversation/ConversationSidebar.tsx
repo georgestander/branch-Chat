@@ -52,6 +52,11 @@ import {
   useDirectoryUpdate,
   type DirectoryUpdateDetail,
 } from "@/app/components/conversation/directoryEvents";
+import {
+  BYOK_STATUS_CHANGED_EVENT,
+  emitByokStatusChanged,
+  type ByokStatusChangedDetail,
+} from "@/app/components/conversation/byokEvents";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 
 interface ConversationSidebarProps {
@@ -247,6 +252,29 @@ export function ConversationSidebar({
 
   useEffect(() => {
     void loadComposerAccountState({ showLoading: true });
+  }, [loadComposerAccountState]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleByokStatusChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<ByokStatusChangedDetail>;
+      if (customEvent.detail?.source === "sidebar") {
+        return;
+      }
+      void loadComposerAccountState({ showLoading: false });
+    };
+    window.addEventListener(
+      BYOK_STATUS_CHANGED_EVENT,
+      handleByokStatusChanged as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        BYOK_STATUS_CHANGED_EVENT,
+        handleByokStatusChanged as EventListener,
+      );
+    };
   }, [loadComposerAccountState]);
 
   useEffect(() => {
@@ -711,6 +739,12 @@ export function ConversationSidebar({
           : previous,
       );
       setByokApiKey("");
+      emitByokStatusChanged({
+        source: "sidebar",
+        provider: status.provider,
+        connected: status.connected,
+        updatedAt: status.updatedAt,
+      });
       await loadComposerAccountState({ showLoading: false });
     } catch (cause) {
       setAccountError(
@@ -751,6 +785,12 @@ export function ConversationSidebar({
           : previous,
       );
       setByokApiKey("");
+      emitByokStatusChanged({
+        source: "sidebar",
+        provider: null,
+        connected: false,
+        updatedAt: null,
+      });
       await loadComposerAccountState({ showLoading: false });
     } catch (cause) {
       setAccountError(

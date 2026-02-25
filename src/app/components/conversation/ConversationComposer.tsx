@@ -54,6 +54,11 @@ import {
   emitPersistedMessages,
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
+import {
+  BYOK_STATUS_CHANGED_EVENT,
+  emitByokStatusChanged,
+  type ByokStatusChangedDetail,
+} from "@/app/components/conversation/byokEvents";
 import type { ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import {
@@ -393,6 +398,7 @@ export function ConversationComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingRefreshTimers = useRef<number[]>([]);
   const accountStateRequestIdRef = useRef(0);
+  const lastConnectedByokProviderRef = useRef<ComposerByokProvider | null>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuId = useId();
   const modelMenuId = useId();
@@ -441,10 +447,17 @@ export function ConversationComposer({
   );
   const openRouterSelected = isOpenRouterModel(conversationModel);
   const isReasoningModel = supportsReasoningEffortModel(conversationModel);
+  const reasoningLabel = isReasoningModel
+    ? `Reasoning ${effortLabels[currentReasoningEffort]}`
+    : null;
   const currentModelLabel = selectedOpenRouterModel
-    ? selectedOpenRouterModel.name
+    ? reasoningLabel
+      ? `${selectedOpenRouterModel.name} · ${reasoningLabel}`
+      : selectedOpenRouterModel.name
     : openRouterSelected
-      ? stripOpenRouterPrefix(conversationModel)
+      ? reasoningLabel
+        ? `${stripOpenRouterPrefix(conversationModel)} · ${reasoningLabel}`
+        : stripOpenRouterPrefix(conversationModel)
       : isReasoningModel
         ? `Reasoning · ${effortLabels[currentReasoningEffort]}`
         : "Fast chat";
@@ -555,6 +568,29 @@ export function ConversationComposer({
   }, [conversationId, loadComposerAccountState]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleByokStatusChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<ByokStatusChangedDetail>;
+      if (customEvent.detail?.source === "composer") {
+        return;
+      }
+      void loadComposerAccountState({ showLoading: false });
+    };
+    window.addEventListener(
+      BYOK_STATUS_CHANGED_EVENT,
+      handleByokStatusChanged as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        BYOK_STATUS_CHANGED_EVENT,
+        handleByokStatusChanged as EventListener,
+      );
+    };
+  }, [loadComposerAccountState]);
+
+  useEffect(() => {
     if (accountState?.byok.provider) {
       setByokProvider(accountState.byok.provider);
       return;
@@ -613,6 +649,12 @@ export function ConversationComposer({
           : previous,
       );
       setByokApiKey("");
+      emitByokStatusChanged({
+        source: "composer",
+        provider: status.provider,
+        connected: status.connected,
+        updatedAt: status.updatedAt,
+      });
       await loadComposerAccountState({ showLoading: false });
     } catch (saveError) {
       console.error("[Composer] save BYOK key failed", saveError);
@@ -667,6 +709,12 @@ export function ConversationComposer({
           : previous,
       );
       setByokApiKey("");
+      emitByokStatusChanged({
+        source: "composer",
+        provider: null,
+        connected: false,
+        updatedAt: null,
+      });
       await loadComposerAccountState({ showLoading: false });
     } catch (deleteError) {
       console.error("[Composer] delete BYOK key failed", deleteError);
@@ -1298,6 +1346,43 @@ export function ConversationComposer({
       shouldRoutePresetsToOpenRouter,
     ],
   );
+  useEffect(() => {
+    if (!byokConnected || !connectedByokProvider) {
+      lastConnectedByokProviderRef.current = null;
+      return;
+    }
+
+    const previousProvider = lastConnectedByokProviderRef.current;
+    lastConnectedByokProviderRef.current = connectedByokProvider;
+    if (previousProvider === connectedByokProvider) {
+      return;
+    }
+
+    const currentModelProvider: ComposerByokProvider = isOpenRouterModel(conversationModel)
+      ? "openrouter"
+      : "openai";
+    if (currentModelProvider === connectedByokProvider) {
+      return;
+    }
+
+    if (connectedByokProvider === "openai") {
+      void handleModelSelection(START_MODE_DEFAULTS.fast.model, null, "fast");
+      return;
+    }
+
+    if (!openRouterFastPresetModelId) {
+      setError("OpenRouter models are still loading. Please try again in a moment.");
+      return;
+    }
+
+    void handleModelSelection(openRouterFastPresetModelId, null, "fast");
+  }, [
+    byokConnected,
+    connectedByokProvider,
+    conversationModel,
+    handleModelSelection,
+    openRouterFastPresetModelId,
+  ]);
   const sendDisabledReason = isPending
     ? "Sending..."
     : hasPendingAttachments

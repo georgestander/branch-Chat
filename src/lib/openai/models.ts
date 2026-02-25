@@ -13,17 +13,25 @@ export function getWebSearchToolTypeForModel(
     return "web_search_preview";
   }
 
-  const normalized = model.toLowerCase();
+  const normalized = model.trim().toLowerCase();
 
   if (isOpenRouterModel(normalized)) {
     return null;
   }
 
-  if (normalized.startsWith("gpt-5.2-2025-12-11")) {
+  if (normalized.startsWith("gpt-5-chat")) {
     return "web_search";
   }
 
-  if (normalized.startsWith("gpt-5.2-2025-12-11")) {
+  if (normalized.startsWith("gpt-5-mini")) {
+    return "web_search";
+  }
+
+  if (
+    normalized === "gpt-5" ||
+    normalized.startsWith("gpt-5-") ||
+    normalized.startsWith("gpt-5.")
+  ) {
     return "web_search";
   }
 
@@ -68,5 +76,9 @@ export function supportsReasoningEffortModel(
     return false;
   }
 
-  return modelId === "gpt-5.2-2025-12-11" || modelId.startsWith("ggpt-5.2");
+  return (
+    modelId === "gpt-5" ||
+    modelId.startsWith("gpt-5-") ||
+    modelId.startsWith("gpt-5.")
+  );
 }
