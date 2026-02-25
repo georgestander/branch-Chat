@@ -1,6 +1,7 @@
 import type { AppContext } from "@/app/context";
 import {
   createConversationSnapshot,
+  DEFAULT_CONVERSATION_MODEL,
   type Branch,
   type BranchId,
   type BranchSpan,
@@ -19,7 +20,7 @@ import {
 import { buildAgentInstructions } from "@/lib/openai/agentPrompt";
 import { getDefaultConversationIdForUser } from "@/app/shared/auth.server";
 
-const DEFAULT_MODEL = "gpt-5-chat-latest";
+const DEFAULT_MODEL = DEFAULT_CONVERSATION_MODEL;
 const DEFAULT_TEMPERATURE = 0.1;
 
 export const DEFAULT_BRANCH_TITLE = "New Chat";
@@ -583,7 +584,7 @@ export async function maybeAutoSummarizeRootBranchTitle(options: {
   const settingsModel = snapshot.conversation.settings.model;
   const autoTitleModel = settingsModel.includes("chat")
     ? settingsModel
-    : "gpt-5-chat-latest";
+    : DEFAULT_CONVERSATION_MODEL;
 
   try {
     ctx.trace("conversation:auto-title:start", {

@@ -8,7 +8,7 @@ import {
   createConversation,
   type CreateConversationResponse,
 } from "@/app/pages/conversation/functions";
-import type { ComposerPreset } from "@/lib/conversation";
+import { DEFAULT_CONVERSATION_MODEL, type ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import {
@@ -39,7 +39,7 @@ const START_MODE_DEFAULTS: Record<
   }
 > = {
   fast: {
-    model: "gpt-5-chat-latest",
+    model: DEFAULT_CONVERSATION_MODEL,
     reasoningEffort: null,
     tools: [],
   },
@@ -84,8 +84,8 @@ const PRESET_OPTIONS: Array<{
 
 const MODEL_OPTIONS: Array<{ id: string; label: string; description: string }> = [
   {
-    id: "gpt-5-chat-latest",
-    label: "GPT-5 Chat Latest",
+    id: DEFAULT_CONVERSATION_MODEL,
+    label: "GPT-5.2 Chat Latest",
     description: "Fast chat-tuned model",
   },
   {

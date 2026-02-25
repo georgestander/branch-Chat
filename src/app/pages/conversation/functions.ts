@@ -137,11 +137,15 @@ function buildResponseOptions(settings: {
     request.reasoning = { effort: settings.reasoningEffort };
   }
 
-  // gpt-5-chat currently rejects `low` verbosity and only accepts `medium`.
-  if (normalizedModelId.startsWith("gpt-5-chat")) {
+  // Chat-tuned gpt-5 variants reject `low` verbosity and only accept `medium`.
+  if (
+    normalizedModelId.startsWith("gpt-5") &&
+    normalizedModelId.includes("chat")
+  ) {
     request.text = { verbosity: "medium" };
   } else if (
     normalizedModelId.startsWith("gpt-5-") ||
+    normalizedModelId.startsWith("gpt-5.") ||
     normalizedModelId === "gpt-5"
   ) {
     request.text = { verbosity: "low" };
@@ -199,7 +203,10 @@ function inferComposerPresetFromSettings(
   settings: Pick<ConversationSettings, "model" | "reasoningEffort">,
 ): ComposerPreset {
   const normalizedModel = settings.model.toLowerCase();
-  if (normalizedModel.startsWith("gpt-5-chat")) {
+  if (
+    normalizedModel.includes("gpt-5") &&
+    normalizedModel.includes("chat")
+  ) {
     return "fast";
   }
   if (supportsReasoningEffortModel(settings.model) || settings.reasoningEffort) {

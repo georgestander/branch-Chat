@@ -18,6 +18,7 @@ import type {
   Conversation,
   ConversationModelId,
 } from "@/lib/conversation";
+import { DEFAULT_CONVERSATION_MODEL } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
@@ -79,7 +80,7 @@ const START_MODE_DEFAULTS: Record<
   }
 > = {
   fast: {
-    model: "gpt-5-chat-latest",
+    model: DEFAULT_CONVERSATION_MODEL,
     reasoningEffort: null,
     tools: [],
   },
@@ -250,7 +251,7 @@ export function ConversationLayout({
   openRouterModels,
 }: ConversationLayoutProps) {
   const resolvedInitialModel =
-    conversation.settings.model || "gpt-5-chat-latest";
+    conversation.settings.model || DEFAULT_CONVERSATION_MODEL;
   const resolvedInitialEffort = supportsReasoningEffortModel(resolvedInitialModel)
     ? ((conversation.settings as any).reasoningEffort ?? "low")
     : null;
@@ -369,7 +370,7 @@ export function ConversationLayout({
   }, [activeBranchId, compareModeRequested, parentBranch]);
 
   useEffect(() => {
-    const nextModel = conversation.settings.model || "gpt-5-chat-latest";
+    const nextModel = conversation.settings.model || DEFAULT_CONVERSATION_MODEL;
     const nextEffort = supportsReasoningEffortModel(nextModel)
       ? ((conversation.settings as any).reasoningEffort ?? "low")
       : null;

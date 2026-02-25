@@ -59,7 +59,7 @@ import {
   emitByokStatusChanged,
   type ByokStatusChangedDetail,
 } from "@/app/components/conversation/byokEvents";
-import type { ComposerPreset } from "@/lib/conversation";
+import { DEFAULT_CONVERSATION_MODEL, type ComposerPreset } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import {
   isWebSearchSelectableModel,
@@ -135,7 +135,7 @@ const START_MODE_DEFAULTS: Record<
   }
 > = {
   fast: {
-    model: "gpt-5-chat-latest",
+    model: DEFAULT_CONVERSATION_MODEL,
     reasoningEffort: null,
     tools: [],
   },

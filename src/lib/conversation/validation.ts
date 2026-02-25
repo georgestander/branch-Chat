@@ -268,10 +268,17 @@ function validateConversationSettings(
 
   const inferLegacyPreset = (): ConversationSettings["composerDefaults"]["preset"] => {
     const normalizedModel = model.toLowerCase();
-    if (normalizedModel.startsWith("gpt-5-chat")) {
+    if (
+      normalizedModel.includes("gpt-5") &&
+      normalizedModel.includes("chat")
+    ) {
       return "fast";
     }
-    if (normalizedModel.startsWith("gpt-5-")) {
+    if (
+      normalizedModel === "gpt-5" ||
+      normalizedModel.startsWith("gpt-5-") ||
+      normalizedModel.startsWith("gpt-5.")
+    ) {
       return "reasoning";
     }
     return "custom";
