@@ -40,13 +40,8 @@ const PLAN_REQUEST_PATTERNS: RegExp[] = [
   /\bwhat'?s\s+the\s+plan\b/i,
 ];
 
-const PLAN_SECONDARY_PATTERNS: Array<(value: string) => boolean> = [
-  (value) => value.includes("outline") && value.includes("steps"),
-  (value) => value.includes("how do i") && value.includes("steps"),
-  (value) => value.includes("walk me through"),
-  (value) => value.includes("give me") && value.includes("steps"),
-  (value) => value.includes("what is the approach"),
-];
+const LEGACY_DEFAULT_SYSTEM_PROMPT =
+  "You are Connexus, a branching conversation assistant. Provide concise, structured replies to help users explore alternatives.";
 
 export class ConversationAccessError extends Error {
   readonly conversationId: ConversationModelId;
@@ -820,7 +815,7 @@ function assembleConversationMessages(options: {
   );
 
   const systemPrompt = snapshot.conversation.settings.systemPrompt?.trim();
-  if (systemPrompt) {
+  if (systemPrompt && systemPrompt !== LEGACY_DEFAULT_SYSTEM_PROMPT) {
     systemMessages.push(systemPrompt);
   }
 
@@ -922,7 +917,7 @@ function shouldApplyPlanFormatting(nextUserContent: string): boolean {
     return true;
   }
 
-  return PLAN_SECONDARY_PATTERNS.some((predicate) => predicate(condensed));
+  return false;
 }
 
 export function getBranchChain(
@@ -952,8 +947,7 @@ function getDefaultConversationSettings(): ConversationSettings {
       preset: "fast",
       tools: [],
     },
-    systemPrompt:
-      "You are Connexus, a branching conversation assistant. Provide concise, structured replies to help users explore alternatives.",
+    systemPrompt: null,
   };
 }
 

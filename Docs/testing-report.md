@@ -20,7 +20,7 @@
   - ⚠️ Tool invocation scaffolding: no `tools:invoke` execution-handler path observed in this sweep; remains pending until handler wiring is exercised.
   - ✅ Composer attachments: uploaded files persisted and rendered as chips with filename + size in composer and timeline.
   - ✅ Web search result rendering: assistant output rendered source URLs and `Web Results` section with clickable links.
-  - ✅ Plan-format markdown contract: response included `Short answer`, `# Plan`, structured sections, and references.
+  - ✅ Plan-format markdown contract: response included a one-sentence summary, `# Plan` with numbered steps, and references when web search was used.
   - ✅ Agent prompt enforcement: non-plan message rendered normal markdown; plan request rendered required plan contract format.
   - ✅ Composer tool picker: verified plus-menu open, multi-selection, active tool pills, and persisted selection across send flows.
   - ✅ Study & Learn agent send (chat model): `agent:study:start`/`agent:study:success` traces observed with `gpt-5-chat-latest`.
@@ -109,9 +109,9 @@
   - ⚠️ Pending: trigger an assistant response that uses web search, ensure result snippets render in the branch column with source URLs and that traces log `tools:invoke` with latency.
   - ✅ Updated to render clickable source list with host + snippets at the bottom of assistant messages. Confirmed the links open in a new tab and the UI shows the “web results” header once the tool completes.
 - Plan-format markdown contract (manual)
-  - ⚠️ Pending: prompt the assistant with a “plan” request and confirm the rendered response includes the `Short answer` line, `# Plan` heading with numbered sections, optional follow-up sections, and a `References` block with clickable blue links.
+  - ⚠️ Pending: prompt the assistant with a “plan” request and confirm the rendered response includes a one-sentence summary, `# Plan` with numbered steps, and a `References` block (when web search is used).
 - Agent prompt enforcement (manual)
-  - ⚠️ Pending: start a non-plan conversation to verify the new system prompt still produces normal markdown, and a plan conversation to confirm the same instructions trigger `Short answer` + `# Plan` without regressions.
+  - ⚠️ Pending: start a non-plan conversation to verify the system prompt still produces normal markdown, and a plan conversation to confirm the same instructions trigger a summary + `# Plan` without regressions.
 - Sidebar branch indentation (manual)
   - ✅ Expanded a 5-level nested branch tree in the conversation sidebar; all child rows stay within the card width and truncated titles remain readable. Checked focus/hover states for active branches after indent adjustments.
 

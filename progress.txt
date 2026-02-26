@@ -516,3 +516,8 @@
 - Decisions: introduced `DEFAULT_CONVERSATION_MODEL` in `src/lib/conversation/model.ts`; replaced hardcoded fast-model defaults in layout/composer/empty-state + server default/title fallback with shared constant; updated legacy preset + verbosity inference to recognize gpt-5.2 chat naming (`gpt-5.*-chat*`) so fast/reasoning classification stays correct.
 - Files: src/lib/conversation/model.ts, src/app/shared/conversation.server.ts, src/app/components/conversation/ConversationLayout.tsx, src/app/components/conversation/ConversationComposer.tsx, src/app/components/conversation/ConversationEmptyLayout.tsx, src/app/pages/conversation/functions.ts, src/lib/conversation/validation.ts, progress.txt.
 - Notes: run feedback loops before commit.
+2026-02-26 — Externalized Connexus system prompt to markdown + refreshed chatty voice. Ref: Docs/testing-report.md agent prompt enforcement.
+- Task: make the assistant feel like a general chat agent (less rigid formatting), while keeping technical guidance quality.
+- Decisions: moved base prompt + plan addendum into `src/lib/openai/prompts/*.md` bundled via Vite `?raw` so changes are versioned (not UI-editable); removed `Short answer:` plan contract and narrowed plan-format triggering to explicit plan keywords only; stopped persisting legacy default `settings.systemPrompt` (and ignore the old default string) so existing conversations pick up the new prompt automatically.
+- Files: src/lib/openai/agentPrompt.ts, src/lib/openai/prompts/connexus.base.md, src/lib/openai/prompts/connexus.plan.md, src/app/shared/conversation.server.ts, types/vite.d.ts, Docs/testing-report.md, progress.txt.
+- Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
