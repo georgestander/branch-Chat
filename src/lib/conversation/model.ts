@@ -206,14 +206,21 @@ export interface CanvasBranchNodeState {
   x: number;
   y: number;
   folded: boolean;
+  expanded: boolean;
 }
 
 export interface ConversationCanvasState {
-  version: 1;
+  version: 2;
   viewport: ConversationCanvasViewport;
   focusedBranchId: BranchId | null;
   nodes: Record<BranchId, CanvasBranchNodeState>;
 }
+
+type ConversationCanvasSource =
+  Partial<Omit<ConversationCanvasState, "version" | "nodes">> & {
+    version?: 1 | 2;
+    nodes?: Record<BranchId, Partial<CanvasBranchNodeState>>;
+  };
 
 export interface ConversationGraphSnapshot {
   conversation: Conversation;
@@ -315,6 +322,7 @@ function buildCanvasNodeLayout(
         x: depth * DEFAULT_CANVAS_DEPTH_SPACING,
         y: index * DEFAULT_CANVAS_SIBLING_SPACING,
         folded: false,
+        expanded: branch.id === snapshot.conversation.rootBranchId,
       } satisfies CanvasBranchNodeState,
     ]),
   );
@@ -322,7 +330,7 @@ function buildCanvasNodeLayout(
 
 export function normalizeConversationCanvasState(
   snapshot: Pick<ConversationGraphSnapshot, "conversation" | "branches"> & {
-    canvas?: Partial<ConversationCanvasState> | null;
+    canvas?: ConversationCanvasSource | null;
   },
 ): ConversationCanvasState {
   const layout = buildCanvasNodeLayout(snapshot);
@@ -344,6 +352,10 @@ export function normalizeConversationCanvasState(
           ? candidate.y
           : fallback?.y ?? 0,
       folded: candidate?.folded === true,
+      expanded:
+        typeof candidate?.expanded === "boolean"
+          ? candidate.expanded
+          : source?.version !== 2 && branch.id === snapshot.conversation.rootBranchId,
     };
   }
 
@@ -354,7 +366,7 @@ export function normalizeConversationCanvasState(
       : snapshot.conversation.rootBranchId;
 
   return {
-    version: 1,
+    version: 2,
     viewport: {
       x:
         typeof viewport?.x === "number" && Number.isFinite(viewport.x)
@@ -398,6 +410,7 @@ export function applyCanvasPatch(
       x: 0,
       y: 0,
       folded: false,
+      expanded: branchId === snapshot.conversation.rootBranchId,
     };
     nextNodes[branchId as BranchId] = {
       branchId: branchId as BranchId,
@@ -411,6 +424,8 @@ export function applyCanvasPatch(
           : existing.y,
       folded:
         typeof update.folded === "boolean" ? update.folded : existing.folded,
+      expanded:
+        typeof update.expanded === "boolean" ? update.expanded : existing.expanded,
     };
   }
 
@@ -418,7 +433,7 @@ export function applyCanvasPatch(
     conversation: snapshot.conversation,
     branches: snapshot.branches,
     canvas: {
-      version: 1,
+      version: 2,
       viewport: {
         ...current.viewport,
         ...(patch.viewport ?? {}),
@@ -466,7 +481,7 @@ export function createConversationSnapshot(input: {
     },
     messages: {},
     canvas: {
-      version: 1,
+      version: 2,
       viewport: { ...DEFAULT_CANVAS_VIEWPORT },
       focusedBranchId: rootBranch.id,
       nodes: {
@@ -475,6 +490,7 @@ export function createConversationSnapshot(input: {
           x: 0,
           y: 0,
           folded: false,
+          expanded: true,
         },
       },
     },
@@ -550,7 +566,7 @@ export function cloneConversationSnapshot(
       }),
     ),
     canvas: {
-      version: 1,
+      version: 2,
       viewport: { ...snapshot.canvas.viewport },
       focusedBranchId: snapshot.canvas.focusedBranchId,
       nodes: Object.fromEntries(

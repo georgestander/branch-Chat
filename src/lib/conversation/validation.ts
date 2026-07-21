@@ -465,6 +465,7 @@ function validateMessage(value: unknown): Message {
 function validateCanvasNodeState(
   branchId: BranchId,
   value: unknown,
+  options: { legacy: boolean; rootBranchId: BranchId },
 ): CanvasBranchNodeState {
   assert(isObject(value), `canvas.nodes.${branchId} must be an object`);
   const record = value as RecordLike;
@@ -472,6 +473,7 @@ function validateCanvasNodeState(
   const x = record.x;
   const y = record.y;
   const folded = record.folded;
+  const expanded = record.expanded;
   assert(
     nodeBranchId === undefined || nodeBranchId === branchId,
     `canvas.nodes.${branchId}.branchId invalid`,
@@ -479,11 +481,19 @@ function validateCanvasNodeState(
   assert(typeof x === "number" && Number.isFinite(x), `canvas.nodes.${branchId}.x invalid`);
   assert(typeof y === "number" && Number.isFinite(y), `canvas.nodes.${branchId}.y invalid`);
   assert(typeof folded === "boolean", `canvas.nodes.${branchId}.folded invalid`);
+  assert(
+    expanded === undefined || typeof expanded === "boolean",
+    `canvas.nodes.${branchId}.expanded invalid`,
+  );
   return {
     branchId,
     x,
     y,
     folded,
+    expanded:
+      typeof expanded === "boolean"
+        ? expanded
+        : options.legacy && branchId === options.rootBranchId,
   };
 }
 
@@ -510,7 +520,7 @@ function validateCanvasState(
   const focusedBranchId = record.focusedBranchId;
   const version = record.version;
 
-  assert(version === undefined || version === 1, "canvas.version invalid");
+  assert(version === undefined || version === 1 || version === 2, "canvas.version invalid");
   assert(isObject(viewport), "canvas.viewport must be an object");
   assert(isObject(nodes), "canvas.nodes must be an object");
 
@@ -522,6 +532,7 @@ function validateCanvasState(
     validatedNodes[branchId as BranchId] = validateCanvasNodeState(
       branchId as BranchId,
       nodeValue,
+      { legacy: version !== 2, rootBranchId },
     );
   }
 
@@ -540,7 +551,7 @@ function validateCanvasState(
     } as ConversationGraphSnapshot["conversation"],
     branches,
     canvas: {
-      version: 1,
+      version: 2,
       viewport: {
         x: (viewport as RecordLike).x as number,
         y: (viewport as RecordLike).y as number,

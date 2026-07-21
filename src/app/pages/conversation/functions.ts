@@ -515,6 +515,7 @@ export interface UpdateConversationCanvasInput extends ConversationPayload {
       x?: number;
       y?: number;
       folded?: boolean;
+      expanded?: boolean;
     } | null
   >;
 }
@@ -1072,6 +1073,14 @@ async function sendMessageWithCodex(options: {
           type: "branch:create" as const,
           conversationId,
           branch: createdBranch,
+        },
+        {
+          type: "canvas:update" as const,
+          conversationId,
+          patch: {
+            focusedBranchId: createdBranch.id,
+            nodes: { [createdBranch.id]: { expanded: true } },
+          },
         },
         { type: "message:append" as const, conversationId, message: userMessage },
         {

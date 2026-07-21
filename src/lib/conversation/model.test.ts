@@ -137,18 +137,21 @@ test("normalizeConversationCanvasState lays out missing branch nodes determinist
     x: 12,
     y: 34,
     folded: false,
+    expanded: true,
   });
   assert.deepEqual(canvas.nodes.child, {
     branchId: "child",
     x: 420,
     y: 220,
     folded: false,
+    expanded: false,
   });
   assert.deepEqual(canvas.nodes.sibling, {
     branchId: "sibling",
     x: 420,
     y: 440,
     folded: false,
+    expanded: false,
   });
 });
 
@@ -184,6 +187,7 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
         x: 640,
         y: 180,
         folded: true,
+        expanded: true,
       },
     },
   });
@@ -199,11 +203,13 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
     x: 640,
     y: 180,
     folded: true,
+    expanded: true,
   });
   assert.deepEqual(canvas.nodes.root, {
     branchId: "root",
     x: 0,
     y: 0,
     folded: false,
+    expanded: true,
   });
 });

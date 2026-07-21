@@ -1098,7 +1098,7 @@ export class ConversationStoreDO implements DurableObject {
         branches: {},
         messages: {},
         canvas: {
-          version: 1,
+          version: 2,
           viewport: {
             x: 0,
             y: 0,
