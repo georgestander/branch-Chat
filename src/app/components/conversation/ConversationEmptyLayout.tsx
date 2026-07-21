@@ -257,7 +257,9 @@ export function ConversationEmptyLayout({
             console.warn("[EmptyLayout] unable to persist draft message", storageError);
           }
         }
-        navigate(`/app?conversationId=${encodeURIComponent(result.conversationId)}`);
+        navigate(
+          `/app?conversationId=${encodeURIComponent(result.conversationId)}&focus=1`,
+        );
       } catch (error) {
         console.error("[EmptyLayout] createConversation failed", error);
         const errorMessage =

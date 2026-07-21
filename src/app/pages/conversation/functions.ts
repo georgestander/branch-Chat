@@ -2603,7 +2603,7 @@ export async function updateConversationCanvas(
   const ctx = requestInfo.ctx as AppContext;
   const conversationId = resolveConversationId(ctx, input.conversationId);
 
-  return applyConversationUpdates(ctx, conversationId, [
+  const result = await applyConversationUpdates(ctx, conversationId, [
     {
       type: "canvas:update",
       conversationId,
@@ -2615,6 +2615,7 @@ export async function updateConversationCanvas(
       },
     },
   ]);
+  return result;
 }
 
 export async function archiveConversation(

@@ -316,8 +316,14 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
 function normalizeStoredState(value: StoredState | null): StoredState {
   const base = (value ?? {}) as Partial<StoredState>;
+  const snapshot = base.snapshot
+    ? {
+        ...base.snapshot,
+        canvas: normalizeConversationCanvasState(base.snapshot),
+      }
+    : null;
   return {
-    snapshot: base.snapshot ?? null,
+    snapshot,
     version: typeof base.version === "number" ? base.version : 0,
     updatedAt: base.updatedAt ?? new Date().toISOString(),
     pendingAttachments: base.pendingAttachments ?? {},

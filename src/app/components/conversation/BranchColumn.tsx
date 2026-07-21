@@ -94,6 +94,7 @@ interface BranchColumnProps {
   onClearConversationSettingsError: () => void;
   composerBootstrapMessage?: string | null;
   onComposerBootstrapConsumed?: () => void;
+  branchNavigationPath?: "/app" | "/app/legacy";
 }
 
 function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
@@ -224,6 +225,7 @@ export function BranchColumn({
   onClearConversationSettingsError,
   composerBootstrapMessage,
   onComposerBootstrapConsumed,
+  branchNavigationPath = "/app",
 }: BranchColumnProps) {
   const scrollPaddingClass = isActive ? "pb-44" : "pb-10";
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -393,15 +395,16 @@ export function BranchColumn({
         conversationId,
         branchId: targetBranchId,
         compare: "1",
+        focus: "1",
       });
-      navigate(`/app?${params.toString()}`);
+      navigate(`${branchNavigationPath}?${params.toString()}`);
     };
 
     container.addEventListener("click", handleHighlightClick);
     return () => {
       container.removeEventListener("click", handleHighlightClick);
     };
-  }, [conversationId]);
+  }, [branchNavigationPath, conversationId]);
 
   useEffect(() => {
     setOptimisticMessages((current) => {
@@ -656,6 +659,8 @@ export function BranchColumn({
 
   return (
     <section
+      aria-label={`${branch.title || "Untitled branch"} branch conversation`}
+      data-branch-id={branch.id}
       className={cn(
         "relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent",
         withLeftBorder ? "border-l border-border" : "",
@@ -738,6 +743,7 @@ export function BranchColumn({
                 isActive={isActive}
                 conversationId={conversationId}
                 branch={branch}
+                branchNavigationPath={branchNavigationPath}
               />
             </li>
           ))}
@@ -790,11 +796,13 @@ function MessageBubble({
   isActive,
   conversationId,
   branch,
+  branchNavigationPath,
 }: {
   message: RenderedMessage;
   isActive: boolean;
   conversationId: ConversationModelId;
   branch: Branch;
+  branchNavigationPath: "/app" | "/app/legacy";
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
@@ -822,6 +830,7 @@ function MessageBubble({
           renderedHtml={message.renderedHtml}
           toolInvocations={message.toolInvocations}
           branchAnchors={message.branchAnchors}
+          branchNavigationPath={branchNavigationPath}
         />
         {isStreaming ? (
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">

@@ -419,3 +419,34 @@
     @apply border border-border/70 px-3 py-2 text-left;
   }
 }
+
+.canvas-flow .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+.canvas-flow .react-flow__controls-button {
+  border-bottom-color: var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.canvas-flow .react-flow__controls-button:hover {
+  background: var(--muted);
+}
+
+.canvas-flow .react-flow__minimap {
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+.canvas-flow .react-flow__edge-path {
+  stroke: color-mix(in srgb, var(--foreground) 38%, transparent);
+}
+
+.canvas-flow .react-flow__node:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}

@@ -20,6 +20,7 @@ interface BranchableMessageProps {
   renderedHtml: string;
   toolInvocations?: ToolInvocation[] | null;
   branchAnchors?: RenderedBranchAnchor[];
+  branchNavigationPath?: "/app" | "/app/legacy";
 }
 
 type SelectionState = {
@@ -38,6 +39,7 @@ export function BranchableMessage({
   renderedHtml,
   toolInvocations,
   branchAnchors = [],
+  branchNavigationPath = "/app",
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -118,14 +120,14 @@ export function BranchableMessage({
             compare: "1",
             focus: "1",
           });
-          navigate(`/app?${params.toString()}`);
+          navigate(`${branchNavigationPath}?${params.toString()}`);
         } catch (cause) {
           console.error("createBranchFromSelection failed", cause);
           setError("Could not create and send this branch. Please try again.");
         }
       });
     },
-    [branchId, clearSelection, conversationId, messageId],
+    [branchId, branchNavigationPath, clearSelection, conversationId, messageId],
   );
 
   const openChildBranch = useCallback(
@@ -136,9 +138,9 @@ export function BranchableMessage({
         compare: "1",
         focus: "1",
       });
-      navigate(`/app?${params.toString()}`);
+      navigate(`${branchNavigationPath}?${params.toString()}`);
     },
-    [conversationId],
+    [branchNavigationPath, conversationId],
   );
 
   return (

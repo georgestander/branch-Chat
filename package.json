@@ -27,8 +27,10 @@
     "lint": "npm run types -- --pretty false"
   },
   "dependencies": {
+    "@dagrejs/dagre": "3.0.0",
     "@openai/agents": "^0.2.1",
     "@tailwindcss/vite": "^4.1.16",
+    "@xyflow/react": "12.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "katex": "^0.16.25",

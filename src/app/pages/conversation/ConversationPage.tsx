@@ -7,6 +7,7 @@ import {
 import { enrichMessagesWithHtml } from "@/app/shared/markdown.server";
 import type { MessageBranchHighlight } from "@/app/shared/markdown.server";
 import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
+import { CanvasConversationLayout } from "@/app/components/conversation/CanvasConversationLayout";
 import type { AppRequestInfo } from "@/worker";
 import type { Branch, ConversationGraphSnapshot, Message } from "@/lib/conversation";
 import {
@@ -80,6 +81,26 @@ export async function ConversationPage({
   });
 
   const activeBranch = determineActiveBranch(snapshot, requestedBranchId);
+  const legacyView = requestUrl.pathname === "/app/legacy";
+  const focusRequested = requestUrl.searchParams.get("focus") === "1";
+
+  if (!legacyView && !focusRequested) {
+    return (
+      <CanvasConversationLayout
+        snapshot={snapshot}
+        conversation={snapshot.conversation}
+        activeBranch={activeBranch}
+        activeMessages={[]}
+        parentBranch={null}
+        parentMessages={[]}
+        conversationId={result.conversationId}
+        conversations={summaries}
+        openRouterModels={[]}
+        focusRequested={false}
+      />
+    );
+  }
+
   const parentBranch = activeBranch.parentId
     ? snapshot.branches[activeBranch.parentId] ?? null
     : null;
@@ -106,6 +127,23 @@ export async function ConversationPage({
         : [],
     },
   );
+
+  if (!legacyView) {
+    return (
+      <CanvasConversationLayout
+        snapshot={snapshot}
+        conversation={snapshot.conversation}
+        activeBranch={activeBranch}
+        activeMessages={activeRenderedMessages}
+        parentBranch={parentBranch}
+        parentMessages={parentRenderedMessages}
+        conversationId={result.conversationId}
+        conversations={summaries}
+        openRouterModels={[]}
+        focusRequested={focusRequested}
+      />
+    );
+  }
 
   const tree = buildBranchTree(snapshot);
   const compareModeRequested = requestUrl.searchParams.get("compare") === "1";

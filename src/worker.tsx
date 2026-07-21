@@ -267,6 +267,7 @@ const app = defineApp<AppRequestInfo>([
       return LandingPage(requestInfo);
     }),
     route("/app", Home),
+    route("/app/legacy", Home),
     route("/landing", ({ request }) => {
       const url = new URL(request.url);
       const target = new URL("/", url);

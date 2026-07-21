@@ -756,6 +756,7 @@ export function ConversationLayout({
               onClearConversationSettingsError={clearConversationSettingsError}
               onActivateBranch={activateParentBranch}
               highlightedBranchId={activeBranch.id}
+              branchNavigationPath="/app/legacy"
               // Apply a fixed flex-basis driven by ratio
               style={{
                 width: hasMeasuredWidth ? parentWidthPx : undefined,
@@ -806,6 +807,7 @@ export function ConversationLayout({
             messages={activeMessages}
             conversationId={conversationId}
             isActive
+            branchNavigationPath="/app/legacy"
             parentBranchTitle={parentBranch?.title ?? null}
             composerBootstrapMessage={bootstrapMessage}
             onComposerBootstrapConsumed={handleBootstrapConsumed}
