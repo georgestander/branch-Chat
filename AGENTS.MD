@@ -1,96 +1,166 @@
-# Project Agent Rules — Branching Chat
+# Project Agent Rules — Branch Chat / RedwoodSDK
 
 ## North Star
-- Build a server-first, non-linear branching chat MVP with RedwoodSDK React Server Components (RSC). UI islands only orchestrate interactions; all branching, persistence, and OpenAI calls run on the server.
-- Use RedwoodSDK routing (`defineApp`, `route`, `render`, `index`) and Server Functions (`"use server"`) for mutations. No ad-hoc servers or Next.js patterns.
-- Fetch only the data needed to paint the current screen. Render what you see; defer hidden panels to focused client islands.
-- Keep the codebase CSP-safe and hydration-safe. Prefer deterministic values, and ensure the client bootstrap script uses the request nonce.
+- Build a server-first, non-linear branching chat application with RedwoodSDK React Server Components (RSC).
+- RSC is the default. Add `"use client"` only where browser interaction or local UI state is required.
+- Use RedwoodSDK routing (`defineApp`, `render`, `index`, `route`) and Server Functions (`"use server"`). Do not introduce Next.js conventions, Express, or a parallel application server.
+- Keep branching, authorization, persistence, model orchestration, and other business rules on the server. Client islands orchestrate interaction only.
+- Fetch only the data needed to authorize and paint the current screen. Load hidden panels and expensive detail through focused client islands or small streamed server subtrees.
+
+### Motto — Fast RSC. No deadlocks. CSP-safe. Hydration-safe.
+- **No top-level I/O:** Never perform database, Durable Object, storage, model, or network work at module scope. Initialize resources inside request middleware or idempotent request-scoped factories.
+- **SSR reads directly:** Server components read through server-only helpers. They never call or import a module containing `"use server"` during SSR.
+- **Actions use Server Functions:** Client events call Server Functions for mutations and focused reads. Do not add endpoint-shaped routes when a Server Function is the simpler boundary.
+- **CSP-safe bootstrap:** Use the external client module script and attach `requestInfo.rw.nonce`.
+- **Hydration-safe output:** Avoid `Date.now()`, `Math.random()`, `crypto.randomUUID()`, `toLocale*`, and environment-dependent formatting in hydrated render paths. Produce stable values on the server and pass strings to the client.
+- **Client navigation is required:** `src/client.tsx` must call `initClient(initClientNavigation())`.
+- **Pending RSC streams can be normal:** A `?__rsc` request may remain pending in development; the plain HTML document must still complete quickly.
 
 ## Core Experience
-- **Branch creation:** Select any assistant message span → “Create Branch”. New branch inherits context up to the selection, optionally capturing the span metadata.
-- **Branch navigation:** Split view (parent left, child right) with resizable panes. Provide tree/breadcrumb navigation, jump-to-root, and deep nesting support.
-- **Conversation management:** CRUD for branches (rename, archive, delete with confirmation), independent composer per branch, and per-branch token/cost tracking.
-- **State persistence:** Durable Objects store conversation graphs and messages. Support single-user reload resilience plus JSON export/import.
-- **Chat engine:** OpenAI streaming responses per branch, with branch-specific model/settings overrides.
-- **UX & A11y:** Keyboard shortcuts for branching, navigation, and split toggles. Visual accents clarify branch context.
-- Meet the MVP’s non-functional targets: 95th percentile branch switch render < 120 ms with ≤500 messages total, and no data loss on normal reload paths.
+- **Branch creation:** Select any assistant-message span and create a child branch. The child inherits context through the selected message and records source message/span metadata when available.
+- **Branch navigation:** Support deep nesting, parent context, breadcrumbs/tree navigation, jump-to-root, and explicit parent/child comparison without losing the active branch.
+- **Conversation management:** Support rename, archive, delete with confirmation, independent branch composers, and per-branch model/usage settings.
+- **State persistence:** Durable Objects store canonical conversation graphs and messages. Preserve reload resilience and JSON export/import.
+- **Chat engine:** Stream model responses per branch and preserve branch-specific settings and tool state.
+- **UX and accessibility:** Preserve keyboard navigation, visible focus, understandable branch context, and recovery from streaming or persistence failures.
+- **Performance target:** Keep p95 branch-switch visible completion below 120 ms with at most 500 messages total, measured on representative local data.
 
-## State & Persistence
-- Cloudflare Durable Objects are the authoritative store for conversations, branches, and messages. Model the schema in TypeScript (see `docs/scope_v3.md`) and reuse shared helpers; do not introduce D1.
-- Initialize Durable Object bindings inside request middleware; memoize per-request handles to avoid reconnection overhead.
-- Writes must be sequential and short-lived. Handle retries and emit structured errors; never block UI rendering on long-running side effects.
-- Expose export/import through server functions that serialize the DO snapshot and validate inputs before mutating state.
+## RedwoodSDK Boundaries
 
-## Server & Client Boundaries
-- Server components read directly from Durable Objects or server-only helpers. Do not import modules marked with `"use server"` into SSR trees.
-- Declare server actions in `src/app/pages/<feature>/functions.ts` with `"use server"`. Client components trigger them for writes and focused reads.
-- No top-level I/O: set up caches, DO stubs, and OpenAI clients inside middleware or helper factories that are idempotent.
-- Keep client modules thin: orchestrate suspense boundaries, pane resizing, keyboard shortcuts, and optimistic UI only. Avoid business logic on the client.
-- Always enable client navigation: `src/client.tsx` must call `initClient(initClientNavigation())`.
-- Gate any component library feature that auto-generates IDs until after mount (Radix, shadcn dialogs, etc.) to avoid hydration mismatches.
+### Routing and pages
+- Define routes in `src/worker.tsx` with RedwoodSDK router primitives.
+- Pages are RSC by default and live under `src/app/pages/**`.
+- Route handlers are reserved for transport-shaped boundaries such as SSE, uploads, health checks, or external callbacks. Do not build a bespoke REST layer for ordinary application reads and writes.
+- Route and Server Function entry points must authorize independently. Never trust client state or hidden controls as authorization.
 
-## Performance & Observability
-- Budget each SSR render to stay within 40 ms CPU on edge. Flag helpers that approach 80 ms with `[TRACE] … slow` logs including branch/conversation identifiers.
-- Log cache hits/misses and payload sizes for Durable Object reads/writes and OpenAI responses. Include branch IDs for observability.
-- Stream OpenAI responses to the client; surface partial results via suspense boundaries or streaming UI primitives.
-- When DO operations fail, surface graceful empty/error states and record telemetry for retries. Never leave the UI pending indefinitely.
+### Server Functions
+- Declare feature actions in `src/app/pages/<feature>/functions.ts` with `"use server"`.
+- Validate and normalize every external input before it reaches persistence, model calls, or storage.
+- Return structured, actionable errors. Do not swallow failures or leave the UI pending indefinitely.
+- Return enough canonical state from a mutation for immediate client reconciliation. Do not force a full RSC route refresh merely to rediscover the record just created or changed.
+- Use optimistic UI only for reversible operations and roll it back when the Server Function fails.
+
+### Server-only helpers
+- Put SSR-safe reads and shared server logic in modules without `"use server"`, typically under `src/app/shared/**`.
+- Server components may import those helpers directly.
+- Do not import `src/app/pages/**/functions.ts` into an RSC file.
+- Construct Durable Object stubs, storage clients, model clients, and caches inside middleware or request-scoped helper factories. Reuse them at the same authorization scope.
+
+### Client islands
+- Client components live under `src/app/components/**` and start with `"use client"`.
+- Keep them focused on selection, pane resizing, keyboard shortcuts, optimistic reconciliation, streaming display, modal state, and other browser-only behavior.
+- Do not access Durable Objects, R2, model providers, secrets, or server-owned data directly from the browser.
+- Prefer one server-rendered route with local panel state over adding routes for every tab, drawer, or branch-context panel.
+- Gate libraries that generate unstable IDs or browser-dependent markup until after mount when necessary to prevent hydration mismatches.
+
+## State and Persistence
+- `ConversationStoreDO` is authoritative for one conversation graph, its branches, messages, and retrieval artifacts.
+- `ConversationDirectoryDO` is authoritative for conversation-list metadata.
+- `AccountDO` is authoritative for account-scoped preferences and credential metadata allowed by the current architecture.
+- Do not introduce D1 for conversation state. Extend the existing Durable Object model and shared clients unless the task explicitly changes the persistence architecture.
+- Resolve Durable Object bindings in request middleware and memoize clients per request. Do not rebuild the same stub repeatedly in one request tree.
+- Keep writes sequential, isolated, and short-lived. Never hold a write open around a model stream or unrelated side-effect.
+- Avoid parallel `Promise.all` calls against the same Durable Object in one request path. Prefer one object method, a single storage transaction where supported, or explicit sequential awaits.
+- Validate a complete import snapshot before mutating state. Export must produce a portable, versioned representation.
+- Treat local Miniflare persistence as real user data. Keep its location out of Git, document backup/reset behavior, and never delete it as routine build cleanup.
+
+## Request and Performance Contract
+- Define performance by user-visible completion: initial screen paint, branch switch, message send to first token, and message send to reconciled final state.
+- Before changing a critical path, map the complete flow: browser event, RSC/Server Function request, auth, Durable Object calls, R2 calls, model/tool calls, streaming, persistence, and UI reconciliation.
+- Count serialized remote/storage round trips. Handler duration alone is not the user experience.
+- Reuse authorization and conversation data already established in the same request tree and at the same scope.
+- Do not build serial read ladders, per-message storage loops, N+1 reads, unbounded graph traversal, or repeated authorization reads.
+- Fetch message collections and branch summaries in bounded, set-shaped operations. Defer inactive branch detail until requested.
+- Do not block a primary read or write on analytics, logging fanout, notifications, or other non-essential work. Use `requestInfo.rw.waitUntil` when the runtime offers a safe deferred path.
+- Stream model output incrementally. Persist the final canonical assistant state once, then reconcile the client without a redundant full-route refresh.
+- Log `[TRACE]` events with request, conversation, and branch identifiers, cache outcomes, payload sizes, model/tool timing, and structured failure context. Never log message content, credentials, tokens, or attachment previews.
+- Flag unexpectedly slow helpers with `[TRACE] ... slow`; keep edge SSR CPU below 40 ms where practical and investigate paths approaching 80 ms.
+- Measure before and after on the same representative fixture. Report p50 and p95 for load and action-to-visible-state timing, plus data-integrity and reload checks. Never relax a budget merely to report success.
+
+## Streaming and Tooling
+- Keep the SSE transport bounded and explicit: start, incremental output, reasoning/tool progress where supported, completion, and error.
+- Establish the subscriber before beginning model output when needed to prevent lost first deltas.
+- Every stream must terminate or surface a recoverable error. Clean stale stream identifiers after completion, interruption, or reload.
+- Treat web search, uploads, retrieval, and other tools as server-owned capabilities. Validate model support and fail with a clear recovery path.
+- External source links must use real source URLs and safe new-tab behavior.
+- Never persist or display raw provider credentials. Secrets belong in local or Cloudflare secret bindings appropriate to the selected runtime mode.
+
+## CSP, Security, and Hydration
+- `src/app/Document.tsx` must load `/src/client.tsx` as an external module with `nonce={requestInfo.rw.nonce}`.
+- Production CSP must not add `unsafe-eval` or broad script exceptions to work around a component issue.
+- Sanitize rendered Markdown and tool output before inserting HTML.
+- Enforce upload limits from bytes actually received, not only `Content-Length`.
+- Keep auth and conversation ownership checks at every public server boundary.
+- Fail closed when required auth or trust configuration is missing.
+- Keep UI markup deterministic between SSR and hydration. Pre-format dates, numbers, costs, and labels on the server when they appear during initial render.
 
 ## Prohibited Patterns
-- ❌ Next.js conventions (`pages/api`, `app/api`), Express routers, or bespoke REST endpoints when a Server Function suffices.
-- ❌ Client-side data fetching for server-owned data, including direct Durable Object access from the browser.
-- ❌ Importing `"use server"` modules into SSR components.
-- ❌ D1-specific helpers or migrations; this project does not use D1.
-- ❌ Blocking top-level awaits or parallel `Promise.all` against Durable Objects within a single request path.
+- ❌ Next.js `pages/api`, `app/api`, route conventions, or Next-specific server actions.
+- ❌ Express, Hono, or another application router alongside RedwoodSDK.
+- ❌ Ad-hoc REST endpoints for ordinary reads or mutations that fit an RSC/Server Function boundary.
+- ❌ Client-side fetching for server-owned initial data or direct browser access to Durable Objects/R2.
+- ❌ Importing or calling a `"use server"` module from an RSC/SSR file.
+- ❌ Top-level database, Durable Object, storage, or network I/O.
+- ❌ Intra-request concurrency against the same Durable Object or storage transaction.
+- ❌ Per-message or per-branch N+1 storage reads.
+- ❌ Full-route refresh after a mutation when the Server Function can return canonical reconciliation state.
+- ❌ Non-deterministic or locale-dependent initial hydrated markup.
+- ❌ D1 helpers or migrations for the conversation graph.
+- ❌ Logging user content, secrets, access tokens, API keys, or private attachment excerpts.
 
 ## House Style
-- Pages (RSC): `src/app/pages/**/SomePage.tsx`
-- Client components: `src/app/components/**/Thing.tsx` with `"use client"`
-- Server functions per feature: `src/app/pages/<feature>/functions.ts`
-- Worker entry + routes: `src/worker.tsx`
-- Document shell: `src/app/Document.tsx` (ensure `<script type="module" src="/src/client.tsx" nonce={requestInfo.rw.nonce}></script>`)
-- Design specs: `designs/<slug>.md`
-- Keep styles deterministic; avoid inline randomness or locale-dependent formatting in hydrated trees.
-After completing each task, append to progress.txt:
-- Task completed and PRD item reference
-- Key decisions made and reasoning
-- Files changed
-- Any blockers or notes for next iteration
-Keep entries concise. Sacrifice grammar for the sake of concision. This file helps future iterations skip exploration.
-Keep changes small and focused:
-- One logical change per commit
-- Always commit immediately after each completed logical change once feedback loops pass
-- Stage only files changed for that logical change; ignore untouched or unrelated worktree changes
-- If a task feels too large, break it into subtasks
-- Prefer multiple small commits over one large commit
-- Run feedback loops after each change, not at the end
-Quality over speed. Small steps compound into big progress.
-When choosing the next task, prioritize in this order:
-1. Architectural decisions and core abstractions
-2. Integration points between modules
-3. Unknown unknowns and spike work
-4. Standard features and implementation
-5. Polish, cleanup, and quick wins
-Fail fast on risky work. Save easy wins for later.
+- Pages/RSC: `src/app/pages/**/SomePage.tsx`
+- Client islands: `src/app/components/**/Thing.tsx` with `"use client"`
+- Feature Server Functions: `src/app/pages/<feature>/functions.ts`
+- SSR-safe server helpers: `src/app/shared/**`
+- Worker entry and routes: `src/worker.tsx`
+- Document shell: `src/app/Document.tsx`
+- Shared domain model: `src/lib/conversation/**`
+- Durable Objects: `src/lib/durable-objects/**`
+- Design specifications: `designs/<slug>.md`
+- Prefer simple, domain-named functions and explicit return types at server/client and persistence boundaries.
+- Preserve existing behavior unless the task intentionally changes it. Keep unrelated refactors out of focused changes.
 
+## Development Troubleshooting
+- **Pending request:** Check whether it is `?__rsc`; that stream may stay open. The plain HTML request must return and finish.
+- **Blank page:** Confirm `/src/client.tsx` loaded, the CSP nonce is present, and the console has no hydration/bootstrap failure.
+- **Hanging SSR:** Look for top-level I/O, an SSR import of `functions.ts`, self-fetching a Server Function, or a serialized Durable Object call that never resolves.
+- **Hydration mismatch:** Remove time-, randomness-, locale-, viewport-, or browser-dependent initial rendering. Pass stable server-produced values.
+- **Missing first stream tokens:** Verify the SSE subscription handshake happens before model streaming begins.
+- **Stuck pending response:** Verify completion/error events clear both in-memory and session-persisted stream state.
+- **State missing after restart:** Confirm the expected local `.wrangler` persistence path and that no cleanup command removed it.
+- **Branch switch regression:** Test root, child, deep child, archived branch, compare-open, and reload paths against representative message counts.
 
-## Testing & QA
-- Formal automated suites are deferred for MVP, but every new helper or server function must include console traces and manual validation notes covering happy-path and failure states.
-Before committing, run ALL feedback loops:
-1. TypeScript: pnpm types (must pass with no errors)
-2. Tests: npm run test (must pass)
-3. Lint: npm run lint (must pass)
-Do NOT commit if any feedback loop fails. Fix issues first.
-This codebase will outlive you. Every shortcut you take becomes
-someone else's burden. Every hack compounds into technical debt
-that slows the whole team down.
+## Testing and QA
+- Every new helper or Server Function needs automated coverage where practical plus trace/manual validation notes for happy and failure paths.
+- Test behavior and contracts, not implementation trivia.
+- For UI or streaming changes, run a real browser smoke covering navigation, send, incremental output, completion reconciliation, reload persistence, and error recovery.
+- For performance-sensitive changes, use representative graph sizes and record p50/p95 evidence for the affected user-visible flow.
+- Before committing, run all feedback loops:
+  1. `pnpm types`
+  2. `npm run test`
+  3. `npm run lint`
+- Do not commit with a failing gate. Fix the cause; never weaken types, silence warnings, remove tests, or hide errors.
 
-You are not just writing code. You are shaping the future of this
-project. The patterns you establish will be copied. The corners
-you cut will be cut again.
+## Work and Commit Discipline
+- Inspect the current path, patterns, Git status, and smallest relevant verification before editing.
+- Keep one logical concern per change and per commit.
+- Commit immediately after that concern passes all required feedback loops.
+- Stage only files belonging to the logical change. Preserve unrelated user or agent work.
+- Break large work into architectural decisions, integration points, risky spikes, standard implementation, then polish—in that order.
+- Prefer the smallest safe change that solves the real problem. Avoid speculative frameworks, dependencies, schema changes, auth changes, and global mutable state.
+- After each completed task, append a concise entry to `progress.txt` with:
+  - task and PRD/reference;
+  - key decisions and why;
+  - files changed;
+  - blockers or the next manual check.
 
-Fight entropy. Leave the codebase better than you found it.
+## Deployment and Local Runtime
+- Keep secrets in Cloudflare bindings or local uncommitted runtime configuration; never hard-code them.
+- Preserve Durable Object and R2 binding parity between local and deployed modes.
+- Local development data is persistent user data, not disposable build output. Document explicit reset and backup operations.
+- Use the repository’s existing `pnpm release` path for deployment; do not invent a parallel deployment workflow.
+- Use `usage_model: "unbound"` only when workload measurements justify it.
+- Before considering a deployment healthy, verify the HTML shell, client bootstrap, RSC navigation, authentication, Durable Object reads/writes, streaming, and reload persistence.
 
-## Deployment Notes
-- Secrets (OpenAI keys, Durable Object IDs) live in Cloudflare environment bindings; never hard-code them.
-- Use Wrangler deploys with `usage_model: "unbound"` only if the workload requires it; otherwise keep defaults.
-- Ensure the Document component attaches the CSP nonce and that the HTML shell finishes quickly even when RSC streams remain pending.
+This codebase will outlive the current task. Establish patterns worth copying, keep boundaries explicit, and leave the system easier to reason about than you found it.

@@ -521,3 +521,8 @@
 - Decisions: moved base prompt + plan addendum into `src/lib/openai/prompts/*.md` bundled via Vite `?raw` so changes are versioned (not UI-editable); removed `Short answer:` plan contract and narrowed plan-format triggering to explicit plan keywords only; stopped persisting legacy default `settings.systemPrompt` (and ignore the old default string) so existing conversations pick up the new prompt automatically.
 - Files: src/lib/openai/agentPrompt.ts, src/lib/openai/prompts/connexus.base.md, src/lib/openai/prompts/connexus.plan.md, src/app/shared/conversation.server.ts, types/vite.d.ts, Docs/testing-report.md, progress.txt.
 - Notes: feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-07-21 — Refreshed project agent guidance from current RedwoodSDK practices. Ref: Engineering workflow / RedwoodSDK boundaries.
+- Task: align Branch Chat AGENTS rules with the current Digi-Engage RedwoodSDK principles while retaining Branch Chat-specific architecture.
+- Decisions: added explicit RSC/Server Function boundaries, hydration/CSP rules, request-scoped initialization, DO round-trip discipline, canonical mutation reconciliation, streaming recovery, troubleshooting, and end-to-end performance evidence; excluded Digi-Engage-only D1/BMad/release rules.
+- Files: AGENTS.MD, progress.txt.
+- Notes: documentation-only; feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
