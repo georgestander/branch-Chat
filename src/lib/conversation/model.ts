@@ -12,6 +12,14 @@ export type ConversationRole = "user" | "assistant" | "system";
 
 export type ComposerPreset = "fast" | "reasoning" | "study" | "custom";
 
+export type ReasoningEffort =
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | "ultra";
+
 export interface ComposerDefaults {
   preset: ComposerPreset;
   tools: ConversationComposerTool[];
@@ -22,7 +30,7 @@ export interface ConversationSettings {
   temperature: number;
   systemPrompt?: string | null;
   // Optional: applies only to reasoning models; ignored for chat-tuned models
-  reasoningEffort?: "low" | "medium" | "high" | null;
+  reasoningEffort?: ReasoningEffort | null;
   composerDefaults: ComposerDefaults;
 }
 

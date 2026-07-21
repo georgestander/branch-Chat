@@ -25,6 +25,7 @@ import type {
   ComposerPreset,
   ConversationModelId,
   MessageAttachment,
+  ReasoningEffort,
 } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
@@ -75,13 +76,13 @@ interface BranchColumnProps {
   highlightedBranchId?: string | null;
   parentBranchTitle?: string | null;
   conversationModel: string;
-  reasoningEffort: "low" | "medium" | "high" | null;
+  reasoningEffort: ReasoningEffort | null;
   composerPreset: ComposerPreset;
   composerTools: ConversationComposerTool[];
   openRouterModels: OpenRouterModelOption[];
   onConversationSettingsChange: (
     model: string,
-    effort: "low" | "medium" | "high" | null,
+    effort: ReasoningEffort | null,
     options?: {
       preset?: ComposerPreset;
       tools?: ConversationComposerTool[];

@@ -57,6 +57,7 @@ import type {
   Message,
   MessageAttachment,
   PendingAttachment,
+  ReasoningEffort,
   AttachmentIngestionRecord,
   ToolInvocation,
   ToolInvocationStatus,
@@ -116,17 +117,17 @@ function normalizeModelIdForCapabilityChecks(model: string): string {
 function buildResponseOptions(settings: {
   model: string;
   temperature: number;
-  reasoningEffort?: "low" | "medium" | "high" | null;
+  reasoningEffort?: ReasoningEffort | null;
 }): {
   model: string;
   temperature?: number;
-  reasoning?: { effort?: "low" | "medium" | "high" };
+  reasoning?: { effort?: Exclude<ReasoningEffort, "ultra"> };
   text?: { verbosity: "low" | "medium" | "high" };
 } {
   const request: {
     model: string;
     temperature?: number;
-    reasoning?: { effort?: "low" | "medium" | "high" };
+    reasoning?: { effort?: Exclude<ReasoningEffort, "ultra"> };
     text?: { verbosity: "low" | "medium" | "high" };
   } = {
     model: settings.model,
@@ -138,7 +139,12 @@ function buildResponseOptions(settings: {
   }
 
   if (supportsReasoningEffortModel(settings.model) && settings.reasoningEffort) {
-    request.reasoning = { effort: settings.reasoningEffort };
+    request.reasoning = {
+      effort:
+        settings.reasoningEffort === "ultra"
+          ? "max"
+          : settings.reasoningEffort,
+    };
   }
 
   // Chat-tuned gpt-5 variants reject `low` verbosity and only accept `medium`.
@@ -226,7 +232,14 @@ function normalizeReasoningEffortForModel(
   if (!supportsReasoningEffortModel(model)) {
     return null;
   }
-  if (effort === "low" || effort === "medium" || effort === "high") {
+  if (
+    effort === "low" ||
+    effort === "medium" ||
+    effort === "high" ||
+    effort === "xhigh" ||
+    effort === "max" ||
+    effort === "ultra"
+  ) {
     return effort;
   }
   return "low";
@@ -458,7 +471,7 @@ export interface CreateConversationInput extends ConversationPayload {
   initialMessage?: string;
   preset?: ComposerPreset;
   model?: string;
-  reasoningEffort?: "low" | "medium" | "high" | null;
+  reasoningEffort?: ReasoningEffort | null;
   tools?: ConversationComposerTool[];
 }
 
@@ -500,7 +513,7 @@ export interface DeleteConversationResponse {
 export interface UpdateConversationSettingsInput extends ConversationPayload {
   model?: string;
   temperature?: number;
-  reasoningEffort?: "low" | "medium" | "high" | null;
+  reasoningEffort?: ReasoningEffort | null;
   preset?: ComposerPreset;
   tools?: ConversationComposerTool[];
 }

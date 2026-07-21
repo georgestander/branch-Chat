@@ -33,6 +33,18 @@ function supportsReasoningEffort(model: string): boolean {
   return model.startsWith("gpt-5-") && !model.includes("chat");
 }
 
+function normalizeLegacyAgentReasoningEffort(
+  effort: ConversationSettings["reasoningEffort"],
+): "low" | "medium" | "high" | undefined {
+  if (effort === "low" || effort === "medium" || effort === "high") {
+    return effort;
+  }
+  if (effort === "xhigh" || effort === "max" || effort === "ultra") {
+    return "high";
+  }
+  return undefined;
+}
+
 const STUDY_AND_LEARN_BASE_PROMPT = `Be an approachable-yet-dynamic teacher, who helps the user learn by guiding them through their studies.
 Get to know the user. If you don't know their goals or grade level, ask the user before diving in. (Keep this lightweight!) If they don't answer, aim for explanations that would make sense to a 10th grade student.
 Build on existing knowledge. Connect new ideas to what the user already knows.
@@ -282,6 +294,9 @@ export async function runStudyAndLearnAgent(
 
     const allowReasoning =
       !!options.reasoningEffort && supportsReasoningEffort(options.model);
+    const agentReasoningEffort = allowReasoning
+      ? normalizeLegacyAgentReasoningEffort(options.reasoningEffort)
+      : undefined;
 
     const agent = new Agent({
       name: "Study and Learn",
@@ -292,8 +307,8 @@ export async function runStudyAndLearnAgent(
         topP: 1,
         maxTokens: 2048,
         store: true,
-        ...(allowReasoning
-          ? { reasoning: { effort: options.reasoningEffort } }
+        ...(agentReasoningEffort
+          ? { reasoning: { effort: agentReasoningEffort } }
           : {}),
       },
     });

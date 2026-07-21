@@ -1,4 +1,4 @@
-import type { ComposerPreset } from "@/lib/conversation";
+import type { ComposerPreset, ReasoningEffort } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 
 const STORAGE_KEY = "account.state.v1";
@@ -25,7 +25,7 @@ export interface AccountByokCredential {
 
 export interface AccountComposerPreference {
   model: string;
-  reasoningEffort: "low" | "medium" | "high" | null;
+  reasoningEffort: ReasoningEffort | null;
   preset: ComposerPreset;
   tools: ConversationComposerTool[];
   updatedAt: string;
@@ -121,8 +121,15 @@ function normalizeComposerTools(value: unknown): ConversationComposerTool[] {
 
 function normalizeComposerReasoningEffort(
   value: unknown,
-): "low" | "medium" | "high" | null {
-  if (value === "low" || value === "medium" || value === "high") {
+): ReasoningEffort | null {
+  if (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max" ||
+    value === "ultra"
+  ) {
     return value;
   }
   return null;
@@ -629,7 +636,7 @@ export class AccountClient {
 
   async setComposerPreference(input: {
     model: string;
-    reasoningEffort?: "low" | "medium" | "high" | null;
+    reasoningEffort?: ReasoningEffort | null;
     preset?: ComposerPreset;
     tools?: ConversationComposerTool[];
   }): Promise<AccountComposerPreference> {

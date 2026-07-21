@@ -8,11 +8,19 @@ import {
   createConversation,
   type CreateConversationResponse,
 } from "@/app/pages/conversation/functions";
-import { DEFAULT_CONVERSATION_MODEL, type ComposerPreset } from "@/lib/conversation";
+import {
+  DEFAULT_CONVERSATION_MODEL,
+  type ComposerPreset,
+  type ReasoningEffort,
+} from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import {
+  CHATGPT_MODEL_OPTIONS,
+  getChatGPTModelOption,
   isWebSearchSupportedModel,
+  REASONING_EFFORT_LABELS,
+  resolveReasoningEffortForModel,
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { cn } from "@/lib/utils";
@@ -22,7 +30,7 @@ interface ConversationEmptyLayoutProps {
   missingConversationId?: string | null;
 }
 
-type StartModeEffort = "low" | "medium" | "high" | null;
+type StartModeEffort = ReasoningEffort | null;
 
 const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
   "study-and-learn",
@@ -79,24 +87,6 @@ const PRESET_OPTIONS: Array<{
     id: "custom",
     label: "Custom",
     description: "Keep your explicit model and tool picks.",
-  },
-];
-
-const MODEL_OPTIONS: Array<{ id: string; label: string; description: string }> = [
-  {
-    id: DEFAULT_CONVERSATION_MODEL,
-    label: "GPT-5.6 Terra",
-    description: "Balanced everyday model",
-  },
-  {
-    id: "gpt-5.6-sol",
-    label: "GPT-5.6 Sol",
-    description: "Frontier capability model",
-  },
-  {
-    id: "gpt-5.6-luna",
-    label: "GPT-5.6 Luna",
-    description: "Efficient high-volume model",
   },
 ];
 
@@ -295,7 +285,7 @@ export function ConversationEmptyLayout({
 
   const handleModelChange = (nextModel: string) => {
     const nextEffort = supportsReasoningEffortModel(nextModel)
-      ? (selectedReasoningEffort ?? "medium")
+      ? resolveReasoningEffortForModel(nextModel, selectedReasoningEffort)
       : null;
     const nextTools = sanitizeComposerTools(selectedTools).filter((tool) =>
       isWebSearchSupportedModel(nextModel) ? true : tool !== "web-search",
@@ -312,7 +302,7 @@ export function ConversationEmptyLayout({
     );
   };
 
-  const handleReasoningEffortChange = (value: "low" | "medium" | "high") => {
+  const handleReasoningEffortChange = (value: ReasoningEffort) => {
     if (!supportsReasoningEffortModel(selectedModel)) {
       return;
     }
@@ -351,13 +341,16 @@ export function ConversationEmptyLayout({
   };
 
   const canUseWebSearch = isWebSearchSupportedModel(selectedModel);
+  const selectedModelOption = getChatGPTModelOption(selectedModel);
+  const reasoningOptions: readonly ReasoningEffort[] =
+    selectedModelOption?.supportedReasoningEfforts ?? ["low", "medium", "high"];
   const selectedModeSummary =
     selectedPreset === "fast"
       ? "Fast preset: GPT-5.6 Terra, medium reasoning, Fast service tier, and web search."
       : selectedPreset === "reasoning"
-        ? "Reasoning preset: GPT-5 Mini with medium effort."
+        ? "Reasoning preset: GPT-5.6 Sol with high effort and web search."
         : selectedPreset === "study"
-          ? "Study preset: GPT-5 Mini with medium effort and Study & Learn."
+          ? "Study preset: GPT-5.6 Sol with medium effort, web search, and Study & Learn."
           : "Custom mode: uses your explicit model, reasoning, and tool picks.";
 
   return (
@@ -520,7 +513,7 @@ export function ConversationEmptyLayout({
                       onChange={(event) => handleModelChange(event.target.value)}
                       className="h-9 w-full rounded-xl border border-foreground/15 bg-background px-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {MODEL_OPTIONS.map((option) => (
+                      {CHATGPT_MODEL_OPTIONS.map((option) => (
                         <option key={`start-model-${option.id}`} value={option.id}>
                           {`${option.label} · ${option.description}`}
                         </option>
@@ -540,15 +533,17 @@ export function ConversationEmptyLayout({
                       value={selectedReasoningEffort ?? "medium"}
                       onChange={(event) =>
                         handleReasoningEffortChange(
-                          event.target.value as "low" | "medium" | "high",
+                          event.target.value as ReasoningEffort,
                         )
                       }
                       disabled={!supportsReasoningEffortModel(selectedModel)}
                       className="h-9 w-full rounded-xl border border-foreground/15 bg-background px-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55"
                     >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                      {reasoningOptions.map((effort) => (
+                        <option key={`start-reasoning-${effort}`} value={effort}>
+                          {REASONING_EFFORT_LABELS[effort]}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

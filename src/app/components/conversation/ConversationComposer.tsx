@@ -59,10 +59,18 @@ import {
   emitByokStatusChanged,
   type ByokStatusChangedDetail,
 } from "@/app/components/conversation/byokEvents";
-import { DEFAULT_CONVERSATION_MODEL, type ComposerPreset } from "@/lib/conversation";
+import {
+  DEFAULT_CONVERSATION_MODEL,
+  type ComposerPreset,
+  type ReasoningEffort,
+} from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import {
+  CHATGPT_MODEL_OPTIONS,
+  getChatGPTModelOption,
   isWebSearchSelectableModel,
+  REASONING_EFFORT_LABELS,
+  resolveReasoningEffortForModel,
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
@@ -130,7 +138,7 @@ const START_MODE_DEFAULTS: Record<
   Exclude<ComposerPreset, "custom">,
   {
     model: string;
-    reasoningEffort: "low" | "medium" | "high" | null;
+    reasoningEffort: ReasoningEffort | null;
     tools: ConversationComposerTool[];
   }
 > = {
@@ -286,7 +294,7 @@ function resolveOpenRouterPresetModelId(
 
 function inferComposerPreset(options: {
   model: string;
-  reasoningEffort: "low" | "medium" | "high" | null;
+  reasoningEffort: ReasoningEffort | null;
   tools: ConversationComposerTool[];
 }): ComposerPreset {
   const normalizedTools = sanitizeStoredComposerTools(options.tools);
@@ -330,13 +338,13 @@ interface ConversationComposerProps {
   autoFocus?: boolean;
   className?: string;
   conversationModel: string;
-  reasoningEffort: "low" | "medium" | "high" | null;
+  reasoningEffort: ReasoningEffort | null;
   composerPreset: ComposerPreset;
   composerTools: ConversationComposerTool[];
   openRouterModels: OpenRouterModelOption[];
   onConversationSettingsChange: (
     model: string,
-    effort: "low" | "medium" | "high" | null,
+    effort: ReasoningEffort | null,
     options?: {
       preset?: ComposerPreset;
       tools?: ConversationComposerTool[];
@@ -412,22 +420,18 @@ export function ConversationComposer({
   const autoSendPendingRef = useRef<string | null>(null);
   const webSearchSelectable = isWebSearchSelectableModel(conversationModel);
   const { notify } = useToast();
-  const reasoningOptions: Array<"low" | "medium" | "high"> = [
-    "low",
-    "medium",
-    "high",
-  ];
+  const selectedChatGPTModel = getChatGPTModelOption(conversationModel);
+  const reasoningOptions: readonly ReasoningEffort[] =
+    selectedChatGPTModel?.supportedReasoningEfforts ?? ["low", "medium", "high"];
   const modelEmojis = {
     fast: "🚀",
     low: "🧠",
     medium: "🧠🧠",
     high: "🧠🧠🧠",
+    xhigh: "🧠⁴",
+    max: "🔥",
+    ultra: "⚡",
   } as const;
-  const effortLabels: Record<"low" | "medium" | "high", string> = {
-    low: "Low",
-    medium: "Medium",
-    high: "High",
-  };
 
   useEffect(() => {
     if (!isAdvancedControlsOpen) {
@@ -442,15 +446,14 @@ export function ConversationComposer({
   };
   const currentPresetLabel = presetLabels[composerPreset];
   const isFastPreset = composerPreset === "fast";
-  const isReasoningPreset = composerPreset === "reasoning";
-  const currentReasoningEffort = (reasoningEffort ?? "low") as "low" | "medium" | "high";
+  const currentReasoningEffort = reasoningEffort ?? "low";
   const selectedOpenRouterModel = openRouterModels.find(
     (model) => model.id === conversationModel,
   );
   const openRouterSelected = isOpenRouterModel(conversationModel);
   const isReasoningModel = supportsReasoningEffortModel(conversationModel);
   const reasoningLabel = isReasoningModel
-    ? `Reasoning ${effortLabels[currentReasoningEffort]}`
+    ? `Reasoning ${REASONING_EFFORT_LABELS[currentReasoningEffort]}`
     : null;
   const currentModelLabel = selectedOpenRouterModel
     ? reasoningLabel
@@ -460,7 +463,7 @@ export function ConversationComposer({
       ? reasoningLabel
         ? `${stripOpenRouterPrefix(conversationModel)} · ${reasoningLabel}`
         : stripOpenRouterPrefix(conversationModel)
-      : `${conversationModel} · ${effortLabels[currentReasoningEffort]}`;
+      : `${selectedChatGPTModel?.label ?? conversationModel} · ${REASONING_EFFORT_LABELS[currentReasoningEffort]}`;
   const modelBadgeClassName =
     "inline-flex w-10 shrink-0 items-center justify-end text-[10px] leading-none text-current";
   const BASE_TEXTAREA_HEIGHT = 20;
@@ -1092,7 +1095,7 @@ export function ConversationComposer({
       nextToolsInput: ConversationComposerTool[],
       options?: {
         model?: string;
-        reasoningEffort?: "low" | "medium" | "high" | null;
+        reasoningEffort?: ReasoningEffort | null;
       },
     ) => {
       const nextModel = options?.model ?? conversationModel;
@@ -1202,7 +1205,7 @@ export function ConversationComposer({
   const handleModelSelection = useCallback(
     async (
       nextModel: string,
-      nextEffort: "low" | "medium" | "high" | null,
+      nextEffort: ReasoningEffort | null,
       presetOverride?: ComposerPreset,
     ) => {
       const normalizedEffort = supportsReasoningEffortModel(nextModel)
@@ -1226,7 +1229,7 @@ export function ConversationComposer({
         setSelectedTools(nextTools);
         setIsModelMenuOpen(false);
         if (supportsReasoningEffortModel(nextModel)) {
-          const effortLabel = effortLabels[(nextEffort ?? "low") as "low" | "medium" | "high"];
+          const effortLabel = REASONING_EFFORT_LABELS[nextEffort ?? "low"];
           notify({
             variant: "warning",
             title: "Deep reasoning is slower",
@@ -1288,7 +1291,7 @@ export function ConversationComposer({
   const applyPresetModelSelection = useCallback(
     (
       preset: "fast" | "reasoning",
-      effort: "low" | "medium" | "high" | null,
+      effort: ReasoningEffort | null,
     ) => {
       if (shouldRoutePresetsToOpenRouter) {
         const openRouterPresetModelId =
@@ -1691,8 +1694,8 @@ export function ConversationComposer({
                 className="interactive-target inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 title={
                   isFastPreset
-                    ? `Fast · GPT-5.6 Terra · ${effortLabels[currentReasoningEffort]}`
-                    : `Reasoning (${effortLabels[currentReasoningEffort]}) — click to switch to fast`
+                    ? `Fast · GPT-5.6 Terra · ${REASONING_EFFORT_LABELS[currentReasoningEffort]}`
+                    : `Reasoning (${REASONING_EFFORT_LABELS[currentReasoningEffort]}) — click to switch to fast`
                 }
                 aria-label={
                   isFastPreset
@@ -1899,7 +1902,7 @@ export function ConversationComposer({
                   ref={modelMenuRef}
                   id={modelMenuId}
                   role="menu"
-                  className="absolute bottom-full right-0 z-30 mb-2 max-h-96 w-72 overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
+                  className="absolute bottom-full right-0 z-30 mb-2 max-h-[calc(100vh-7rem)] w-72 overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
                 >
                 <button
                   type="button"
@@ -1922,19 +1925,26 @@ export function ConversationComposer({
 
                 <div className="my-2 border-t border-border/60" aria-hidden="true" />
                 <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Reasoning models
+                  ChatGPT models
                 </div>
 
-                {reasoningOptions.map((option) => {
-                  const isSelected = isReasoningPreset && currentReasoningEffort === option;
+                {CHATGPT_MODEL_OPTIONS.map((model) => {
+                  const isSelected =
+                    conversationModel === model.id && !isFastPreset;
                   return (
                     <button
-                      key={`composer-reasoning-${option}`}
+                      key={`composer-chatgpt-${model.id}`}
                       type="button"
                       role="menuitemradio"
                       aria-checked={isSelected}
                       onClick={() => {
-                        applyPresetModelSelection("reasoning", option);
+                        void handleModelSelection(
+                          model.id,
+                          resolveReasoningEffortForModel(
+                            model.id,
+                            reasoningEffort,
+                          ),
+                        );
                       }}
                       disabled={conversationSettingsSaving}
                       className={cn(
@@ -1942,13 +1952,52 @@ export function ConversationComposer({
                         isSelected ? "state-selected font-semibold text-primary-foreground" : "hover:bg-muted/70",
                       )}
                     >
-                      <span className="font-medium">{`Reasoning · ${effortLabels[option]}`}</span>
-                      <span className={modelBadgeClassName} aria-hidden="true">
-                        {modelEmojis[option]}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{model.label}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {model.description}
+                        </span>
                       </span>
                     </button>
                   );
                 })}
+
+                {selectedChatGPTModel ? (
+                  <>
+                    <div className="my-2 border-t border-border/60" aria-hidden="true" />
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Reasoning effort
+                    </div>
+                    {reasoningOptions.map((option) => {
+                      const isSelected = currentReasoningEffort === option;
+                      return (
+                        <button
+                          key={`composer-reasoning-${option}`}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={isSelected}
+                          onClick={() => {
+                            void handleModelSelection(conversationModel, option);
+                          }}
+                          disabled={conversationSettingsSaving}
+                          className={cn(
+                            "interactive-target flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+                            isSelected
+                              ? "state-selected font-semibold text-primary-foreground"
+                              : "hover:bg-muted/70",
+                          )}
+                        >
+                          <span className="font-medium">
+                            {REASONING_EFFORT_LABELS[option]}
+                          </span>
+                          <span className={modelBadgeClassName} aria-hidden="true">
+                            {modelEmojis[option]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </>
+                ) : null}
 
                 {openRouterModels.length > 0 ? (
                   <>

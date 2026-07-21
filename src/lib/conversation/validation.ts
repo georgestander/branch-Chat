@@ -259,7 +259,10 @@ function validateConversationSettings(
     effort === null ||
     effort === "low" ||
     effort === "medium" ||
-    effort === "high"
+    effort === "high" ||
+    effort === "xhigh" ||
+    effort === "max" ||
+    effort === "ultra"
   ) {
     reasoningEffort = effort ?? undefined;
   } else {

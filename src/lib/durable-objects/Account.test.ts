@@ -28,8 +28,8 @@ test("normalizeAccountState keeps BYOK and composer preference from legacy recor
         updatedAt: "2026-02-10T00:00:00.000Z",
       },
       composerPreference: {
-        model: "gpt-5-mini",
-        reasoningEffort: "medium",
+        model: "gpt-5.6-sol",
+        reasoningEffort: "ultra",
         preset: "reasoning",
         tools: ["web-search", "web-search", "file-upload", "unknown-tool"],
         updatedAt: "2026-02-11T00:00:00.000Z",
@@ -41,7 +41,8 @@ test("normalizeAccountState keeps BYOK and composer preference from legacy recor
 
   assert.equal(normalized.ownerId, "person.one");
   assert.equal(normalized.byok?.provider, "openai");
-  assert.equal(normalized.composerPreference?.model, "gpt-5-mini");
+  assert.equal(normalized.composerPreference?.model, "gpt-5.6-sol");
+  assert.equal(normalized.composerPreference?.reasoningEffort, "ultra");
   assert.deepEqual(normalized.composerPreference?.tools, [
     "web-search",
     "file-upload",

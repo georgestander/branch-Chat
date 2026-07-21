@@ -17,6 +17,7 @@ import type {
   ComposerPreset,
   Conversation,
   ConversationModelId,
+  ReasoningEffort,
 } from "@/lib/conversation";
 import { DEFAULT_CONVERSATION_MODEL } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
@@ -69,7 +70,7 @@ const ALLOWED_COMPOSER_TOOLS = new Set<ConversationComposerTool>([
 ]);
 const CONVERSATION_TOOL_PREFERENCE_STORAGE_PREFIX = "connexus:composer:tools:";
 
-type ConversationReasoningEffort = "low" | "medium" | "high" | null;
+type ConversationReasoningEffort = ReasoningEffort | null;
 
 const START_MODE_DEFAULTS: Record<
   Exclude<ComposerPreset, "custom">,
@@ -271,7 +272,7 @@ export function ConversationLayout({
     initialParentCollapsed,
   );
   const [settingsModel, setSettingsModel] = useState(resolvedInitialModel);
-  const [settingsEffort, setSettingsEffort] = useState<"low" | "medium" | "high" | null>(
+  const [settingsEffort, setSettingsEffort] = useState<ReasoningEffort | null>(
     resolvedInitialEffort,
   );
   const [settingsPreset, setSettingsPreset] =
@@ -395,7 +396,7 @@ export function ConversationLayout({
   const handleConversationSettingsChange = useCallback(
     async (
       nextModel: string,
-      nextEffort: "low" | "medium" | "high" | null,
+      nextEffort: ReasoningEffort | null,
       options?: {
         preset?: ComposerPreset;
         tools?: ConversationComposerTool[];

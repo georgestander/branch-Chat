@@ -7,7 +7,7 @@ import {
   decryptByokApiKey,
   encryptByokApiKey,
 } from "@/app/shared/byokCrypto.server";
-import type { ComposerPreset } from "@/lib/conversation";
+import type { ComposerPreset, ReasoningEffort } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 
 function getClient(ctx: AppContext) {
@@ -61,8 +61,15 @@ function normalizeComposerModel(value: unknown): string {
 
 function normalizeComposerReasoningEffort(
   value: unknown,
-): "low" | "medium" | "high" | null {
-  if (value === "low" || value === "medium" || value === "high") {
+): ReasoningEffort | null {
+  if (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max" ||
+    value === "ultra"
+  ) {
     return value;
   }
   return null;
@@ -116,7 +123,7 @@ function toByokStatus(byok: AccountByokCredential | null): {
 
 export interface ComposerPreferenceInput {
   model: string;
-  reasoningEffort?: "low" | "medium" | "high" | null;
+  reasoningEffort?: ReasoningEffort | null;
   preset?: ComposerPreset;
   tools?: ConversationComposerTool[];
 }
