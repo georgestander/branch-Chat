@@ -678,7 +678,7 @@ export function BranchColumn({
                 <button
                   type="button"
                   onClick={onActivateBranch}
-                  className="interactive-target inline-flex items-center gap-1.5 rounded px-2 py-1 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground transition hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-[0.7rem]"
+                  className="interactive-target inline-flex items-center gap-1.5 rounded border border-foreground/25 bg-secondary px-2.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-foreground transition hover:border-foreground/45 hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-[0.7rem]"
                   title={`Open ${branch.title || "parent branch"} and close split view`}
                 >
                   <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />

@@ -549,3 +549,7 @@
 - Decisions: keep the action on the existing `Parent Branch` affordance; navigate to the parent branch without `compare=1`, promoting it to the active pane while keeping the child reachable from stored inline/tree navigation.
 - Files: src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationLayout.tsx, progress.txt.
 - Notes: in-app browser validation passed: one accessible Parent Branch button navigated to the parent id, removed `compare=1`, collapsed the child pane, and produced no console warnings/errors.
+2026-07-21 — Increased Parent Branch button affordance. Ref: UX & A11y branch navigation.
+- Decisions: retain compact header placement and wording; add a persistent border, filled secondary surface, stronger typography, and inverted hover state so the navigation reads as clickable before interaction.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: in-app browser visual check passed at the compact split-view width; button remains readable beside the truncated parent title. Existing React dev-runtime reload errors remain unrelated to this CSS-only change.
