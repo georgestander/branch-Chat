@@ -5,6 +5,7 @@ import {
   resolveConversationId,
 } from "@/app/shared/conversation.server";
 import { enrichMessagesWithHtml } from "@/app/shared/markdown.server";
+import type { MessageBranchHighlight } from "@/app/shared/markdown.server";
 import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
 import type { AppRequestInfo } from "@/worker";
 import type { Branch, ConversationGraphSnapshot, Message } from "@/lib/conversation";
@@ -92,22 +93,17 @@ export async function ConversationPage({
     activeMessages,
     {
       isActiveBranch: true,
+      highlights: getBranchHighlights(snapshot, activeBranch.id),
     },
   );
-
-  const parentHighlight = activeBranch.createdFrom?.messageId
-    ? {
-        messageId: activeBranch.createdFrom.messageId,
-        range: activeBranch.createdFrom.span ?? null,
-        branchId: activeBranch.id,
-      }
-    : null;
 
   const parentRenderedMessages = await enrichMessagesWithHtmlForBranch(
     parentMessages,
     {
       isActiveBranch: false,
-      highlight: parentHighlight,
+      highlights: parentBranch
+        ? getBranchHighlights(snapshot, parentBranch.id)
+        : [],
     },
   );
 
@@ -138,7 +134,7 @@ async function enrichMessagesWithHtmlForBranch(
   messages: Message[],
   options: {
     isActiveBranch: boolean;
-    highlight?: { messageId: string; range: { start: number; end: number } | null } | null;
+    highlights?: MessageBranchHighlight[];
   },
 ) {
   const streamingAssistant = options.isActiveBranch
@@ -146,9 +142,29 @@ async function enrichMessagesWithHtmlForBranch(
     : null;
 
   return enrichMessagesWithHtml(messages, {
-    highlight: options.highlight ?? null,
+    highlights: options.highlights ?? [],
     streamingMessageId: streamingAssistant,
   });
+}
+
+function getBranchHighlights(
+  snapshot: ConversationGraphSnapshot,
+  sourceBranchId: string,
+): MessageBranchHighlight[] {
+  return Object.values(snapshot.branches)
+    .filter(
+      (branch) =>
+        branch.parentId === sourceBranchId &&
+        typeof branch.createdFrom?.messageId === "string",
+    )
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .map((branch) => ({
+      branchId: branch.id,
+      messageId: branch.createdFrom.messageId,
+      title: branch.title?.trim() || "Child branch",
+      excerpt: branch.createdFrom.excerpt?.trim() || null,
+      range: branch.createdFrom.span ?? null,
+    }));
 }
 
 function determineStreamingAssistantMessageId(messages: Message[]) {

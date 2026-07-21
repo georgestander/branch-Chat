@@ -149,6 +149,7 @@ function createOptimisticRenderedMessage(
     attachments: [],
     toolInvocations: null,
     hasBranchHighlight: false,
+    branchAnchors: [],
     renderedHtml: formatOptimisticHtml(detail.content),
   };
 }
@@ -170,6 +171,7 @@ function createPersistedRenderedMessage(
     attachments: detail.attachments ?? null,
     toolInvocations: detail.toolInvocations ?? null,
     hasBranchHighlight: false,
+    branchAnchors: [],
     renderedHtml,
   };
 }
@@ -387,6 +389,7 @@ export function BranchColumn({
       const params = new URLSearchParams({
         conversationId,
         branchId: targetBranchId,
+        compare: "1",
       });
       navigate(`/app?${params.toString()}`);
     };
@@ -803,6 +806,7 @@ function MessageBubble({
           content={message.content}
           renderedHtml={message.renderedHtml}
           toolInvocations={message.toolInvocations}
+          branchAnchors={message.branchAnchors}
         />
         {isStreaming ? (
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">

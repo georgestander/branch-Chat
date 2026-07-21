@@ -15,12 +15,21 @@ import type {
   Parent as HastParent,
 } from "hast";
 import type { Message } from "@/lib/conversation";
-import type { RenderedMessage } from "@/lib/conversation/rendered";
+import type {
+  RenderedBranchAnchor,
+  RenderedMessage,
+} from "@/lib/conversation/rendered";
+
+export interface MessageBranchHighlight extends RenderedBranchAnchor {
+  messageId: string;
+}
 
 export interface MarkdownRenderOptions {
-  highlightRange?: { start: number; end: number } | null;
-  highlightBranchId?: string | null;
-  highlightMessageId?: string | null;
+  highlights?: Array<{
+    range: { start: number; end: number };
+    branchId: string;
+    messageId: string;
+  }>;
   enableSyntaxHighlighting?: boolean;
 }
 
@@ -43,12 +52,9 @@ export async function renderMarkdownToHtml(
     processor.use(rehypeHighlight);
   }
 
-  if (options.highlightRange) {
+  if (options.highlights && options.highlights.length > 0) {
     processor.use(() => (tree: HastRoot) => {
-      wrapHighlight(tree, options.highlightRange!, {
-        branchId: options.highlightBranchId ?? null,
-        messageId: options.highlightMessageId ?? null,
-      });
+      wrapHighlights(tree, options.highlights!);
     });
   }
 
@@ -63,41 +69,41 @@ export async function renderMarkdownToHtml(
 export async function enrichMessagesWithHtml(
   messages: Message[],
   options: {
-    highlight?: {
-      messageId: string;
-      range: { start: number; end: number } | null;
-      branchId?: string | null;
-    } | null;
+    highlights?: MessageBranchHighlight[];
     streamingMessageId?: string | null;
   } = {},
 ): Promise<RenderedMessage[]> {
   return Promise.all(
     messages.map(async (message) => {
-      const highlightRange =
-        options.highlight && options.highlight.messageId === message.id
-          ? options.highlight.range ?? null
-          : null;
+      const branchAnchors = (options.highlights ?? [])
+        .filter((highlight) => highlight.messageId === message.id)
+        .map(({ messageId: _messageId, ...anchor }) => anchor);
+      const textHighlights = branchAnchors
+        .filter(
+          (anchor): anchor is RenderedBranchAnchor & {
+            range: { start: number; end: number };
+          } => Boolean(anchor.range && anchor.range.start < anchor.range.end),
+        )
+        .map((anchor) => ({
+          range: anchor.range,
+          branchId: anchor.branchId,
+          messageId: message.id,
+        }));
       const enableSyntaxHighlighting =
         !(options.streamingMessageId && options.streamingMessageId === message.id && message.role === "assistant");
 
       const renderedHtml = await renderMarkdownToHtml(message.content, {
-        highlightRange,
-        highlightBranchId:
-          options.highlight && options.highlight.messageId === message.id
-            ? options.highlight.branchId ?? null
-            : null,
-        highlightMessageId: message.id,
+        highlights: textHighlights,
         enableSyntaxHighlighting,
       });
 
-      const hasBranchHighlight = Boolean(
-        highlightRange && highlightRange.start < highlightRange.end,
-      );
+      const hasBranchHighlight = branchAnchors.length > 0;
 
       return {
         ...message,
         renderedHtml,
         hasBranchHighlight,
+        branchAnchors,
       } satisfies RenderedMessage;
     }),
   );
@@ -122,7 +128,12 @@ function createSanitizeSchema(): typeof defaultSchema {
   };
 
   extend("*", ["className", "data*", "id"]);
-  extend("mark", ["className", "data-branch-highlight"]);
+  extend("mark", [
+    "className",
+    "data-branch-highlight",
+    "data-branch-id",
+    "data-message-id",
+  ]);
   extend("code", ["className", "data-language"]);
   extend("pre", ["className", "data-theme"]);
   extend("button", ["className", "type", "data-copy-code", "data-copy-state"]);
@@ -306,18 +317,24 @@ function createCodeHeader(language: string | null): HastElement {
   } satisfies HastElement;
 }
 
-function wrapHighlight(
+function wrapHighlights(
   tree: HastRoot,
-  range: { start: number; end: number },
-  meta?: { branchId?: string | null; messageId?: string | null },
+  highlights: Array<{
+    range: { start: number; end: number };
+    branchId: string;
+    messageId: string;
+  }>,
 ) {
-  const { start, end } = range;
-  if (start >= end) {
+  const normalized = highlights
+    .filter(({ range }) => range.start < range.end)
+    .sort((left, right) =>
+      left.range.start !== right.range.start
+        ? left.range.start - right.range.start
+        : left.range.end - right.range.end,
+    );
+  if (normalized.length === 0) {
     return;
   }
-
-  const branchId = meta?.branchId ?? null;
-  const messageId = meta?.messageId ?? null;
   const state = { offset: 0 };
 
   function descend(node: HastParent) {
@@ -332,42 +349,44 @@ function wrapHighlight(
         const nodeEnd = nodeStart + value.length;
         state.offset = nodeEnd;
 
-        if (nodeEnd <= start || nodeStart >= end) {
+        const overlapping = normalized.filter(
+          ({ range }) => nodeEnd > range.start && nodeStart < range.end,
+        );
+        if (overlapping.length === 0) {
           continue;
         }
-
-        const highlightStart = Math.max(0, start - nodeStart);
-        const highlightEnd = Math.min(value.length, end - nodeStart);
-
-        const before = value.slice(0, highlightStart);
-        const highlighted = value.slice(highlightStart, highlightEnd);
-        const after = value.slice(highlightEnd);
-
-        const fragments: Array<HastElement | HastText> = [];
-        if (before) {
-          fragments.push({ type: "text", value: before });
+        const boundaries = new Set<number>([0, value.length]);
+        for (const { range } of overlapping) {
+          boundaries.add(Math.max(0, range.start - nodeStart));
+          boundaries.add(Math.min(value.length, range.end - nodeStart));
         }
-        if (highlighted) {
+        const offsets = [...boundaries].sort((left, right) => left - right);
+        const fragments: Array<HastElement | HastText> = [];
+        for (let offsetIndex = 0; offsetIndex < offsets.length - 1; offsetIndex += 1) {
+          const localStart = offsets[offsetIndex]!;
+          const localEnd = offsets[offsetIndex + 1]!;
+          const segment = value.slice(localStart, localEnd);
+          if (!segment) continue;
+          const globalStart = nodeStart + localStart;
+          const highlight = overlapping.find(
+            ({ range }) => globalStart >= range.start && globalStart < range.end,
+          );
+          if (!highlight) {
+            fragments.push({ type: "text", value: segment });
+            continue;
+          }
           const properties: Record<string, string | string[]> = {
             className: ["branch-highlight"],
             "data-branch-highlight": "true",
+            "data-branch-id": highlight.branchId,
+            "data-message-id": highlight.messageId,
           };
-          if (branchId) {
-            properties["data-branch-id"] = branchId;
-            properties.id = `branch-origin-${branchId}`;
-          }
-          if (messageId) {
-            properties["data-message-id"] = messageId;
-          }
           fragments.push({
             type: "element",
             tagName: "mark",
             properties,
-            children: [{ type: "text", value: highlighted }],
+            children: [{ type: "text", value: segment }],
           });
-        }
-        if (after) {
-          fragments.push({ type: "text", value: after });
         }
 
         if (fragments.length > 0) {

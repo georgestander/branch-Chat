@@ -845,6 +845,7 @@ export function ConversationLayout({
           open={isParentContextSheetOpen}
           parentBranch={parentBranch}
           parentMessages={parentMessages}
+          conversationId={conversationId}
           originMessageId={parentOriginMessageId}
           onClose={() => setIsParentContextSheetOpen(false)}
           onOpenCompare={() => {

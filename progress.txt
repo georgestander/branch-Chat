@@ -536,3 +536,8 @@
 - Decisions: reuse `BranchableMessage` for persisted assistant messages in both active and parent columns; parent remains composer-read-only; new branch uses displayed parent id, creating a sibling of the current child; label inactive pane `Branchable`.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: live split-view DOM verified parent selection guidance + `Branch Message` action while child composer stays active.
+2026-07-21 — Persisted inline branch points as conversation navigation. Ref: Core Experience branch navigation + deep nesting.
+- Task: retain all source highlights and whole-message branch markers across parent/child navigation.
+- Decisions: derive anchors from stored `Branch.createdFrom` graph metadata on every render; render multiple non-overlapping marks per message; add named child chips as complete fallback/navigation for whole-message or overlapping branches; clicking marks/chips opens child compare view; parent context sheet uses same branchable surface.
+- Files: src/app/pages/conversation/ConversationPage.tsx, src/app/shared/markdown.server.ts, src/app/shared/markdown.server.test.ts, src/lib/conversation/rendered.ts, src/app/components/conversation/BranchableMessage.tsx, src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ParentContextSheet.tsx, src/app/components/conversation/ConversationLayout.tsx, progress.txt.
+- Notes: live multi-branch conversation showed four persistent source highlights + four named inline anchors; mark and chip navigation both reached the selected child with compare mode preserved.

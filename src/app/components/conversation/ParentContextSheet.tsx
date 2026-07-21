@@ -6,11 +6,13 @@ import type { Branch } from "@/lib/conversation";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
+import { BranchableMessage } from "@/app/components/conversation/BranchableMessage";
 
 interface ParentContextSheetProps {
   open: boolean;
   parentBranch: Branch;
   parentMessages: RenderedMessage[];
+  conversationId: string;
   originMessageId: string | null;
   onClose: () => void;
   onOpenCompare: () => void;
@@ -20,6 +22,7 @@ export function ParentContextSheet({
   open,
   parentBranch,
   parentMessages,
+  conversationId,
   originMessageId,
   onClose,
   onOpenCompare,
@@ -98,10 +101,22 @@ export function ParentContextSheet({
                         </span>
                       ) : null}
                     </div>
-                    <MarkdownContent
-                      className="prose prose-sm max-w-none text-foreground"
-                      html={message.renderedHtml}
-                    />
+                    {message.role === "assistant" ? (
+                      <BranchableMessage
+                        conversationId={conversationId}
+                        branchId={parentBranch.id}
+                        messageId={message.id}
+                        content={message.content}
+                        renderedHtml={message.renderedHtml}
+                        toolInvocations={message.toolInvocations}
+                        branchAnchors={message.branchAnchors}
+                      />
+                    ) : (
+                      <MarkdownContent
+                        className="prose prose-sm max-w-none text-foreground"
+                        html={message.renderedHtml}
+                      />
+                    )}
                   </li>
                 );
               })}

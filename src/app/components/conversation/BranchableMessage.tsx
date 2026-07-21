@@ -9,7 +9,9 @@ import {
 import { navigate } from "rwsdk/client";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import type { ToolInvocation } from "@/lib/conversation";
+import type { RenderedBranchAnchor } from "@/lib/conversation/rendered";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
+import { GitBranch } from "lucide-react";
 
 interface BranchableMessageProps {
   conversationId: string;
@@ -18,6 +20,7 @@ interface BranchableMessageProps {
   content: string;
   renderedHtml: string;
   toolInvocations?: ToolInvocation[] | null;
+  branchAnchors?: RenderedBranchAnchor[];
 }
 
 type SelectionState = {
@@ -34,6 +37,7 @@ export function BranchableMessage({
   content,
   renderedHtml,
   toolInvocations,
+  branchAnchors = [],
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -106,6 +110,18 @@ export function BranchableMessage({
     [branchId, clearSelection, conversationId, messageId],
   );
 
+  const openChildBranch = useCallback(
+    (branchId: string) => {
+      const params = new URLSearchParams({
+        conversationId,
+        branchId,
+        compare: "1",
+      });
+      navigate(`/app?${params.toString()}`);
+    },
+    [conversationId],
+  );
+
   return (
     <div className="relative">
       <MarkdownContent
@@ -119,6 +135,35 @@ export function BranchableMessage({
         toolInvocations={toolInvocations}
         fallbackHtml={renderedHtml}
       />
+
+      {branchAnchors.length > 0 ? (
+        <nav
+          className="mt-3 flex flex-wrap gap-2"
+          aria-label="Branches created from this message"
+        >
+          {branchAnchors.map((anchor) => (
+            <button
+              key={anchor.branchId}
+              type="button"
+              onClick={() => openChildBranch(anchor.branchId)}
+              className="interactive-target inline-flex max-w-full items-center gap-1.5 rounded border border-accent/50 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              title={
+                anchor.excerpt
+                  ? `Open ${anchor.title}: “${anchor.excerpt}”`
+                  : `Open ${anchor.title}`
+              }
+            >
+              <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{anchor.title}</span>
+              {anchor.range ? null : (
+                <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Message
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         {error ? (
