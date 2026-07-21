@@ -26,5 +26,6 @@ declare global {
     LANDING_COMPANY_SPONSOR_URL?: string;
     UploadsBucket: R2Bucket;
     STUDY_LEARN_WORKFLOW_ID?: string;
+    CODEX_BRIDGE_URL?: string;
   }
 }

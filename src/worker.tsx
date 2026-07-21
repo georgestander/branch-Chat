@@ -11,8 +11,10 @@ import { SignInPage } from "@/app/pages/sign-in/SignInPage";
 import {
   isAuthOptionEnabled,
   isAuthRequiredEnabled,
+  normalizeAuthUserId,
   resolveRequestAuth,
 } from "@/app/shared/auth.server";
+import { getCodexAccountStatus } from "@/app/shared/codexBridge.server";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
 import { handleDirectUploadRequest } from "@/app/shared/uploadsProxy.server";
 import { createSSEStream } from "@/app/shared/streaming.server";
@@ -91,7 +93,14 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestI
   const accessJwksUrl = env.AUTH_ACCESS_JWKS_URL?.trim();
   const accessAudience = env.AUTH_ACCESS_AUDIENCE?.trim();
 
-  if (authRequired && !env.AUTH_COOKIE_SECRET && !allowIdentityHeaders) {
+  const localCodexAccount = isLocalhostHost(requestUrl.hostname)
+    ? await getCodexAccountStatus(env)
+    : null;
+  const localCodexUserId = localCodexAccount?.connected && localCodexAccount.email
+    ? normalizeAuthUserId(localCodexAccount.email)
+    : null;
+
+  if (!localCodexUserId && authRequired && !env.AUTH_COOKIE_SECRET && !allowIdentityHeaders) {
     console.error(
       "[ERROR] auth.config.missing_identity_source",
       JSON.stringify({
@@ -103,6 +112,7 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestI
     return new Response("Server auth configuration missing", { status: 503 });
   }
   if (
+    !localCodexUserId &&
     authRequired &&
     allowIdentityHeaders &&
     (!accessJwksUrl || !accessAudience)
@@ -118,18 +128,23 @@ const provideAppContext = (): RouteMiddleware<AppRequestInfo> => async (requestI
     return new Response("Server auth configuration missing", { status: 503 });
   }
 
-  const auth = await resolveRequestAuth({
-    request,
-    response,
-    authRequired,
-    persistGuestCookie: requestPath !== "/sign-in",
-    authCookieSecret: env.AUTH_COOKIE_SECRET,
-    allowIdentityHeaders,
-    allowLegacyAuthCookie,
-    allowUnsignedCookieIdentity,
-    accessJwksUrl,
-    accessAudience,
-  });
+  const auth = localCodexUserId
+    ? {
+        userId: localCodexUserId,
+        email: localCodexAccount?.email ?? null,
+      }
+    : await resolveRequestAuth({
+        request,
+        response,
+        authRequired,
+        persistGuestCookie: requestPath !== "/sign-in",
+        authCookieSecret: env.AUTH_COOKIE_SECRET,
+        allowIdentityHeaders,
+        allowLegacyAuthCookie,
+        allowUnsignedCookieIdentity,
+        accessJwksUrl,
+        accessAudience,
+      });
 
   if (!auth) {
     console.log(
@@ -244,7 +259,13 @@ const app = defineApp<AppRequestInfo>([
   setCommonHeaders(),
   route("/_uploads", handleDirectUploadRequest),
   render(Document, [
-    route("/", LandingPage),
+    route("/", (requestInfo) => {
+      const url = new URL(requestInfo.request.url);
+      if (isLocalhostHost(url.hostname)) {
+        return Response.redirect(new URL("/app", url).toString(), 307);
+      }
+      return LandingPage(requestInfo);
+    }),
     route("/app", Home),
     route("/landing", ({ request }) => {
       const url = new URL(request.url);

@@ -136,18 +136,18 @@ const START_MODE_DEFAULTS: Record<
 > = {
   fast: {
     model: DEFAULT_CONVERSATION_MODEL,
-    reasoningEffort: null,
-    tools: [],
+    reasoningEffort: "medium",
+    tools: ["web-search"],
   },
   reasoning: {
-    model: "gpt-5-mini",
-    reasoningEffort: "medium",
-    tools: [],
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    tools: ["web-search"],
   },
   study: {
-    model: "gpt-5-mini",
+    model: "gpt-5.6-sol",
     reasoningEffort: "medium",
-    tools: ["study-and-learn"],
+    tools: ["study-and-learn", "web-search"],
   },
 };
 type ComposerAccountStateResponse = Awaited<
@@ -441,6 +441,8 @@ export function ConversationComposer({
     custom: "Custom",
   };
   const currentPresetLabel = presetLabels[composerPreset];
+  const isFastPreset = composerPreset === "fast";
+  const isReasoningPreset = composerPreset === "reasoning";
   const currentReasoningEffort = (reasoningEffort ?? "low") as "low" | "medium" | "high";
   const selectedOpenRouterModel = openRouterModels.find(
     (model) => model.id === conversationModel,
@@ -458,9 +460,7 @@ export function ConversationComposer({
       ? reasoningLabel
         ? `${stripOpenRouterPrefix(conversationModel)} · ${reasoningLabel}`
         : stripOpenRouterPrefix(conversationModel)
-      : isReasoningModel
-        ? `Reasoning · ${effortLabels[currentReasoningEffort]}`
-        : "Fast chat";
+      : `${conversationModel} · ${effortLabels[currentReasoningEffort]}`;
   const modelBadgeClassName =
     "inline-flex w-10 shrink-0 items-center justify-end text-[10px] leading-none text-current";
   const BASE_TEXTAREA_HEIGHT = 20;
@@ -1134,9 +1134,7 @@ export function ConversationComposer({
   const handleToolSelect = useCallback(
     (tool: ToolOption["id"]) => {
       if (tool === "web-search" && !webSearchSelectable) {
-        setError(
-          "Web search is unavailable for this model. Switch to Fast chat or OpenRouter ChatGPT.",
-        );
+        setError("Web search is unavailable for this model.");
         setIsToolMenuOpen(false);
         return;
       }
@@ -1252,49 +1250,27 @@ export function ConversationComposer({
     (attachment) => attachment.status === "error",
   );
   const canAddMoreAttachments = attachments.length < UPLOAD_MAX_ATTACHMENTS;
-  const byokEnabled = accountState?.byok.enabled ?? false;
-  const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
-  const persistedByokConnected = Boolean(accountState?.byok.connected && byokEnabled);
-  const sessionByokConnected = !byokEnabled && Boolean(sessionByokCredential);
-  const byokConnected = persistedByokConnected || sessionByokConnected;
-  const connectedByokProvider = persistedByokConnected
-    ? accountState?.byok.provider ?? null
-    : sessionByokConnected
-      ? sessionByokCredential?.provider ?? null
-      : null;
-  const byokProviderLabel =
-    connectedByokProvider === "openrouter"
-      ? "OpenRouter"
-      : connectedByokProvider === "openai"
-        ? "OpenAI"
-        : "BYOK";
-  const isByokProviderModelMismatch =
-    byokConnected &&
-    ((connectedByokProvider === "openrouter" && !isOpenRouterModel(conversationModel)) ||
-      (connectedByokProvider === "openai" && isOpenRouterModel(conversationModel)));
-  const byokProviderModelMismatchMessage =
-    connectedByokProvider === "openrouter"
-      ? "Your BYOK key is OpenRouter. Switch to an OpenRouter model before sending."
-      : connectedByokProvider === "openai"
-        ? "Your BYOK key is OpenAI. Switch to an OpenAI model before sending."
-        : "Switch to a model matching your BYOK provider before sending.";
-  const byokProviderModelHint =
-    connectedByokProvider === "openrouter"
-      ? "Use an OpenRouter model before sending."
-      : connectedByokProvider === "openai"
-        ? "Use an OpenAI model before sending."
-        : null;
-  const byokChipText = byokConnected ? `${byokProviderLabel} Connected` : "BYOK Required";
+  const byokEnabled = true;
+  const byokUnavailableReason = accountState?.chatgpt.planType ?? null;
+  const persistedByokConnected = Boolean(accountState?.chatgpt.connected);
+  const sessionByokConnected = false;
+  const byokConnected = persistedByokConnected;
+  const connectedByokProvider: ComposerByokProvider | null = byokConnected
+    ? "openai"
+    : null;
+  const byokProviderLabel = "ChatGPT";
+  const isByokProviderModelMismatch = false;
+  const byokProviderModelMismatchMessage = "This model is unavailable for the connected ChatGPT account.";
+  const byokProviderModelHint = null;
+  const byokChipText = byokConnected ? "ChatGPT Connected" : "ChatGPT Sign-in Required";
   const byokChipClassName = byokConnected
     ? "border-border text-foreground"
     : "border-amber-400/70 text-amber-600 dark:text-amber-400";
   const byokIndicatorText = isAccountStateLoading
-    ? "Loading BYOK status..."
+    ? "Checking ChatGPT account..."
     : byokConnected
-      ? `${byokProviderLabel} key ready.`
-      : byokEnabled
-        ? "Connect your BYOK API key before sending."
-        : "Server-side BYOK persistence is disabled. Add a session API key (clears on reload).";
+      ? `${accountState?.chatgpt.email ?? "ChatGPT account"} ready.`
+      : "Start Branch Chat locally and sign in to Codex with ChatGPT.";
   const openRouterFastPresetModelId = useMemo(
     () => resolveOpenRouterPresetModelId(openRouterModels, conversationModel, "fast"),
     [conversationModel, openRouterModels],
@@ -1308,8 +1284,7 @@ export function ConversationComposer({
       ),
     [conversationModel, openRouterModels],
   );
-  const shouldRoutePresetsToOpenRouter =
-    byokConnected && connectedByokProvider === "openrouter";
+  const shouldRoutePresetsToOpenRouter = false;
   const applyPresetModelSelection = useCallback(
     (
       preset: "fast" | "reasoning",
@@ -1331,13 +1306,16 @@ export function ConversationComposer({
         const presetLabel: ComposerPreset = preset === "fast" ? "fast" : "reasoning";
         void handleModelSelection(
           openRouterPresetModelId,
-          preset === "fast" ? null : effort,
+          preset === "fast" ? START_MODE_DEFAULTS.fast.reasoningEffort : effort,
           presetLabel,
         );
         return;
       }
       const baseModel = START_MODE_DEFAULTS[preset].model;
-      void handleModelSelection(baseModel, preset === "fast" ? null : effort);
+      void handleModelSelection(
+        baseModel,
+        preset === "fast" ? START_MODE_DEFAULTS.fast.reasoningEffort : effort,
+      );
     },
     [
       handleModelSelection,
@@ -1366,7 +1344,11 @@ export function ConversationComposer({
     }
 
     if (connectedByokProvider === "openai") {
-      void handleModelSelection(START_MODE_DEFAULTS.fast.model, null, "fast");
+      void handleModelSelection(
+        START_MODE_DEFAULTS.fast.model,
+        START_MODE_DEFAULTS.fast.reasoningEffort,
+        "fast",
+      );
       return;
     }
 
@@ -1390,7 +1372,7 @@ export function ConversationComposer({
       : hasErroredAttachments
         ? "Resolve failed attachments"
         : !byokConnected
-          ? "Connect BYOK API key"
+          ? "Sign in with ChatGPT"
           : null;
   const isSendDisabled = sendDisabledReason !== null;
 
@@ -1400,13 +1382,8 @@ export function ConversationComposer({
     }
 
     if (!byokConnected) {
-      setByokProvider(getProviderForModel(conversationModel));
       setIsByokPanelOpen(true);
-      setError(
-        byokEnabled
-          ? "Connect your BYOK API key before sending."
-          : "Server-side BYOK persistence is disabled. Add a session API key to continue.",
-      );
+      setError("Sign in to Codex with ChatGPT, then restart Branch Chat locally.");
       return false;
     }
 
@@ -1648,71 +1625,22 @@ export function ConversationComposer({
               aria-modal="true"
             >
               <div className="mx-4 w-full max-w-3xl rounded border border-border bg-card p-6 shadow-2xl">
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="flex flex-col gap-1">
-                    <label
-                      htmlFor={byokProviderId}
-                      className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-                    >
-                      Provider
-                    </label>
-                    <select
-                      id={byokProviderId}
-                      value={byokProvider}
-                      onChange={(event) =>
-                        setByokProvider(event.target.value as ComposerByokProvider)
-                      }
-                      disabled={isByokSaving}
-                      className="h-8 rounded border border-border bg-background px-3 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="openrouter">OpenRouter</option>
-                    </select>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      ChatGPT account
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-foreground">
+                      {byokConnected
+                        ? accountState?.chatgpt.email ?? "Connected through Codex"
+                        : "Not connected"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {byokConnected
+                        ? `${accountState?.chatgpt.planType ?? "ChatGPT"} plan · authenticated by the local Codex app-server`
+                        : "Run `codex login`, choose ChatGPT, then restart the local app."}
+                    </p>
                   </div>
-                  <div className="flex min-w-[220px] flex-1 flex-col gap-1">
-                    <label
-                      htmlFor={byokApiKeyId}
-                      className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-                    >
-                      API key
-                    </label>
-                    <input
-                      id={byokApiKeyId}
-                      type="password"
-                      value={byokApiKey}
-                      onChange={(event) => setByokApiKey(event.target.value)}
-                      placeholder="sk-..."
-                      disabled={isByokSaving}
-                      autoComplete="off"
-                      className="h-8 rounded border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveByokKey()}
-                    disabled={isByokSaving}
-                    className="interactive-target inline-flex h-8 items-center rounded border border-border bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isByokSaving
-                      ? "Saving..."
-                      : byokConnected
-                        ? byokEnabled
-                          ? "Update key"
-                          : "Update session"
-                        : byokEnabled
-                          ? "Connect"
-                          : "Connect session"}
-                  </button>
-                  {byokConnected ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteByokKey()}
-                      disabled={isByokSaving}
-                      className="interactive-target inline-flex h-8 items-center rounded border border-border bg-background px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Disconnect
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     onClick={() => setIsByokPanelOpen(false)}
@@ -1721,16 +1649,6 @@ export function ConversationComposer({
                     Close
                   </button>
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  {!byokEnabled
-                    ? sessionByokConnected
-                      ? "Session key connected. This key clears on reload."
-                      : byokUnavailableReason ||
-                        "Server-side BYOK persistence is disabled. Connect a session key to chat."
-                    : byokConnected
-                    ? `Connected to ${byokProviderLabel}${accountState?.byok.updatedAt ? ` · updated ${accountState.byok.updatedAt}` : ""}.${byokProviderModelHint ? ` ${byokProviderModelHint}` : ""}`
-                    : "Connect your API key to send messages."}
-                </p>
               </div>
             </div>,
             document.body,
@@ -1743,7 +1661,7 @@ export function ConversationComposer({
             onClick={() => setIsByokPanelOpen(true)}
             className="interactive-target inline-flex items-center rounded border border-border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            {byokConnected ? "Manage BYOK" : "Connect BYOK"}
+            {byokConnected ? "ChatGPT connected" : "ChatGPT sign-in"}
           </button>
         </div>
       ) : null}
@@ -1771,8 +1689,16 @@ export function ConversationComposer({
                 type="button"
                 onClick={() => applyPresetModelSelection("fast", null)}
                 className="interactive-target inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground/70 hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                title={`Reasoning (${effortLabels[currentReasoningEffort]}) — click to switch to fast`}
-                aria-label={`Reasoning mode active, click to switch to fast`}
+                title={
+                  isFastPreset
+                    ? `Fast · GPT-5.6 Terra · ${effortLabels[currentReasoningEffort]}`
+                    : `Reasoning (${effortLabels[currentReasoningEffort]}) — click to switch to fast`
+                }
+                aria-label={
+                  isFastPreset
+                    ? `Fast mode active with medium reasoning`
+                    : `Reasoning mode active, click to switch to fast`
+                }
               >
                 <Zap className="h-3.5 w-3.5" aria-hidden="true" />
                 <X className="h-2.5 w-2.5 opacity-50" aria-hidden="true" />
@@ -1807,7 +1733,7 @@ export function ConversationComposer({
                   option.id === "web-search" && !webSearchSelectable;
                 const optionDescription =
                   option.id === "web-search" && !webSearchSelectable
-                    ? "Requires Fast chat or OpenRouter ChatGPT"
+                    ? "Unavailable for this model"
                     : option.description;
                 return (
                   <button
@@ -1820,7 +1746,7 @@ export function ConversationComposer({
                     onClick={() => {
                       if (isDisabled) {
                         setError(
-                          "Web search is unavailable for this model. Switch to Fast chat or OpenRouter ChatGPT.",
+                          "Web search is unavailable for this model.",
                         );
                         setIsToolMenuOpen(false);
                         return;
@@ -1978,14 +1904,14 @@ export function ConversationComposer({
                 <button
                   type="button"
                   role="menuitemradio"
-                  aria-checked={!isReasoningModel}
+                  aria-checked={isFastPreset}
                   onClick={() => {
                     applyPresetModelSelection("fast", null);
                   }}
                   disabled={conversationSettingsSaving}
                   className={cn(
                     "interactive-target flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-                    !isReasoningModel ? "state-selected font-semibold text-primary-foreground" : "hover:bg-muted/70",
+                    isFastPreset ? "state-selected font-semibold text-primary-foreground" : "hover:bg-muted/70",
                   )}
                 >
                   <span className="font-medium">Fast chat</span>
@@ -2000,7 +1926,7 @@ export function ConversationComposer({
                 </div>
 
                 {reasoningOptions.map((option) => {
-                  const isSelected = isReasoningModel && currentReasoningEffort === option;
+                  const isSelected = isReasoningPreset && currentReasoningEffort === option;
                   return (
                     <button
                       key={`composer-reasoning-${option}`}

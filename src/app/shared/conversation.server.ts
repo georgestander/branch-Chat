@@ -942,10 +942,10 @@ function getDefaultConversationSettings(): ConversationSettings {
   return {
     model: DEFAULT_MODEL,
     temperature: DEFAULT_TEMPERATURE,
-    reasoningEffort: "low",
+    reasoningEffort: "medium",
     composerDefaults: {
       preset: "fast",
-      tools: [],
+      tools: ["web-search"],
     },
     systemPrompt: null,
   };

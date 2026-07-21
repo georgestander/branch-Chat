@@ -4,14 +4,15 @@
 
 - Node.js current LTS
 - pnpm (Corepack is fine)
-- OpenAI API key (`OPENAI_API_KEY`)
+- Codex CLI installed and available as `codex`
+- A ChatGPT account signed in through Codex
 
 ## Choose a Mode
 
 | Mode | Goal | Key env setup |
 | --- | --- | --- |
-| OSS self-host quickstart | Run locally with minimal setup | `OPENAI_API_KEY` only; keep `AUTH_REQUIRED` unset/false |
-| Personal production-like | Match private Cloudflare Access deployment defaults | `AUTH_REQUIRED=true`, `AUTH_COOKIE_SECRET`, `AUTH_TRUST_IDENTITY_HEADERS=true`, `AUTH_ACCESS_JWKS_URL`, `AUTH_ACCESS_AUDIENCE`, `BYOK_ENCRYPTION_SECRET` |
+| Local ChatGPT | Run locally with your ChatGPT subscription | `codex login`; no API key required |
+| Cloudflare UI/runtime | Exercise Worker, Durable Object, and R2 behavior locally | Included in `pnpm dev` through the Cloudflare Vite plugin |
 
 See `Docs/env-vars.md` for full details.
 
@@ -21,31 +22,23 @@ See `Docs/env-vars.md` for full details.
    ```bash
    pnpm install
    ```
-2. Create local env file:
+2. Sign in to Codex with ChatGPT and verify the account:
    ```bash
-   cp .dev.vars.example .dev.vars
+   codex login
+   codex login status
    ```
-3. Set `.dev.vars`:
-   - Required: `OPENAI_API_KEY`
-   - Optional auth hardening: `AUTH_REQUIRED`, `AUTH_COOKIE_SECRET`, `AUTH_TRUST_IDENTITY_HEADERS`, `AUTH_ACCESS_JWKS_URL`, `AUTH_ACCESS_AUDIENCE`, `AUTH_ALLOW_LEGACY_COOKIE`
-   - Optional auth fallback toggles (insecure outside local/dev): `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN`, `AUTH_ALLOW_INSECURE_UNSIGNED_COOKIE`
-   - Optional BYOK persistence: `BYOK_ENCRYPTION_SECRET`
-   - Optional OpenRouter routing: `OPENROUTER_API_KEY` plus related `OPENROUTER_*` vars
-4. Start the dev server:
+3. Start the dev server and local Codex bridge:
    ```bash
    pnpm dev
    ```
-5. Open [http://localhost:5174](http://localhost:5174):
-   - `/` is the landing page.
-   - `Log In` on the landing page routes to `/sign-in?redirectTo=/app` (or `LANDING_HOSTED_URL` if configured).
-   - `/app` is the chat app.
-   - `/sign-in` self-asserted POST is available by default only when `AUTH_REQUIRED` is off (or when `AUTH_ALLOW_SELF_ASSERTED_SIGN_IN=true`).
+4. Open [http://localhost:5174](http://localhost:5174). Localhost redirects directly to `/app` and uses the email from the signed-in ChatGPT account as the stable local identity.
 
-## BYOK Behavior
+## Local persistence
 
-- Sending in `/app` requires BYOK.
-- If `BYOK_ENCRYPTION_SECRET` is set: BYOK key save/load/delete persists in `AccountDO` (encrypted).
-- If `BYOK_ENCRYPTION_SECRET` is missing: server persistence is disabled, but users can connect a session-only key in composer (clears on reload).
+- Chat requests go through a loopback-only Codex app-server bridge. ChatGPT credentials are never sent to the browser or stored in Durable Objects.
+- Conversations, branches, messages, and composer preferences persist under `.wrangler/state` through local Durable Objects.
+- Uploads use the local R2 binding. Do not delete `.wrangler/state` if you want to keep local chats.
+- Web search defaults on. Fast defaults to GPT-5.6 Terra, medium reasoning, and the Fast service tier.
 
 ## Validation Loops
 
@@ -65,12 +58,6 @@ When Worker bindings/migrations change, regenerate runtime types:
 pnpm generate
 ```
 
-## Deploy
+## Deployment boundary
 
-Deploy with Wrangler via:
-
-```bash
-pnpm release
-```
-
-Before deploy, ensure Cloudflare production bindings/secrets are configured (`ConversationGraphDO`, `ConversationDirectoryDO`, `AccountDO`, `UploadsBucket`, and runtime env vars).
+The ChatGPT-backed runtime is intentionally local because Codex app-server and its account session run on the user's machine. Wrangler deployment remains available for infrastructure experiments, but a remote Worker cannot reach the loopback bridge and is not a supported chat deployment target.

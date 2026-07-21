@@ -700,11 +700,9 @@ export function ConversationSidebar({
     });
   };
 
+  const chatgptConnected = accountState?.chatgpt.connected ?? false;
   const byokEnabled = accountState?.byok.enabled ?? false;
   const byokUnavailableReason = accountState?.byok.unavailableReason ?? null;
-  const byokConnected = Boolean(accountState?.byok.connected && byokEnabled);
-  const byokProviderLabel =
-    accountState?.byok.provider === "openrouter" ? "OpenRouter" : "OpenAI";
 
   const handleSaveByokKey = useCallback(async () => {
     if (isByokSaving) {
@@ -824,10 +822,10 @@ export function ConversationSidebar({
               className="inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-background text-foreground shadow-sm transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-haspopup="dialog"
               aria-expanded={isAccountPanelOpen}
-              title="Account and BYOK settings"
+              title="ChatGPT account"
             >
               <UserRound className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">Account and BYOK settings</span>
+              <span className="sr-only">ChatGPT account</span>
             </button>
             <button
               type="button"
@@ -871,7 +869,7 @@ export function ConversationSidebar({
               className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 backdrop-blur-sm"
               role="dialog"
               aria-modal="true"
-              aria-label="Account and BYOK settings"
+              aria-label="ChatGPT account"
             >
               <div className="w-full max-w-md rounded border border-border bg-popover p-4 text-foreground shadow-2xl">
                 <div className="flex items-center justify-between gap-2">
@@ -881,73 +879,27 @@ export function ConversationSidebar({
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   {isAccountStateLoading
-                    ? "Loading account status..."
-                    : byokConnected
-                      ? `Connected to ${byokProviderLabel}.`
-                      : byokEnabled
-                        ? "No BYOK key connected."
-                        : byokUnavailableReason || "BYOK unavailable in this environment."}
+                    ? "Loading ChatGPT account status..."
+                    : chatgptConnected
+                      ? accountState?.chatgpt.email ?? "Connected through Codex."
+                      : "ChatGPT sign-in is required."}
                 </p>
 
                 <div className="mt-3 rounded-lg border border-border/70 bg-background/70 p-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-                    BYOK Key
+                    Local Codex connection
                   </div>
-                  <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                    <select
-                      value={byokProvider}
-                      onChange={(event) =>
-                        setByokProvider(event.target.value as ComposerByokProvider)
-                      }
-                      disabled={isByokSaving || !byokEnabled}
-                      className="h-8 rounded-md border border-border/70 bg-background px-2 text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label="BYOK provider"
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="openrouter">OpenRouter</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveByokKey()}
-                      disabled={isByokSaving || !byokEnabled}
-                      className="inline-flex h-8 items-center justify-center rounded-md border border-border/70 bg-background px-2 text-[10px] font-semibold uppercase tracking-[0.16em] hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isByokSaving
-                        ? "Saving..."
-                        : byokConnected
-                          ? "Update"
-                          : "Connect"}
-                    </button>
-                  </div>
-                  <input
-                    type="password"
-                    value={byokApiKey}
-                    onChange={(event) => setByokApiKey(event.target.value)}
-                    placeholder="Paste API key"
-                    disabled={isByokSaving || !byokEnabled}
-                    autoComplete="off"
-                    className="mt-2 h-8 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                  <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                    <span>
-                      {!byokEnabled
-                        ? byokUnavailableReason || "BYOK unavailable."
-                        : byokConnected
-                          ? `Connected to ${byokProviderLabel}.`
-                          : "No BYOK key connected."}
-                    </span>
-                    {byokConnected ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteByokKey()}
-                        disabled={isByokSaving}
-                        className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Disconnect
-                      </button>
-                    ) : null}
-                  </div>
+                  <p className="mt-2 text-xs font-medium text-foreground">
+                    {chatgptConnected
+                      ? `${accountState?.chatgpt.planType ?? "ChatGPT"} plan connected`
+                      : "Not connected"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {chatgptConnected
+                      ? "Branch Chat uses your local Codex app-server session. Credentials never enter the browser or Durable Objects."
+                      : "Run `codex login`, choose ChatGPT, then restart Branch Chat."}
+                  </p>
                 </div>
                 {accountError ? (
                   <p className="mt-2 text-xs text-destructive" role="status">

@@ -19,7 +19,7 @@ export function HeroSection({ links }: HeroSectionProps) {
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
             One conversation, many paths. Use branching chat with web search, file upload, and study
-            mode, powered by OpenAI API or OpenRouter API.
+            mode, powered by your local Codex ChatGPT session.
           </p>
 
           <div className="flex flex-wrap items-center gap-2">

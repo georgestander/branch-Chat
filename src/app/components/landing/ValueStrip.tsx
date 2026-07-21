@@ -16,12 +16,12 @@ const LIVE_FEATURES = [
     description: "Socratic guidance that helps you learn, not just copy answers.",
   },
   {
-    title: "OpenAI API",
-    description: "Use OpenAI models for fast chat and deep reasoning.",
+    title: "ChatGPT Account",
+    description: "Use your existing ChatGPT subscription through local Codex sign-in.",
   },
   {
-    title: "OpenRouter API",
-    description: "Connect to multiple model providers through one compatible API.",
+    title: "Local Persistence",
+    description: "Keep conversation graphs and messages in local Durable Objects.",
   },
 ] as const;
 
@@ -29,10 +29,6 @@ const COMING_SOON = [
   {
     title: "Voice & Dictation",
     description: "Talk to your branches hands-free.",
-  },
-  {
-    title: "Sign in with ChatGPT",
-    description: "Faster account onboarding.",
   },
   {
     title: "Canvas",

@@ -526,3 +526,8 @@
 - Decisions: added explicit RSC/Server Function boundaries, hydration/CSP rules, request-scoped initialization, DO round-trip discipline, canonical mutation reconciliation, streaming recovery, troubleshooting, and end-to-end performance evidence; excluded Digi-Engage-only D1/BMad/release rules.
 - Files: AGENTS.MD, progress.txt.
 - Notes: documentation-only; feedback loops passed (`pnpm types`, `npm run test`, `npm run lint`).
+2026-07-21 — Replaced chat API-key flow with local ChatGPT account runtime. Ref: Core Experience chat engine + State & Persistence.
+- Task: run Branch Chat locally through Codex app-server using ChatGPT sign-in; default web search + GPT-5.6 Terra medium/Fast; preserve chats locally.
+- Decisions: loopback-only Node bridge owns Codex JSON-RPC; localhost identity derives from ChatGPT email; Workers keep server-first orchestration; DO/R2 remain authoritative under `.wrangler/state`; remote chat deployment unsupported while bridge is local.
+- Files: scripts/codex-bridge.mjs, scripts/dev-local.mjs, scripts/codex-bridge.test.mjs, src/app/shared/codexBridge.server.ts, src/worker.tsx, conversation server/actions/UI defaults/account surfaces, package.json, types/env.d.ts, README.md, Docs/setup.md, Docs/env-vars.md, landing copy, progress.txt.
+- Notes: Chrome smoke passed account `george.stander@outlook.com` Pro, GPT-5.6 Terra medium/Fast, default web search with cited result, branch creation, and DO persistence after full restart; visual review found existing split-view orientation/truncation polish opportunities; no functional blocker.

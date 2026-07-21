@@ -74,6 +74,10 @@ import {
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { createOpenAIClient } from "@/lib/openai/client";
+import {
+  getCodexAccountStatus,
+  streamCodexTurn,
+} from "@/app/shared/codexBridge.server";
 import type { AppRequestInfo } from "@/worker";
 import {
   isOpenRouterModel,
@@ -521,6 +525,11 @@ export interface ComposerAccountState {
     remaining: number | null;
   };
   byok: ComposerByokStatus;
+  chatgpt: {
+    connected: boolean;
+    email: string | null;
+    planType: string | null;
+  };
 }
 
 export interface SaveComposerByokKeyInput {
@@ -570,14 +579,13 @@ export async function getComposerAccountState(): Promise<ComposerAccountState> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
 
-  const byokEnabled = isByokConfigured(ctx);
-  const byokStatus: Awaited<ReturnType<typeof getByokStatus>> = byokEnabled
-    ? await getByokStatus(ctx)
-    : {
-        provider: null,
-        connected: false,
-        updatedAt: null,
-      };
+  const chatgpt = await getCodexAccountStatus(ctx.env);
+  const byokEnabled = true;
+  const byokStatus: Awaited<ReturnType<typeof getByokStatus>> = {
+    provider: chatgpt.connected ? "openai" : null,
+    connected: chatgpt.connected,
+    updatedAt: null,
+  };
 
   return {
     quota: {
@@ -587,6 +595,7 @@ export async function getComposerAccountState(): Promise<ComposerAccountState> {
       remaining: null,
     },
     byok: normalizeComposerByokStatus(byokStatus, byokEnabled),
+    chatgpt,
   };
 }
 
@@ -930,6 +939,259 @@ export async function createConversation(
   return withUpdatedSettings;
 }
 
+async function sendMessageWithCodex(options: {
+  ctx: AppContext;
+  conversationId: string;
+  branchId: string;
+  input: SendMessageInput;
+  snapshot: ConversationGraphSnapshot;
+  consumedAttachments: PendingAttachment[];
+}): Promise<SendMessageResponse> {
+  const { ctx, conversationId, branchId, input, consumedAttachments } = options;
+  const settings = options.snapshot.conversation.settings;
+  const selectedTools = normalizeComposerTools(
+    input.tools ?? settings.composerDefaults?.tools ?? [],
+  );
+  const webSearch = selectedTools.includes("web-search");
+  const context = buildResponseInputFromBranch({
+    snapshot: options.snapshot,
+    branchId,
+    nextUserContent: input.content,
+    allowWebSearch: webSearch,
+    allowFileTools: false,
+  });
+  const developerInstructions = context
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+    .join("\n\n");
+  const messages = context
+    .filter(
+      (message): message is { role: "user" | "assistant"; content: string } =>
+        message.role === "user" || message.role === "assistant",
+    )
+    .slice(0, -1);
+
+  if (consumedAttachments.length > 0) {
+    const attachmentSummary = consumedAttachments
+      .map((attachment) => `${attachment.name} (${attachment.contentType}, ${attachment.size} bytes)`)
+      .join("\n");
+    messages.push({
+      role: "user",
+      content: `Files attached to the next message:\n${attachmentSummary}`,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const userMessage: Message = {
+    id: crypto.randomUUID(),
+    branchId,
+    role: "user",
+    content: input.content.trim(),
+    createdAt: now,
+    tokenUsage: null,
+    attachments: consumedAttachments.map((attachment) => ({
+      id: attachment.id,
+      kind: "file" as const,
+      name: attachment.name,
+      contentType: attachment.contentType,
+      size: attachment.size,
+      storageKey: attachment.storageKey,
+      openAIFileId: null,
+      description: null,
+      uploadedAt: attachment.uploadedAt ?? now,
+    })),
+    toolInvocations: null,
+  };
+  const assistantMessage: Message = {
+    id: crypto.randomUUID(),
+    branchId,
+    role: "assistant",
+    content: "",
+    createdAt: new Date().toISOString(),
+    tokenUsage: null,
+    attachments: null,
+    toolInvocations: [],
+  };
+  const appended = await applyConversationUpdates(ctx, conversationId, [
+    { type: "message:append", conversationId, message: userMessage },
+    { type: "message:append", conversationId, message: assistantMessage },
+  ]);
+
+  if (input.streamId) {
+    const subscriber = await waitForSSESubscriber(input.streamId);
+    ctx.trace("sse:subscriber", {
+      conversationId,
+      branchId,
+      streamId: input.streamId,
+      ready: subscriber.ready,
+      waitedMs: subscriber.waitedMs,
+    });
+  }
+
+  const { sendSSE, closeSSE } = await import("@/app/shared/streaming.server");
+  const toolInvocationMap = new Map<string, ToolInvocation>();
+  let finalContent = "";
+  let reasoningSummary = "";
+  let promptTokens = 0;
+  let completionTokens = 0;
+  const startedAt = Date.now();
+  ctx.trace("codex:stream:start", {
+    conversationId,
+    branchId,
+    model: settings.model,
+    reasoningEffort: settings.reasoningEffort ?? null,
+    serviceTier: settings.composerDefaults.preset === "fast" ? "priority" : null,
+    webSearch,
+  });
+
+  try {
+    for await (const event of streamCodexTurn({
+      env: ctx.env,
+      model: settings.model,
+      effort: settings.reasoningEffort ?? null,
+      serviceTier: settings.composerDefaults.preset === "fast" ? "priority" : null,
+      webSearch,
+      content: input.content.trim(),
+      messages,
+      developerInstructions,
+    })) {
+      if (event.type === "start") {
+        if (input.streamId) sendSSE(input.streamId, "start", { startedAt: Date.now() });
+        continue;
+      }
+      if (event.type === "delta") {
+        finalContent += event.delta;
+        if (input.streamId) sendSSE(input.streamId, "delta", { delta: event.delta });
+        continue;
+      }
+      if (event.type === "reasoning_summary") {
+        reasoningSummary = event.content ?? `${reasoningSummary}${event.delta}`;
+        if (input.streamId) {
+          sendSSE(input.streamId, "reasoning_summary", {
+            delta: event.delta,
+            content: reasoningSummary,
+          });
+        }
+        continue;
+      }
+      if (event.type === "tool_progress") {
+        const existing = toolInvocationMap.get(event.callId);
+        const next: ToolInvocation = {
+          id: event.callId,
+          toolType: WEB_SEARCH_TOOL_NAME,
+          toolName: WEB_SEARCH_TOOL_NAME,
+          callId: event.callId,
+          input: event.query ? { query: event.query } : existing?.input,
+          output: event.status === "succeeded" ? { query: event.query ?? "" } : null,
+          status: event.status,
+          startedAt: existing?.startedAt ?? new Date().toISOString(),
+          completedAt:
+            event.status === "succeeded" || event.status === "failed"
+              ? new Date().toISOString()
+              : null,
+          error: null,
+        };
+        toolInvocationMap.set(event.callId, next);
+        if (input.streamId) {
+          sendSSE(input.streamId, "tool_progress", {
+            tool: WEB_SEARCH_TOOL_NAME,
+            callId: event.callId,
+            status: event.status,
+          });
+        }
+        continue;
+      }
+      if (event.type === "complete") {
+        finalContent = event.content.trim() || finalContent.trim();
+        reasoningSummary = event.reasoningSummary ?? reasoningSummary;
+        promptTokens = event.promptTokens ?? 0;
+        completionTokens = event.completionTokens ?? 0;
+        continue;
+      }
+      if (event.type === "error") {
+        throw new Error(event.message || "Codex response failed");
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Codex response failed";
+    ctx.trace("codex:stream:error", { conversationId, branchId, error: message });
+    if (input.streamId) {
+      sendSSE(input.streamId, "error", { message });
+      closeSSE(input.streamId);
+    }
+    const failedAssistant: Message = {
+      ...assistantMessage,
+      content: `Unable to complete the response: ${message}`,
+      toolInvocations: Array.from(toolInvocationMap.values()),
+    };
+    await applyConversationUpdates(ctx, conversationId, [
+      { type: "message:update", conversationId, message: failedAssistant },
+    ]);
+    throw error;
+  }
+
+  if (!finalContent) finalContent = "Assistant response interrupted. Please try again.";
+  let renderedHtml: string | null = null;
+  try {
+    renderedHtml = await renderMarkdownToHtml(finalContent);
+  } catch (error) {
+    ctx.trace("markdown:render:error", {
+      conversationId,
+      branchId,
+      source: "codex-complete",
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
+  const finalAssistantMessage: Message = {
+    ...assistantMessage,
+    content: finalContent,
+    tokenUsage: {
+      prompt: promptTokens,
+      completion: completionTokens,
+      cost: 0,
+    },
+    toolInvocations: Array.from(toolInvocationMap.values()),
+  };
+  let applied = await applyConversationUpdates(ctx, conversationId, [
+    { type: "message:update", conversationId, message: finalAssistantMessage },
+  ]);
+  const fallbackTitle = await maybeApplyRootBranchFallbackTitle({
+    ctx,
+    conversationId,
+    snapshot: applied.snapshot,
+    branchId,
+  });
+  if (fallbackTitle) applied = fallbackTitle;
+
+  if (input.streamId) {
+    sendSSE(input.streamId, "complete", {
+      content: finalContent,
+      renderedHtml,
+      promptTokens,
+      completionTokens,
+      reasoningSummary: reasoningSummary || null,
+    });
+    closeSSE(input.streamId);
+  }
+  ctx.trace("codex:stream:complete", {
+    conversationId,
+    branchId,
+    model: settings.model,
+    ms: Date.now() - startedAt,
+    promptTokens,
+    completionTokens,
+    characters: finalContent.length,
+  });
+  return {
+    conversationId,
+    snapshot: applied.snapshot,
+    version: applied.version,
+    appendedMessages: [userMessage, finalAssistantMessage],
+    assistantRenderedHtml: renderedHtml,
+    quota: { remainingDemoPasses: null },
+  };
+}
+
 export async function sendMessage(
   input: SendMessageInput,
 ): Promise<SendMessageResponse> {
@@ -973,6 +1235,16 @@ export async function sendMessage(
     }
   }
 
+  return sendMessageWithCodex({
+    ctx,
+    conversationId,
+    branchId,
+    input,
+    snapshot: ensured.snapshot,
+    consumedAttachments,
+  });
+
+  /* Legacy direct API/BYOK implementation retained temporarily for migration reference.
   let attachmentsToRestore: PendingAttachment[] | null =
     consumedAttachments.length > 0 ? [...consumedAttachments] : null;
   const normalizedContent = input.content.trim();
@@ -2056,6 +2328,7 @@ export async function sendMessage(
     }
     throw error;
   }
+  */
 }
 
 export async function createBranchFromSelection(

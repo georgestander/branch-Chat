@@ -10,7 +10,8 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "dev": "NO_PROXY=127.0.0.1,localhost HTTP_PROXY= HTTPS_PROXY= vite dev --host 0.0.0.0",
+    "dev": "NO_PROXY=127.0.0.1,localhost HTTP_PROXY= HTTPS_PROXY= node scripts/dev-local.mjs",
+    "dev:web": "NO_PROXY=127.0.0.1,localhost HTTP_PROXY= HTTPS_PROXY= vite dev --host 0.0.0.0",
     "dev:init": "rw-scripts dev-init",
     "codex:dev": "npm run dev",
     "preview": "vite preview",

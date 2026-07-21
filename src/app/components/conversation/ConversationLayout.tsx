@@ -81,18 +81,18 @@ const START_MODE_DEFAULTS: Record<
 > = {
   fast: {
     model: DEFAULT_CONVERSATION_MODEL,
-    reasoningEffort: null,
-    tools: [],
+    reasoningEffort: "medium",
+    tools: ["web-search"],
   },
   reasoning: {
-    model: "gpt-5-mini",
-    reasoningEffort: "medium",
-    tools: [],
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    tools: ["web-search"],
   },
   study: {
-    model: "gpt-5-mini",
+    model: "gpt-5.6-sol",
     reasoningEffort: "medium",
-    tools: ["study-and-learn"],
+    tools: ["study-and-learn", "web-search"],
   },
 };
 

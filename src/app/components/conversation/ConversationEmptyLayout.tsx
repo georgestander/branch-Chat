@@ -40,18 +40,18 @@ const START_MODE_DEFAULTS: Record<
 > = {
   fast: {
     model: DEFAULT_CONVERSATION_MODEL,
-    reasoningEffort: null,
-    tools: [],
+    reasoningEffort: "medium",
+    tools: ["web-search"],
   },
   reasoning: {
-    model: "gpt-5-mini",
-    reasoningEffort: "medium",
-    tools: [],
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    tools: ["web-search"],
   },
   study: {
-    model: "gpt-5-mini",
+    model: "gpt-5.6-sol",
     reasoningEffort: "medium",
-    tools: ["study-and-learn"],
+    tools: ["study-and-learn", "web-search"],
   },
 };
 
@@ -85,13 +85,18 @@ const PRESET_OPTIONS: Array<{
 const MODEL_OPTIONS: Array<{ id: string; label: string; description: string }> = [
   {
     id: DEFAULT_CONVERSATION_MODEL,
-    label: "GPT-5.2 Chat Latest",
-    description: "Fast chat-tuned model",
+    label: "GPT-5.6 Terra",
+    description: "Balanced everyday model",
   },
   {
-    id: "gpt-5-mini",
-    label: "GPT-5 Mini",
-    description: "Reasoning model with effort control",
+    id: "gpt-5.6-sol",
+    label: "GPT-5.6 Sol",
+    description: "Frontier capability model",
+  },
+  {
+    id: "gpt-5.6-luna",
+    label: "GPT-5.6 Luna",
+    description: "Efficient high-volume model",
   },
 ];
 
@@ -348,7 +353,7 @@ export function ConversationEmptyLayout({
   const canUseWebSearch = isWebSearchSupportedModel(selectedModel);
   const selectedModeSummary =
     selectedPreset === "fast"
-      ? "Fast preset: GPT-5 Chat Latest, no extra tools."
+      ? "Fast preset: GPT-5.6 Terra, medium reasoning, Fast service tier, and web search."
       : selectedPreset === "reasoning"
         ? "Reasoning preset: GPT-5 Mini with medium effort."
         : selectedPreset === "study"
@@ -422,10 +427,10 @@ export function ConversationEmptyLayout({
         <div className="flex w-full max-w-2xl flex-col items-center gap-6 text-center">
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight">
-              Bring your key, start branching
+              Sign in once, keep branching
             </h1>
             <p className="text-sm text-muted-foreground">
-              Choose a start mode, then connect BYOK before your first send.
+              Branch Chat uses your local Codex ChatGPT session and keeps conversations in local Durable Objects.
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -443,15 +448,9 @@ export function ConversationEmptyLayout({
               ) : null}
               <span>{isCreating ? "Creating…" : "Start Chat"}</span>
             </button>
-            <a
-              href="/sign-in"
-              className="inline-flex h-9 items-center rounded-full border border-foreground/20 bg-background/70 px-4 text-xs font-semibold uppercase tracking-[0.16em] text-foreground transition hover:bg-background"
-            >
-              Sign In
-            </a>
           </div>
           <p className="text-xs text-muted-foreground">
-            BYOK is required to send messages. If server persistence is disabled, keys stay in-session only.
+            Web search is on by default. Fast uses GPT-5.6 Terra with medium reasoning.
           </p>
           <form
             onSubmit={handleDraftSubmit}

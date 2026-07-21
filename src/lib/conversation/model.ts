@@ -6,7 +6,7 @@ export type ConversationModelId = string;
 export type BranchId = string;
 export type MessageId = string;
 
-export const DEFAULT_CONVERSATION_MODEL = "gpt-5.2-chat-latest";
+export const DEFAULT_CONVERSATION_MODEL = "gpt-5.6-terra";
 
 export type ConversationRole = "user" | "assistant" | "system";
 
