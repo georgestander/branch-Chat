@@ -352,6 +352,13 @@ export function draftBranchFromSelection(options: {
   if (!parentBranch) {
     throw new Error(`Parent branch ${parentBranchId} not found`);
   }
+  const sourceMessage = snapshot.messages[messageId];
+  if (!sourceMessage || sourceMessage.branchId !== parentBranchId) {
+    throw new Error("Branch source message does not belong to the parent branch");
+  }
+  if (sourceMessage.role !== "assistant") {
+    throw new Error("Branches can only be created from assistant messages");
+  }
   if (span) {
     if (
       !Number.isInteger(span.start) ||

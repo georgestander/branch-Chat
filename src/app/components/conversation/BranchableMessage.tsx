@@ -3,8 +3,7 @@
 import { useCallback, useRef, useState, useTransition } from "react";
 
 import {
-  createBranchFromSelection,
-  type CreateBranchInput,
+  sendMessage,
 } from "@/app/pages/conversation/functions";
 import { navigate } from "rwsdk/client";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
@@ -27,6 +26,8 @@ type SelectionState = {
   span?: { start: number; end: number };
   text: string;
   rect: DOMRect;
+  characterCount: number;
+  blockCount: number;
 };
 
 export function BranchableMessage({
@@ -75,13 +76,20 @@ export function BranchableMessage({
       return;
     }
 
-    const text = range.cloneContents().textContent ?? "";
+    const fragment = range.cloneContents();
+    const text = fragment.textContent ?? "";
     if (!text) {
       setSelection(null);
       return;
     }
     const rect = range.getBoundingClientRect();
-    setSelection({ span: { start, end }, text, rect });
+    setSelection({
+      span: { start, end },
+      text,
+      rect,
+      characterCount: text.length,
+      blockCount: countSelectionBlocks(fragment),
+    });
   }, []);
 
   const runCreateBranch = useCallback(
@@ -89,23 +97,26 @@ export function BranchableMessage({
       setError(null);
       startTransition(async () => {
         try {
-          const payload: CreateBranchInput = {
+          const response = await sendMessage({
             conversationId,
-            parentBranchId: branchId,
-            messageId,
-            span: draft.span,
-            excerpt: draft.text,
-          };
-          const response = await createBranchFromSelection(payload);
-          window.sessionStorage.setItem(
-            `connexus:bootstrap:${conversationId}`,
-            prompt,
-          );
+            content: prompt,
+            branchDraft: {
+              parentBranchId: branchId,
+              messageId,
+              span: draft.span,
+              excerpt: draft.text,
+            },
+          });
+          const createdBranchId = response.createdBranch?.id;
           clearSelection();
+          if (!createdBranchId) {
+            throw new Error("Branch was not created");
+          }
           const params = new URLSearchParams({
             conversationId,
-            branchId: response.branch.id,
+            branchId: createdBranchId,
             compare: "1",
+            focus: "1",
           });
           navigate(`/app?${params.toString()}`);
         } catch (cause) {
@@ -123,6 +134,7 @@ export function BranchableMessage({
         conversationId,
         branchId,
         compare: "1",
+        focus: "1",
       });
       navigate(`/app?${params.toString()}`);
     },
@@ -189,6 +201,8 @@ export function BranchableMessage({
             setSelection({
               text: excerpt,
               rect: event.currentTarget.getBoundingClientRect(),
+              characterCount: excerpt.length,
+              blockCount: 1,
             });
           }}
           disabled={isPending}
@@ -225,8 +239,9 @@ function SelectionPopover({
   const selectionLabel = `${selection.text.slice(0, 80)}${
     selection.text.length > 80 ? "…" : ""
   }`;
+  const hasMultiBlockSelection = selection.blockCount > 1;
   const popoverWidth = Math.min(384, window.innerWidth - 16);
-  const popoverHeight = 230;
+  const popoverHeight = 340;
   const style: React.CSSProperties = {
     position: "fixed",
     top: Math.min(
@@ -258,6 +273,20 @@ function SelectionPopover({
         <span className="max-w-xs text-xs text-muted-foreground">
           Branch from “{selectionLabel}”
         </span>
+        <div className="rounded border border-border bg-background/70 px-2.5 py-2 text-[11px] text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <span>{selection.characterCount} chars</span>
+            <span>{selection.blockCount} block{selection.blockCount === 1 ? "" : "s"}</span>
+          </div>
+          {hasMultiBlockSelection ? (
+            <div className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-900 dark:text-amber-200">
+              Multi-block selection. Double-check that you intended to branch from everything shown below.
+            </div>
+          ) : null}
+          <div className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded border border-border/70 bg-background px-2 py-1.5 text-foreground">
+            {selection.text}
+          </div>
+        </div>
         <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
@@ -302,4 +331,11 @@ function computeTextOffset(root: HTMLElement, container: Node, offset: number) {
   prefix.selectNodeContents(root);
   prefix.setEnd(container, offset);
   return prefix.cloneContents().textContent?.length ?? 0;
+}
+
+function countSelectionBlocks(fragment: DocumentFragment): number {
+  const blockSelector =
+    "p,li,pre,blockquote,h1,h2,h3,h4,h5,h6,table,tr";
+  const count = fragment.querySelectorAll(blockSelector).length;
+  return Math.max(1, count);
 }

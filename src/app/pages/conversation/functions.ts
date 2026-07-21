@@ -437,6 +437,13 @@ export interface SendMessageInput extends ConversationPayload {
   branchId?: BranchId;
   content: string;
   streamId?: string;
+  branchDraft?: {
+    parentBranchId: BranchId;
+    messageId: string;
+    span?: BranchSpan | null;
+    title?: string;
+    excerpt?: string | null;
+  };
   byok?: boolean;
   sessionByok?: {
     provider: "openai" | "openrouter";
@@ -449,6 +456,7 @@ export interface SendMessageInput extends ConversationPayload {
 export interface SendMessageResponse extends LoadConversationResponse {
   appendedMessages: Message[];
   assistantRenderedHtml?: string | null;
+  createdBranch?: Branch | null;
   quota: {
     remainingDemoPasses: number | null;
   };
@@ -492,6 +500,23 @@ export interface DeleteBranchInput extends ConversationPayload {
 
 export interface DeleteBranchResponse extends LoadConversationResponse {
   parentBranchId: BranchId;
+}
+
+export interface UpdateConversationCanvasInput extends ConversationPayload {
+  viewport?: {
+    x?: number;
+    y?: number;
+    zoom?: number;
+  } | null;
+  focusedBranchId?: BranchId | null;
+  nodes?: Record<
+    string,
+    {
+      x?: number;
+      y?: number;
+      folded?: boolean;
+    } | null
+  >;
 }
 
 export interface ConversationSummary {
@@ -967,8 +992,16 @@ async function sendMessageWithCodex(options: {
   input: SendMessageInput;
   snapshot: ConversationGraphSnapshot;
   consumedAttachments: PendingAttachment[];
+  createdBranch?: Branch | null;
 }): Promise<SendMessageResponse> {
-  const { ctx, conversationId, branchId, input, consumedAttachments } = options;
+  const {
+    ctx,
+    conversationId,
+    branchId,
+    input,
+    consumedAttachments,
+    createdBranch = null,
+  } = options;
   const settings = options.snapshot.conversation.settings;
   const selectedTools = normalizeComposerTools(
     input.tools ?? settings.composerDefaults?.tools ?? [],
@@ -1033,10 +1066,29 @@ async function sendMessageWithCodex(options: {
     attachments: null,
     toolInvocations: [],
   };
-  const appended = await applyConversationUpdates(ctx, conversationId, [
-    { type: "message:append", conversationId, message: userMessage },
-    { type: "message:append", conversationId, message: assistantMessage },
-  ]);
+  const initialUpdates = createdBranch
+    ? [
+        {
+          type: "branch:create" as const,
+          conversationId,
+          branch: createdBranch,
+        },
+        { type: "message:append" as const, conversationId, message: userMessage },
+        {
+          type: "message:append" as const,
+          conversationId,
+          message: assistantMessage,
+        },
+      ]
+    : [
+        { type: "message:append" as const, conversationId, message: userMessage },
+        {
+          type: "message:append" as const,
+          conversationId,
+          message: assistantMessage,
+        },
+      ];
+  const appended = await applyConversationUpdates(ctx, conversationId, initialUpdates);
 
   if (input.streamId) {
     const subscriber = await waitForSSESubscriber(input.streamId);
@@ -1209,6 +1261,7 @@ async function sendMessageWithCodex(options: {
     version: applied.version,
     appendedMessages: [userMessage, finalAssistantMessage],
     assistantRenderedHtml: renderedHtml,
+    createdBranch,
     quota: { remainingDemoPasses: null },
   };
 }
@@ -1224,11 +1277,36 @@ export async function sendMessage(
   if (!input.content || input.content.trim().length === 0) {
     throw new Error("Message content is required");
   }
+  if (input.branchDraft && input.branchId) {
+    throw new Error("branchId and branchDraft cannot be used together");
+  }
 
   const ensured = await ensureConversationSnapshot(ctx, conversationId);
-  const branchId =
-    input.branchId ?? ensured.snapshot.conversation.rootBranchId;
-  const branch = ensured.snapshot.branches[branchId];
+  let activeSnapshot = ensured.snapshot;
+  let branchId = input.branchId ?? ensured.snapshot.conversation.rootBranchId;
+  let createdBranch: Branch | null = null;
+
+  if (input.branchDraft) {
+    createdBranch = draftBranchFromSelection({
+      snapshot: ensured.snapshot,
+      parentBranchId: input.branchDraft.parentBranchId,
+      messageId: input.branchDraft.messageId,
+      span: input.branchDraft.span,
+      title: input.branchDraft.title,
+      excerpt: input.branchDraft.excerpt,
+    });
+    branchId = createdBranch.id;
+    activeSnapshot = {
+      ...ensured.snapshot,
+      branches: {
+        ...ensured.snapshot.branches,
+        [createdBranch.id]: createdBranch,
+      },
+      canvas: ensured.snapshot.canvas,
+    };
+  }
+
+  const branch = activeSnapshot.branches[branchId];
 
   if (!branch) {
     throw new Error(`Branch ${branchId} not found for conversation`);
@@ -1256,13 +1334,24 @@ export async function sendMessage(
     }
   }
 
+  if (createdBranch) {
+    activeSnapshot = {
+      ...activeSnapshot,
+      branches: {
+        ...activeSnapshot.branches,
+        [createdBranch.id]: createdBranch,
+      },
+    };
+  }
+
   return sendMessageWithCodex({
     ctx,
     conversationId,
     branchId,
     input,
-    snapshot: ensured.snapshot,
+    snapshot: activeSnapshot,
     consumedAttachments,
+    createdBranch,
   });
 
   /* Legacy direct API/BYOK implementation retained temporarily for migration reference.
@@ -2505,6 +2594,27 @@ export async function deleteBranch(
     version: applied.version,
     parentBranchId,
   };
+}
+
+export async function updateConversationCanvas(
+  input: UpdateConversationCanvasInput,
+): Promise<LoadConversationResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+
+  return applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "canvas:update",
+      conversationId,
+      patch: {
+        viewport: input.viewport ?? undefined,
+        focusedBranchId:
+          input.focusedBranchId === undefined ? undefined : input.focusedBranchId,
+        nodes: input.nodes,
+      },
+    },
+  ]);
 }
 
 export async function archiveConversation(

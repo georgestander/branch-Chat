@@ -2,6 +2,8 @@ import type {
   Branch,
   BranchId,
   BranchSpan,
+  CanvasBranchNodeState,
+  ConversationCanvasState,
   Conversation,
   ComposerDefaults,
   ConversationGraphSnapshot,
@@ -14,6 +16,7 @@ import type {
   ToolInvocation,
   ToolInvocationStatus,
 } from "./model";
+import { normalizeConversationCanvasState } from "./model";
 
 type RecordLike = Record<string, unknown>;
 
@@ -459,11 +462,102 @@ function validateMessage(value: unknown): Message {
   };
 }
 
+function validateCanvasNodeState(
+  branchId: BranchId,
+  value: unknown,
+): CanvasBranchNodeState {
+  assert(isObject(value), `canvas.nodes.${branchId} must be an object`);
+  const record = value as RecordLike;
+  const nodeBranchId = record.branchId;
+  const x = record.x;
+  const y = record.y;
+  const folded = record.folded;
+  assert(
+    nodeBranchId === undefined || nodeBranchId === branchId,
+    `canvas.nodes.${branchId}.branchId invalid`,
+  );
+  assert(typeof x === "number" && Number.isFinite(x), `canvas.nodes.${branchId}.x invalid`);
+  assert(typeof y === "number" && Number.isFinite(y), `canvas.nodes.${branchId}.y invalid`);
+  assert(typeof folded === "boolean", `canvas.nodes.${branchId}.folded invalid`);
+  return {
+    branchId,
+    x,
+    y,
+    folded,
+  };
+}
+
+function validateCanvasState(
+  value: unknown,
+  branches: Record<BranchId, Branch>,
+  rootBranchId: BranchId,
+): ConversationCanvasState {
+  if (value === undefined || value === null) {
+    return normalizeConversationCanvasState({
+      conversation: {
+        id: "placeholder",
+        rootBranchId,
+      } as ConversationGraphSnapshot["conversation"],
+      branches,
+      canvas: null,
+    });
+  }
+
+  assert(isObject(value), "canvas must be an object");
+  const record = value as RecordLike;
+  const viewport = record.viewport;
+  const nodes = record.nodes;
+  const focusedBranchId = record.focusedBranchId;
+  const version = record.version;
+
+  assert(version === undefined || version === 1, "canvas.version invalid");
+  assert(isObject(viewport), "canvas.viewport must be an object");
+  assert(isObject(nodes), "canvas.nodes must be an object");
+
+  const validatedNodes: Record<BranchId, CanvasBranchNodeState> = {};
+  for (const [branchId, nodeValue] of Object.entries(nodes)) {
+    if (!branches[branchId as BranchId]) {
+      continue;
+    }
+    validatedNodes[branchId as BranchId] = validateCanvasNodeState(
+      branchId as BranchId,
+      nodeValue,
+    );
+  }
+
+  assert(
+    focusedBranchId === undefined ||
+      focusedBranchId === null ||
+      (typeof focusedBranchId === "string" &&
+        branches[focusedBranchId as BranchId] !== undefined),
+    "canvas.focusedBranchId invalid",
+  );
+
+  return normalizeConversationCanvasState({
+    conversation: {
+      id: "placeholder",
+      rootBranchId,
+    } as ConversationGraphSnapshot["conversation"],
+    branches,
+    canvas: {
+      version: 1,
+      viewport: {
+        x: (viewport as RecordLike).x as number,
+        y: (viewport as RecordLike).y as number,
+        zoom: (viewport as RecordLike).zoom as number,
+      },
+      focusedBranchId:
+        typeof focusedBranchId === "string" ? (focusedBranchId as BranchId) : null,
+      nodes: validatedNodes,
+    },
+  });
+}
+
 export function validateConversationGraphSnapshot(
   value: unknown,
 ): ConversationGraphSnapshot {
   assert(isObject(value), "snapshot must be an object");
-  const { conversation, branches, messages } = value as RecordLike;
+  const { conversation, branches, messages, canvas } = value as RecordLike;
 
   const validatedConversation = validateConversation(conversation);
 
@@ -505,10 +599,17 @@ export function validateConversationGraphSnapshot(
     "root branch missing from branches map",
   );
 
+  const validatedCanvas = validateCanvasState(
+    canvas,
+    validatedBranches,
+    validatedConversation.rootBranchId,
+  );
+
   return {
     conversation: validatedConversation,
     branches: validatedBranches,
     messages: validatedMessages,
+    canvas: validatedCanvas,
   };
 }
 

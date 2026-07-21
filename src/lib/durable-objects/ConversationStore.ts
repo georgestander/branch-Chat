@@ -1,6 +1,8 @@
 import {
+  applyCanvasPatch,
   cloneConversationSnapshot,
   deleteBranchSubtree,
+  normalizeConversationCanvasState,
   type ConversationGraphSnapshot,
   type ConversationGraphUpdate,
   type ConversationModelId,
@@ -1089,6 +1091,16 @@ export class ConversationStoreDO implements DurableObject {
         })(),
         branches: {},
         messages: {},
+        canvas: {
+          version: 1,
+          viewport: {
+            x: 0,
+            y: 0,
+            zoom: 1,
+          },
+          focusedBranchId: null,
+          nodes: {},
+        },
       };
     }
 
@@ -1100,7 +1112,15 @@ export class ConversationStoreDO implements DurableObject {
           next.conversation = update.conversation;
           break;
         }
-        case "branch:create":
+        case "canvas:update": {
+          next.canvas = applyCanvasPatch(next, update.patch);
+          break;
+        }
+        case "branch:create": {
+          next.branches[update.branch.id] = update.branch;
+          next.canvas = normalizeConversationCanvasState(next);
+          break;
+        }
         case "branch:update": {
           next.branches[update.branch.id] = update.branch;
           break;
@@ -1124,6 +1144,7 @@ export class ConversationStoreDO implements DurableObject {
       }
     }
 
+    next.canvas = normalizeConversationCanvasState(next);
     return next;
   }
 

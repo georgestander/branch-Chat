@@ -195,10 +195,37 @@ export interface Message {
   toolInvocations?: ToolInvocation[] | null;
 }
 
+export interface ConversationCanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface CanvasBranchNodeState {
+  branchId: BranchId;
+  x: number;
+  y: number;
+  folded: boolean;
+}
+
+export interface ConversationCanvasState {
+  version: 1;
+  viewport: ConversationCanvasViewport;
+  focusedBranchId: BranchId | null;
+  nodes: Record<BranchId, CanvasBranchNodeState>;
+}
+
 export interface ConversationGraphSnapshot {
   conversation: Conversation;
   branches: Record<BranchId, Branch>;
   messages: Record<MessageId, Message>;
+  canvas: ConversationCanvasState;
+}
+
+export interface ConversationCanvasPatch {
+  viewport?: Partial<ConversationCanvasViewport> | null;
+  focusedBranchId?: BranchId | null;
+  nodes?: Record<BranchId, Partial<CanvasBranchNodeState> | null>;
 }
 
 export type ConversationGraphUpdate =
@@ -230,7 +257,180 @@ export type ConversationGraphUpdate =
   | {
       type: "conversation:update";
       conversation: Conversation;
+    }
+  | {
+      type: "canvas:update";
+      conversationId: ConversationModelId;
+      patch: ConversationCanvasPatch;
     };
+
+const DEFAULT_CANVAS_VIEWPORT: ConversationCanvasViewport = {
+  x: 0,
+  y: 0,
+  zoom: 1,
+};
+
+const DEFAULT_CANVAS_DEPTH_SPACING = 420;
+const DEFAULT_CANVAS_SIBLING_SPACING = 220;
+
+function buildCanvasNodeLayout(
+  snapshot: Pick<ConversationGraphSnapshot, "conversation" | "branches">,
+): Record<BranchId, CanvasBranchNodeState> {
+  const childrenByParent = new Map<BranchId, Branch[]>();
+
+  for (const branch of Object.values(snapshot.branches)) {
+    if (!branch.parentId) {
+      continue;
+    }
+    const siblings = childrenByParent.get(branch.parentId) ?? [];
+    siblings.push(branch);
+    childrenByParent.set(branch.parentId, siblings);
+  }
+
+  for (const siblings of childrenByParent.values()) {
+    siblings.sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+    );
+  }
+
+  const ordered: Array<{ branch: Branch; depth: number }> = [];
+  const traverse = (branchId: BranchId, depth: number) => {
+    const branch = snapshot.branches[branchId];
+    if (!branch) {
+      return;
+    }
+    ordered.push({ branch, depth });
+    for (const child of childrenByParent.get(branchId) ?? []) {
+      traverse(child.id, depth + 1);
+    }
+  };
+
+  traverse(snapshot.conversation.rootBranchId, 0);
+
+  return Object.fromEntries(
+    ordered.map(({ branch, depth }, index) => [
+      branch.id,
+      {
+        branchId: branch.id,
+        x: depth * DEFAULT_CANVAS_DEPTH_SPACING,
+        y: index * DEFAULT_CANVAS_SIBLING_SPACING,
+        folded: false,
+      } satisfies CanvasBranchNodeState,
+    ]),
+  );
+}
+
+export function normalizeConversationCanvasState(
+  snapshot: Pick<ConversationGraphSnapshot, "conversation" | "branches"> & {
+    canvas?: Partial<ConversationCanvasState> | null;
+  },
+): ConversationCanvasState {
+  const layout = buildCanvasNodeLayout(snapshot);
+  const source = snapshot.canvas ?? null;
+  const viewport = source?.viewport ?? null;
+  const normalizedNodes: Record<BranchId, CanvasBranchNodeState> = {};
+
+  for (const [branchId, branch] of Object.entries(snapshot.branches)) {
+    const fallback = layout[branchId as BranchId];
+    const candidate = source?.nodes?.[branchId as BranchId];
+    normalizedNodes[branchId as BranchId] = {
+      branchId: branch.id,
+      x:
+        typeof candidate?.x === "number" && Number.isFinite(candidate.x)
+          ? candidate.x
+          : fallback?.x ?? 0,
+      y:
+        typeof candidate?.y === "number" && Number.isFinite(candidate.y)
+          ? candidate.y
+          : fallback?.y ?? 0,
+      folded: candidate?.folded === true,
+    };
+  }
+
+  const focusedBranchId =
+    typeof source?.focusedBranchId === "string" &&
+    snapshot.branches[source.focusedBranchId]
+      ? source.focusedBranchId
+      : snapshot.conversation.rootBranchId;
+
+  return {
+    version: 1,
+    viewport: {
+      x:
+        typeof viewport?.x === "number" && Number.isFinite(viewport.x)
+          ? viewport.x
+          : DEFAULT_CANVAS_VIEWPORT.x,
+      y:
+        typeof viewport?.y === "number" && Number.isFinite(viewport.y)
+          ? viewport.y
+          : DEFAULT_CANVAS_VIEWPORT.y,
+      zoom:
+        typeof viewport?.zoom === "number" &&
+        Number.isFinite(viewport.zoom) &&
+        viewport.zoom > 0
+          ? viewport.zoom
+          : DEFAULT_CANVAS_VIEWPORT.zoom,
+    },
+    focusedBranchId,
+    nodes: normalizedNodes,
+  };
+}
+
+export function applyCanvasPatch(
+  snapshot: ConversationGraphSnapshot,
+  patch: ConversationCanvasPatch,
+): ConversationCanvasState {
+  const current = normalizeConversationCanvasState(snapshot);
+  const nextNodes: Record<BranchId, CanvasBranchNodeState> = {
+    ...current.nodes,
+  };
+
+  for (const [branchId, update] of Object.entries(patch.nodes ?? {})) {
+    if (!snapshot.branches[branchId as BranchId]) {
+      continue;
+    }
+    if (update === null) {
+      delete nextNodes[branchId as BranchId];
+      continue;
+    }
+    const existing = nextNodes[branchId as BranchId] ?? {
+      branchId: branchId as BranchId,
+      x: 0,
+      y: 0,
+      folded: false,
+    };
+    nextNodes[branchId as BranchId] = {
+      branchId: branchId as BranchId,
+      x:
+        typeof update.x === "number" && Number.isFinite(update.x)
+          ? update.x
+          : existing.x,
+      y:
+        typeof update.y === "number" && Number.isFinite(update.y)
+          ? update.y
+          : existing.y,
+      folded:
+        typeof update.folded === "boolean" ? update.folded : existing.folded,
+    };
+  }
+
+  return normalizeConversationCanvasState({
+    conversation: snapshot.conversation,
+    branches: snapshot.branches,
+    canvas: {
+      version: 1,
+      viewport: {
+        ...current.viewport,
+        ...(patch.viewport ?? {}),
+      },
+      focusedBranchId:
+        patch.focusedBranchId === undefined
+          ? current.focusedBranchId
+          : patch.focusedBranchId,
+      nodes: nextNodes,
+    },
+  });
+}
 
 export function createConversationSnapshot(input: {
   id: ConversationModelId;
@@ -265,6 +465,19 @@ export function createConversationSnapshot(input: {
       [rootBranch.id]: rootBranch,
     },
     messages: {},
+    canvas: {
+      version: 1,
+      viewport: { ...DEFAULT_CANVAS_VIEWPORT },
+      focusedBranchId: rootBranch.id,
+      nodes: {
+        [rootBranch.id]: {
+          branchId: rootBranch.id,
+          x: 0,
+          y: 0,
+          folded: false,
+        },
+      },
+    },
   };
 
   for (const message of input.initialMessages ?? []) {
@@ -275,6 +488,7 @@ export function createConversationSnapshot(input: {
     }
   }
 
+  snapshot.canvas = normalizeConversationCanvasState(snapshot);
   return snapshot;
 }
 
@@ -335,6 +549,17 @@ export function cloneConversationSnapshot(
         ];
       }),
     ),
+    canvas: {
+      version: 1,
+      viewport: { ...snapshot.canvas.viewport },
+      focusedBranchId: snapshot.canvas.focusedBranchId,
+      nodes: Object.fromEntries(
+        Object.entries(snapshot.canvas.nodes).map(([branchId, node]) => [
+          branchId,
+          { ...node },
+        ]),
+      ),
+    },
   };
 }
 
@@ -373,6 +598,24 @@ export function deleteBranchSubtree(
   for (const deletedBranchId of branchIds) {
     delete snapshot.branches[deletedBranchId];
   }
+
+  const nextCanvasNodes = { ...snapshot.canvas.nodes };
+  for (const deletedBranchId of branchIds) {
+    delete nextCanvasNodes[deletedBranchId];
+  }
+  snapshot.canvas = normalizeConversationCanvasState({
+    conversation: {
+      ...snapshot.conversation,
+    },
+    branches: snapshot.branches,
+    canvas: {
+      ...snapshot.canvas,
+      focusedBranchId: branchIds.has(snapshot.canvas.focusedBranchId ?? "")
+        ? null
+        : snapshot.canvas.focusedBranchId,
+      nodes: nextCanvasNodes,
+    },
+  });
 
   return [...branchIds];
 }

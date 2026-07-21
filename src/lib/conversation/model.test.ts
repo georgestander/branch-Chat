@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  applyCanvasPatch,
   createConversationSnapshot,
   deleteBranchSubtree,
+  normalizeConversationCanvasState,
   type Branch,
   type Message,
 } from "./model.ts";
@@ -62,6 +64,8 @@ test("deleteBranchSubtree removes a branch, descendants, and their messages", ()
   assert.deepEqual(new Set(deletedIds), new Set(["child", "grandchild"]));
   assert.deepEqual(Object.keys(snapshot.branches).sort(), ["root", "sibling"]);
   assert.deepEqual(Object.keys(snapshot.messages), ["sibling-message"]);
+  assert.deepEqual(Object.keys(snapshot.canvas.nodes).sort(), ["root", "sibling"]);
+  assert.equal(snapshot.canvas.focusedBranchId, "root");
 });
 
 test("deleteBranchSubtree protects the root branch", () => {
@@ -83,5 +87,123 @@ test("deleteBranchSubtree protects the root branch", () => {
 
   assert.throws(() => deleteBranchSubtree(snapshot, "root"), {
     message: "The root branch cannot be deleted",
+  });
+});
+
+test("normalizeConversationCanvasState lays out missing branch nodes deterministically", () => {
+  const snapshot = createConversationSnapshot({
+    id: "conversation",
+    createdAt,
+    settings: {
+      model: "gpt-5.6-terra",
+      temperature: 0,
+      composerDefaults: { preset: "fast", tools: ["web-search"] },
+    },
+    rootBranch: {
+      id: "root",
+      title: "Root",
+      createdFrom: { messageId: "root-message" },
+      createdAt,
+    },
+  });
+
+  snapshot.branches.child = branch("child", "root");
+  snapshot.branches.sibling = {
+    ...branch("sibling", "root"),
+    createdAt: "2026-07-21T00:00:01.000Z",
+  };
+
+  const canvas = normalizeConversationCanvasState({
+    conversation: snapshot.conversation,
+    branches: snapshot.branches,
+    canvas: {
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      focusedBranchId: "missing",
+      nodes: {
+        root: {
+          branchId: "root",
+          x: 12,
+          y: 34,
+          folded: false,
+        },
+      },
+    },
+  });
+
+  assert.equal(canvas.focusedBranchId, "root");
+  assert.deepEqual(canvas.nodes.root, {
+    branchId: "root",
+    x: 12,
+    y: 34,
+    folded: false,
+  });
+  assert.deepEqual(canvas.nodes.child, {
+    branchId: "child",
+    x: 420,
+    y: 220,
+    folded: false,
+  });
+  assert.deepEqual(canvas.nodes.sibling, {
+    branchId: "sibling",
+    x: 420,
+    y: 440,
+    folded: false,
+  });
+});
+
+test("applyCanvasPatch updates viewport and node state while preserving normalization", () => {
+  const snapshot = createConversationSnapshot({
+    id: "conversation",
+    createdAt,
+    settings: {
+      model: "gpt-5.6-terra",
+      temperature: 0,
+      composerDefaults: { preset: "fast", tools: ["web-search"] },
+    },
+    rootBranch: {
+      id: "root",
+      title: "Root",
+      createdFrom: { messageId: "root-message" },
+      createdAt,
+    },
+  });
+
+  snapshot.branches.child = branch("child", "root");
+  snapshot.canvas = normalizeConversationCanvasState({
+    conversation: snapshot.conversation,
+    branches: snapshot.branches,
+    canvas: snapshot.canvas,
+  });
+
+  const canvas = applyCanvasPatch(snapshot, {
+    viewport: { x: 120, y: -40, zoom: 1.2 },
+    focusedBranchId: "child",
+    nodes: {
+      child: {
+        x: 640,
+        y: 180,
+        folded: true,
+      },
+    },
+  });
+
+  assert.deepEqual(canvas.viewport, {
+    x: 120,
+    y: -40,
+    zoom: 1.2,
+  });
+  assert.equal(canvas.focusedBranchId, "child");
+  assert.deepEqual(canvas.nodes.child, {
+    branchId: "child",
+    x: 640,
+    y: 180,
+    folded: true,
+  });
+  assert.deepEqual(canvas.nodes.root, {
+    branchId: "root",
+    x: 0,
+    y: 0,
+    folded: false,
   });
 });
