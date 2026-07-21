@@ -6,6 +6,7 @@ import {
   renderMarkdownToHtml,
 } from "./markdown.server.ts";
 import type { Message } from "../../lib/conversation/model.ts";
+import { branchToneForId } from "../../lib/conversation/branchTone.ts";
 
 test("renders multiple persistent branch highlights with navigation ids", async () => {
   const html = await renderMarkdownToHtml("Alpha beta gamma delta", {
@@ -26,6 +27,10 @@ test("renders multiple persistent branch highlights with navigation ids", async 
   assert.match(html, /data-branch-id="branch-alpha"[^>]*>Alpha<\/mark>/);
   assert.match(html, /data-branch-id="branch-gamma"[^>]*>gamma<\/mark>/);
   assert.match(html, /data-message-id="message-1"/);
+  assert.match(
+    html,
+    new RegExp(`data-branch-tone="${branchToneForId("branch-alpha").key}"`),
+  );
 });
 
 test("keeps span and whole-message branch anchors on rendered messages", async () => {

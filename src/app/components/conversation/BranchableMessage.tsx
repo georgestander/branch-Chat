@@ -11,6 +11,7 @@ import type { ToolInvocation } from "@/lib/conversation";
 import type { RenderedBranchAnchor } from "@/lib/conversation/rendered";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
 import { GitBranch } from "lucide-react";
+import { branchToneForId } from "@/lib/conversation/branchTone";
 
 interface BranchableMessageProps {
   conversationId: string;
@@ -22,7 +23,17 @@ interface BranchableMessageProps {
   branchAnchors?: RenderedBranchAnchor[];
   onOpenBranch?: (branchId: string) => void;
   onBranchCreated?: (response: SendMessageResponse) => void;
+  onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
 }
+
+export type BranchSelectionDraft = {
+  parentBranchId: string;
+  messageId: string;
+  span?: { start: number; end: number };
+  excerpt: string;
+  characterCount: number;
+  blockCount: number;
+};
 
 type SelectionState = {
   span?: { start: number; end: number };
@@ -42,6 +53,7 @@ export function BranchableMessage({
   branchAnchors = [],
   onOpenBranch,
   onBranchCreated,
+  onStartBranchDraft,
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -87,14 +99,27 @@ export function BranchableMessage({
       return;
     }
     const rect = range.getBoundingClientRect();
-    setSelection({
+    const nextSelection = {
       span: { start, end },
       text,
       rect,
       characterCount: text.length,
       blockCount: countSelectionBlocks(fragment),
-    });
-  }, []);
+    };
+    if (onStartBranchDraft) {
+      setSelection(null);
+      onStartBranchDraft({
+        parentBranchId: branchId,
+        messageId,
+        span: nextSelection.span,
+        excerpt: nextSelection.text,
+        characterCount: nextSelection.characterCount,
+        blockCount: nextSelection.blockCount,
+      });
+      return;
+    }
+    setSelection(nextSelection);
+  }, [branchId, messageId, onStartBranchDraft]);
 
   const runCreateBranch = useCallback(
     (draft: SelectionState, prompt: string) => {
@@ -138,7 +163,7 @@ export function BranchableMessage({
       <MarkdownContent
         ref={containerRef}
         onMouseUp={handleSelection}
-        className="prose prose-sm mt-3 max-w-none text-foreground"
+        className="prose prose-sm mt-3 max-w-none cursor-text select-text text-foreground"
         html={renderedHtml}
       />
 
@@ -152,27 +177,36 @@ export function BranchableMessage({
           className="mt-3 flex flex-wrap gap-2"
           aria-label="Branches created from this message"
         >
-          {branchAnchors.map((anchor) => (
-            <button
-              key={anchor.branchId}
-              type="button"
-              onClick={() => openChildBranch(anchor.branchId)}
-              className="interactive-target inline-flex max-w-full items-center gap-1.5 rounded border border-accent/50 bg-accent/10 px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              title={
-                anchor.excerpt
-                  ? `Open ${anchor.title}: “${anchor.excerpt}”`
-                  : `Open ${anchor.title}`
-              }
-            >
-              <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{anchor.title}</span>
-              {anchor.range ? null : (
-                <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Message
-                </span>
-              )}
-            </button>
-          ))}
+          {branchAnchors.map((anchor) => {
+            const tone = branchToneForId(anchor.branchId);
+            return (
+              <button
+                key={anchor.branchId}
+                type="button"
+                onClick={() => openChildBranch(anchor.branchId)}
+                className="interactive-target inline-flex max-w-full items-center gap-1.5 rounded border bg-background px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                style={{ borderColor: tone.color, borderLeftWidth: 4 }}
+                title={
+                  anchor.excerpt
+                    ? `Open child ${anchor.title}: “${anchor.excerpt}”`
+                    : `Open child ${anchor.title}`
+                }
+              >
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: tone.color }}
+                  aria-hidden="true"
+                />
+                <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">Child: {anchor.title}</span>
+                {anchor.range ? null : (
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    Message
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       ) : null}
 
@@ -181,7 +215,7 @@ export function BranchableMessage({
           <span className="text-xs text-destructive">{error}</span>
         ) : (
           <span className="text-xs text-muted-foreground">
-            Select text to branch or use the quick branch button.
+            Highlight any text to open a draft child card. Nothing is created until you send.
           </span>
         )}
 
@@ -190,17 +224,28 @@ export function BranchableMessage({
           onClick={(event) => {
             const excerpt =
               content.length > 280 ? `${content.slice(0, 277)}…` : content;
-            setSelection({
+            const nextSelection = {
               text: excerpt,
               rect: event.currentTarget.getBoundingClientRect(),
               characterCount: excerpt.length,
               blockCount: 1,
-            });
+            };
+            if (onStartBranchDraft) {
+              onStartBranchDraft({
+                parentBranchId: branchId,
+                messageId,
+                excerpt,
+                characterCount: excerpt.length,
+                blockCount: 1,
+              });
+              return;
+            }
+            setSelection(nextSelection);
           }}
           disabled={isPending}
           className="interactive-target inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
         >
-          {isPending ? "Creating…" : "Branch Message"}
+          {isPending ? "Creating…" : "Branch whole reply"}
         </button>
       </div>
 

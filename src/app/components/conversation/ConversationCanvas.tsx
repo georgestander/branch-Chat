@@ -36,6 +36,8 @@ import type {
   ConversationGraphSnapshot,
   Message,
 } from "@/lib/conversation";
+import type { BranchSelectionDraft } from "@/app/components/conversation/BranchableMessage";
+import { branchToneForId, type BranchTone } from "@/lib/conversation/branchTone";
 import { cn } from "@/lib/utils";
 import {
   GitBranch,
@@ -46,7 +48,9 @@ import {
   MessageSquareText,
   Minimize2,
   Pencil,
+  Send,
   Trash2,
+  X,
 } from "lucide-react";
 
 const CARD_WIDTH = 310;
@@ -62,6 +66,8 @@ type BranchCardSummary = {
   isStreaming: boolean;
   folded: boolean;
   expanded: boolean;
+  tone: BranchTone;
+  parentTitle: string | null;
 };
 
 type BranchNodeData = {
@@ -77,6 +83,14 @@ type BranchNodeData = {
 
 type BranchFlowNode = Node<BranchNodeData, "branch">;
 
+type BranchDraftNodeData = {
+  draft: BranchSelectionDraft;
+  parentTitle: string;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (prompt: string) => void;
+};
+
 interface ConversationCanvasProps {
   snapshot: ConversationGraphSnapshot;
   activeBranchId: BranchId;
@@ -87,6 +101,10 @@ interface ConversationCanvasProps {
   onPatchCanvas: (patch: ConversationCanvasPatch) => void;
   onDeleteBranch: (branchId: BranchId) => void;
   onRenameBranch: (branchId: BranchId) => void;
+  branchDraft: BranchSelectionDraft | null;
+  isCreatingBranch: boolean;
+  onCancelBranchDraft: () => void;
+  onSubmitBranchDraft: (prompt: string) => void;
   className?: string;
 }
 
@@ -162,6 +180,7 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
           : "border-border hover:border-foreground/45",
         summary.expanded ? "cursor-default" : "cursor-pointer",
       )}
+      style={{ borderLeftColor: summary.tone.color, borderLeftWidth: 4 }}
       aria-label={`${summary.branch.title} branch card`}
     >
       <Handle
@@ -187,12 +206,22 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
       <header className="canvas-card-drag-handle flex shrink-0 cursor-pointer items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: summary.tone.color }}
+              aria-hidden="true"
+            />
             <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
             {summary.branch.parentId ? "Branch" : "Root chat"}
           </div>
           <h2 className="mt-1 truncate text-sm font-semibold text-foreground">
             {summary.branch.title || "Untitled branch"}
           </h2>
+          {summary.parentTitle ? (
+            <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+              Child of {summary.parentTitle}
+            </div>
+          ) : null}
         </div>
         {summary.isStreaming ? (
           <span className="rounded border border-accent/45 bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-accent-foreground">
@@ -320,6 +349,79 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
   );
 }
 
+function BranchDraftCard({ data }: { data: BranchDraftNodeData }) {
+  const [prompt, setPrompt] = useState("");
+  const excerpt = data.draft.excerpt.replace(/\s+/g, " ").trim();
+  const preview = excerpt.length > 150 ? `${excerpt.slice(0, 147)}…` : excerpt;
+
+  return (
+    <article
+      className="nodrag nopan flex h-full w-full flex-col overflow-hidden rounded border-2 border-dashed border-amber-500 bg-background text-left ring-4 ring-amber-500/10"
+      aria-label="New branch draft"
+      data-branch-draft-card="true"
+    >
+      <header className="flex shrink-0 items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.17em] text-amber-700 dark:text-amber-300">
+            <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
+            New branch · not saved
+          </div>
+          <div className="mt-1 truncate text-xs text-muted-foreground">
+            From {data.parentTitle}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={data.onCancel}
+          disabled={data.pending}
+          className="rounded border border-amber-500/35 bg-background p-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          aria-label="Close branch draft"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </header>
+      <form
+        className="flex min-h-0 flex-1 flex-col gap-3 p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const trimmed = prompt.trim();
+          if (trimmed) data.onSubmit(trimmed);
+        }}
+      >
+        <blockquote className="line-clamp-3 border-l-2 border-amber-500 pl-2 text-[11px] leading-4 text-muted-foreground">
+          “{preview}”
+        </blockquote>
+        <textarea
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          placeholder="Ask about this selection…"
+          rows={4}
+          autoFocus
+          disabled={data.pending}
+          className="nowheel min-h-0 flex-1 resize-none rounded border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 disabled:opacity-60"
+        />
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[10px] leading-4 text-muted-foreground">
+            Close or click the canvas to discard.
+          </span>
+          <button
+            type="submit"
+            disabled={data.pending || prompt.trim().length === 0}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded border border-amber-600 bg-amber-500 px-3 py-1.5 text-xs font-bold text-black hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {data.pending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <Send className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+            {data.pending ? "Creating…" : "Send & create"}
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
 const nodeTypes = { branch: BranchNode };
 
 function CanvasFlow({
@@ -332,6 +434,10 @@ function CanvasFlow({
   onPatchCanvas,
   onDeleteBranch,
   onRenameBranch,
+  branchDraft,
+  isCreatingBranch,
+  onCancelBranchDraft,
+  onSubmitBranchDraft,
   className,
 }: ConversationCanvasProps) {
   const flow = useReactFlow<BranchFlowNode, Edge>();
@@ -371,6 +477,10 @@ function CanvasFlow({
         ),
         folded: folded[branch.id] === true,
         expanded: snapshot.canvas.nodes[branch.id]?.expanded === true,
+        tone: branchToneForId(branch.id),
+        parentTitle: branch.parentId
+          ? snapshot.branches[branch.parentId]?.title || "Untitled branch"
+          : null,
       });
     }
     return result;
@@ -378,6 +488,7 @@ function CanvasFlow({
 
   const toggleCard = useCallback(
     (branchId: BranchId) => {
+      onCancelBranchDraft();
       const expanded = snapshot.canvas.nodes[branchId]?.expanded === true;
       if (expanded && selectedId === branchId) {
         onCollapseBranch(branchId);
@@ -386,7 +497,13 @@ function CanvasFlow({
       setSelectedId(branchId);
       onOpenBranch(branchId);
     },
-    [onCollapseBranch, onOpenBranch, selectedId, snapshot.canvas.nodes],
+    [
+      onCancelBranchDraft,
+      onCollapseBranch,
+      onOpenBranch,
+      selectedId,
+      snapshot.canvas.nodes,
+    ],
   );
 
   const toggleFold = useCallback(
@@ -464,6 +581,7 @@ function CanvasFlow({
     });
   }, [desiredNodes, setNodes]);
 
+
   const expansionSignature = useMemo(
     () =>
       Object.values(snapshot.canvas.nodes)
@@ -498,9 +616,8 @@ function CanvasFlow({
     };
   }, []);
 
-  const edges = useMemo<Edge[]>(
-    () =>
-      Object.values(snapshot.branches)
+  const edges = useMemo<Edge[]>(() => {
+    const branchEdges: Edge[] = Object.values(snapshot.branches)
         .filter(
           (branch) =>
             branch.parentId &&
@@ -513,10 +630,13 @@ function CanvasFlow({
           target: branch.id,
           type: "smoothstep",
           animated: summaries.get(branch.id)?.isStreaming === true,
-          style: { strokeWidth: 1.5 },
-        })),
-    [snapshot.branches, summaries, visibleIds],
-  );
+          style: {
+            stroke: branchToneForId(branch.id).color,
+            strokeWidth: 2,
+          },
+        }));
+    return branchEdges;
+  }, [snapshot.branches, summaries, visibleIds]);
 
   const tidy = useCallback(() => {
     const graph = new dagre.graphlib.Graph();
@@ -559,6 +679,15 @@ function CanvasFlow({
         target?.tagName === "TEXTAREA" ||
         target?.tagName === "SELECT"
       ) {
+        if (event.key === "Escape" && branchDraft && !isCreatingBranch) {
+          event.preventDefault();
+          onCancelBranchDraft();
+        }
+        return;
+      }
+      if (event.key === "Escape" && branchDraft && !isCreatingBranch) {
+        event.preventDefault();
+        onCancelBranchDraft();
         return;
       }
       if (
@@ -624,7 +753,10 @@ function CanvasFlow({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
+    branchDraft,
+    isCreatingBranch,
     nodes,
+    onCancelBranchDraft,
     onDeleteBranch,
     onCollapseBranch,
     selectedId,
@@ -655,18 +787,22 @@ function CanvasFlow({
   );
 
   return (
-    <div className={cn("canvas-flow h-full min-h-[420px] w-full", className)}>
+    <div className={cn("canvas-flow relative h-full min-h-[420px] w-full", className)}>
       <ReactFlow<BranchFlowNode, Edge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
-        onNodeDragStop={(_, node) =>
+        onNodeDragStop={(_, node) => {
+          if (node.type !== "branch") return;
           onPatchCanvas({
             focusedBranchId: node.id,
             nodes: { [node.id]: { x: node.position.x, y: node.position.y } },
-          })
-        }
+          });
+        }}
+        onPaneClick={() => {
+          if (branchDraft && !isCreatingBranch) onCancelBranchDraft();
+        }}
         defaultViewport={snapshot.canvas.viewport}
         onMoveEnd={(_, viewport) => persistViewport(viewport)}
         nodesConnectable={false}
@@ -700,6 +836,21 @@ function CanvasFlow({
           </span>
         </Panel>
       </ReactFlow>
+      {branchDraft && snapshot.branches[branchDraft.parentBranchId] ? (
+        <div className="absolute right-4 top-16 z-40 h-[300px] w-[360px] max-w-[calc(100%-2rem)]">
+          <BranchDraftCard
+            data={{
+              draft: branchDraft,
+              parentTitle:
+                snapshot.branches[branchDraft.parentBranchId]?.title ||
+                "Untitled branch",
+              pending: isCreatingBranch,
+              onCancel: onCancelBranchDraft,
+              onSubmit: onSubmitBranchDraft,
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

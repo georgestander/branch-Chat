@@ -6,6 +6,7 @@ import {
   createConversationSnapshot,
   deleteBranchSubtree,
   normalizeConversationCanvasState,
+  placeNewBranchOnCanvas,
   type Branch,
   type Message,
 } from "./model.ts";
@@ -211,5 +212,33 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
     y: 0,
     folded: false,
     expanded: true,
+  });
+});
+
+test("placeNewBranchOnCanvas offsets a new expanded child beside its siblings", () => {
+  const snapshot = createConversationSnapshot({
+    id: "conversation",
+    createdAt,
+    settings: {
+      model: "gpt-5.6-terra",
+      temperature: 0,
+      composerDefaults: { preset: "fast", tools: ["web-search"] },
+    },
+    rootBranch: {
+      id: "root",
+      title: "Root",
+      createdFrom: { messageId: "root-message" },
+      createdAt,
+    },
+  });
+  snapshot.branches.existing = branch("existing", "root");
+  snapshot.branches.created = branch("created", "root");
+  snapshot.canvas = applyCanvasPatch(snapshot, {
+    nodes: { root: { x: 200, y: 100 } },
+  });
+
+  assert.deepEqual(placeNewBranchOnCanvas(snapshot, "root", "created"), {
+    x: 980,
+    y: 460,
   });
 });

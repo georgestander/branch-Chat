@@ -67,6 +67,7 @@ import type {
   ToolInvocation,
   ToolInvocationStatus,
 } from "@/lib/conversation";
+import { placeNewBranchOnCanvas } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import {
@@ -534,6 +535,8 @@ export interface OpenCanvasBranchCardResponse extends LoadConversationResponse {
   branch: Branch;
   messages: RenderedMessage[];
 }
+
+export type LoadCanvasBranchCardResponse = OpenCanvasBranchCardResponse;
 
 export interface ConversationSummary {
   conversationId: ConversationModelId;
@@ -1082,6 +1085,13 @@ async function sendMessageWithCodex(options: {
     attachments: null,
     toolInvocations: [],
   };
+  const createdBranchCanvasPosition = createdBranch
+    ? placeNewBranchOnCanvas(
+        options.snapshot,
+        createdBranch.parentId!,
+        createdBranch.id,
+      )
+    : null;
   const initialUpdates = createdBranch
     ? [
         {
@@ -1094,7 +1104,12 @@ async function sendMessageWithCodex(options: {
           conversationId,
           patch: {
             focusedBranchId: createdBranch.id,
-            nodes: { [createdBranch.id]: { expanded: true } },
+            nodes: {
+              [createdBranch.id]: {
+                ...createdBranchCanvasPosition,
+                expanded: true,
+              },
+            },
           },
         },
         { type: "message:append" as const, conversationId, message: userMessage },
@@ -2640,6 +2655,42 @@ function listCanvasBranchHighlights(
     }));
 }
 
+async function renderCanvasBranchMessages(
+  snapshot: ConversationGraphSnapshot,
+  branch: Branch,
+): Promise<RenderedMessage[]> {
+  const messages = getBranchMessages(snapshot, branch.id);
+  const lastMessage = messages.at(-1);
+  const streamingMessageId =
+    lastMessage?.role === "assistant" && !lastMessage.tokenUsage
+      ? lastMessage.id
+      : null;
+  return enrichMessagesWithHtml(messages, {
+    highlights: listCanvasBranchHighlights(snapshot, branch.id),
+    streamingMessageId,
+  });
+}
+
+export async function loadCanvasBranchCard(
+  input: OpenCanvasBranchCardInput,
+): Promise<LoadCanvasBranchCardResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  const loaded = await ensureConversationSnapshot(ctx, conversationId);
+  const branch = loaded.snapshot.branches[input.branchId];
+  if (!branch) {
+    throw new Error(`Branch ${input.branchId} not found for conversation`);
+  }
+  const messages = await renderCanvasBranchMessages(loaded.snapshot, branch);
+  ctx.trace("canvas:card:load", {
+    conversationId,
+    branchId: branch.id,
+    messages: messages.length,
+  });
+  return { ...loaded, branch, messages };
+}
+
 export async function openCanvasBranchCard(
   input: OpenCanvasBranchCardInput,
 ): Promise<OpenCanvasBranchCardResponse> {
@@ -2660,16 +2711,7 @@ export async function openCanvasBranchCard(
   if (!branch) {
     throw new Error(`Branch ${input.branchId} not found for conversation`);
   }
-  const branchMessages = getBranchMessages(opened.snapshot, branch.id);
-  const lastMessage = branchMessages.at(-1);
-  const streamingMessageId =
-    lastMessage?.role === "assistant" && !lastMessage.tokenUsage
-      ? lastMessage.id
-      : null;
-  const messages = await enrichMessagesWithHtml(branchMessages, {
-    highlights: listCanvasBranchHighlights(opened.snapshot, branch.id),
-    streamingMessageId,
-  });
+  const messages = await renderCanvasBranchMessages(opened.snapshot, branch);
 
   ctx.trace("canvas:card:open", {
     conversationId,

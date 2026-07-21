@@ -214,8 +214,39 @@
   }
 
   .branch-highlight {
-    @apply border-b-2 border-accent bg-accent/10 px-0.5 font-semibold text-foreground;
+    --branch-highlight-color: var(--accent);
+    @apply border-b-2 px-0.5 font-semibold text-foreground;
+    border-color: var(--branch-highlight-color);
+    background-color: color-mix(
+      in srgb,
+      var(--branch-highlight-color) 16%,
+      transparent
+    );
     cursor: pointer;
+  }
+
+  .branch-highlight[data-branch-tone="cyan"] {
+    --branch-highlight-color: #0891b2;
+  }
+
+  .branch-highlight[data-branch-tone="emerald"] {
+    --branch-highlight-color: #059669;
+  }
+
+  .branch-highlight[data-branch-tone="amber"] {
+    --branch-highlight-color: #d97706;
+  }
+
+  .branch-highlight[data-branch-tone="rose"] {
+    --branch-highlight-color: #e11d48;
+  }
+
+  .branch-highlight[data-branch-tone="violet"] {
+    --branch-highlight-color: #7c3aed;
+  }
+
+  .branch-highlight[data-branch-tone="blue"] {
+    --branch-highlight-color: #2563eb;
   }
 
   .interactive-target {

@@ -19,6 +19,7 @@ import type {
   RenderedBranchAnchor,
   RenderedMessage,
 } from "@/lib/conversation/rendered";
+import { branchToneForId } from "../../lib/conversation/branchTone.ts";
 
 export interface MessageBranchHighlight extends RenderedBranchAnchor {
   messageId: string;
@@ -133,6 +134,7 @@ function createSanitizeSchema(): typeof defaultSchema {
     "data-branch-highlight",
     "data-branch-id",
     "data-message-id",
+    "data-branch-tone",
   ]);
   extend("code", ["className", "data-language"]);
   extend("pre", ["className", "data-theme"]);
@@ -380,6 +382,7 @@ function wrapHighlights(
             "data-branch-highlight": "true",
             "data-branch-id": highlight.branchId,
             "data-message-id": highlight.messageId,
+            "data-branch-tone": branchToneForId(highlight.branchId).key,
           };
           fragments.push({
             type: "element",

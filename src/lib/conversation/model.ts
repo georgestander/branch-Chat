@@ -447,6 +447,21 @@ export function applyCanvasPatch(
   });
 }
 
+export function placeNewBranchOnCanvas(
+  snapshot: Pick<ConversationGraphSnapshot, "branches" | "canvas">,
+  parentBranchId: BranchId,
+  branchId: BranchId,
+): { x: number; y: number } {
+  const parentNode = snapshot.canvas.nodes[parentBranchId];
+  const siblingIndex = Object.values(snapshot.branches).filter(
+    (branch) => branch.parentId === parentBranchId && branch.id !== branchId,
+  ).length;
+  return {
+    x: (parentNode?.x ?? 0) + 780,
+    y: (parentNode?.y ?? 0) + siblingIndex * 360,
+  };
+}
+
 export function createConversationSnapshot(input: {
   id: ConversationModelId;
   ownerId?: string | null;

@@ -29,7 +29,10 @@ import type { RenderedMessage } from "@/lib/conversation/rendered";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/app/shared/uploads.config";
 
-import { BranchableMessage } from "./BranchableMessage";
+import {
+  BranchableMessage,
+  type BranchSelectionDraft,
+} from "./BranchableMessage";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
 import {
@@ -94,6 +97,7 @@ interface BranchColumnProps {
   branchNavigationPath?: "/app" | "/app/legacy";
   onOpenBranch?: (branchId: string) => void;
   onBranchCreated?: (response: SendMessageResponse) => void;
+  onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
 }
 
 function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
@@ -220,6 +224,7 @@ export function BranchColumn({
   onComposerBootstrapConsumed,
   onOpenBranch,
   onBranchCreated,
+  onStartBranchDraft,
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -649,6 +654,7 @@ export function BranchColumn({
                 branch={branch}
                 onOpenBranch={onOpenBranch ?? (() => undefined)}
                 onBranchCreated={onBranchCreated ?? (() => undefined)}
+                onStartBranchDraft={onStartBranchDraft}
               />
             </li>
           ))}
@@ -706,6 +712,7 @@ function MessageBubble({
   branch,
   onOpenBranch,
   onBranchCreated,
+  onStartBranchDraft,
 }: {
   message: RenderedMessage;
   isActive: boolean;
@@ -713,14 +720,11 @@ function MessageBubble({
   branch: Branch;
   onOpenBranch: (branchId: string) => void;
   onBranchCreated: (response: SendMessageResponse) => void;
+  onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
   }
-
-  const highlightClass = message.hasBranchHighlight
-    ? "ring-2 ring-accent"
-    : "";
 
   if (message.role === "assistant") {
     const isStreaming = isActive && !message.tokenUsage;
@@ -728,7 +732,6 @@ function MessageBubble({
       <div
         className={cn(
           "panel-surface panel-edge w-full rounded px-5 py-5 transition",
-          highlightClass,
           "[&_.prose]:mt-0",
         )}
       >
@@ -742,6 +745,7 @@ function MessageBubble({
           branchAnchors={message.branchAnchors}
           onOpenBranch={onOpenBranch}
           onBranchCreated={onBranchCreated}
+          onStartBranchDraft={onStartBranchDraft}
         />
         {isStreaming ? (
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
@@ -761,7 +765,6 @@ function MessageBubble({
     <div
       className={cn(
         "panel-surface panel-edge w-full rounded-2xl px-5 py-5 text-sm transition",
-        highlightClass,
         "[&_.prose]:mt-0",
       )}
     >
