@@ -531,3 +531,8 @@
 - Decisions: loopback-only Node bridge owns Codex JSON-RPC; localhost identity derives from ChatGPT email; Workers keep server-first orchestration; DO/R2 remain authoritative under `.wrangler/state`; remote chat deployment unsupported while bridge is local.
 - Files: scripts/codex-bridge.mjs, scripts/dev-local.mjs, scripts/codex-bridge.test.mjs, src/app/shared/codexBridge.server.ts, src/worker.tsx, conversation server/actions/UI defaults/account surfaces, package.json, types/env.d.ts, README.md, Docs/setup.md, Docs/env-vars.md, landing copy, progress.txt.
 - Notes: Chrome smoke passed account `george.stander@outlook.com` Pro, GPT-5.6 Terra medium/Fast, default web search with cited result, branch creation, and DO persistence after full restart; visual review found existing split-view orientation/truncation polish opportunities; no functional blocker.
+2026-07-21 — Enabled branching from the visible parent while editing a child. Ref: Core Experience branch creation + deep nesting.
+- Task: keep parent assistant messages selection/quick-branch enabled in compare mode.
+- Decisions: reuse `BranchableMessage` for persisted assistant messages in both active and parent columns; parent remains composer-read-only; new branch uses displayed parent id, creating a sibling of the current child; label inactive pane `Branchable`.
+- Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: live split-view DOM verified parent selection guidance + `Branch Message` action while child composer stays active.

@@ -696,7 +696,7 @@ export function BranchColumn({
         <span
           className={`inline-flex items-center rounded border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? "border-foreground/40 bg-foreground text-background" : "border-border bg-secondary text-muted-foreground"}`}
         >
-          {isActive ? "Editing" : "View Only"}
+          {isActive ? "Editing" : "Branchable"}
         </span>
       </header>
 
@@ -786,8 +786,8 @@ function MessageBubble({
     ? "ring-2 ring-accent"
     : "";
 
-  if (isActive && message.role === "assistant") {
-    const isStreaming = !message.tokenUsage;
+  if (message.role === "assistant") {
+    const isStreaming = isActive && !message.tokenUsage;
     return (
       <div
         className={cn(
