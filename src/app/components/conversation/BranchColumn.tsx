@@ -72,6 +72,7 @@ interface BranchColumnProps {
   withLeftBorder?: boolean;
   headerActions?: ReactNode;
   leadingActions?: ReactNode;
+  onActivateBranch?: () => void;
   style?: React.CSSProperties;
   highlightedBranchId?: string | null;
   parentBranchTitle?: string | null;
@@ -208,6 +209,7 @@ export function BranchColumn({
   withLeftBorder = true,
   headerActions,
   leadingActions,
+  onActivateBranch,
   style,
   highlightedBranchId,
   parentBranchTitle,
@@ -672,10 +674,22 @@ export function BranchColumn({
           {shouldShowStateLabel ? (
             <>
               <span className="hidden h-4 w-px bg-border sm:inline" aria-hidden="true" />
-              <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
-                <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>{stateLabel} Branch</span>
-              </span>
+              {!isActive && onActivateBranch ? (
+                <button
+                  type="button"
+                  onClick={onActivateBranch}
+                  className="interactive-target inline-flex items-center gap-1.5 rounded px-2 py-1 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground transition hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-[0.7rem]"
+                  title={`Open ${branch.title || "parent branch"} and close split view`}
+                >
+                  <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{stateLabel} Branch</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
+                  <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{stateLabel} Branch</span>
+                </span>
+              )}
             </>
           ) : null}
           {referenceText ? (

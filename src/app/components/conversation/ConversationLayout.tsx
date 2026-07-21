@@ -480,6 +480,15 @@ export function ConversationLayout({
     });
   }, [isCreatingConversation]);
 
+  const activateParentBranch = useCallback(() => {
+    if (!parentBranch) {
+      return;
+    }
+    navigate(
+      `/app?conversationId=${encodeURIComponent(conversationId)}&branchId=${encodeURIComponent(parentBranch.id)}`,
+    );
+  }, [conversationId, parentBranch]);
+
   const clampRatioWithinBounds = useCallback(
     (ratio: number, widthOverride?: number) => {
       const container = containerRef.current;
@@ -715,6 +724,7 @@ export function ConversationLayout({
               conversationSettingsSaving={isSavingSettings}
               conversationSettingsError={settingsError}
               onClearConversationSettingsError={clearConversationSettingsError}
+              onActivateBranch={activateParentBranch}
               highlightedBranchId={activeBranch.id}
               // Apply a fixed flex-basis driven by ratio
               style={{

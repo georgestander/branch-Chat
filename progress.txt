@@ -545,3 +545,7 @@
 - Decisions: use signed-in Codex app-server metadata as capability truth; expose low/medium/high/xhigh/max for all three and literal ultra only for Terra/Sol; keep Fast on Terra medium with priority service tier; clamp dormant legacy Agents SDK to its typed high ceiling while active Codex bridge receives selected effort unchanged.
 - Files: conversation model/validation, OpenAI model capabilities, account preference persistence, Codex send settings, composer/empty selectors, legacy Study agent boundary, tests, progress.txt.
 - Notes: live bridge advertised ultra for Terra/Sol, not Luna; selection persists through existing conversation/account settings.
+2026-07-21 — Made the parent-branch header label navigate up and close the child split. Ref: Core Experience branch navigation.
+- Decisions: keep the action on the existing `Parent Branch` affordance; navigate to the parent branch without `compare=1`, promoting it to the active pane while keeping the child reachable from stored inline/tree navigation.
+- Files: src/app/components/conversation/BranchColumn.tsx, src/app/components/conversation/ConversationLayout.tsx, progress.txt.
+- Notes: in-app browser validation passed: one accessible Parent Branch button navigated to the parent id, removed `compare=1`, collapsed the child pane, and produced no console warnings/errors.
