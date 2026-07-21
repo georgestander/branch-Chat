@@ -4,8 +4,8 @@ import { useCallback, useRef, useState, useTransition } from "react";
 
 import {
   sendMessage,
+  type SendMessageResponse,
 } from "@/app/pages/conversation/functions";
-import { navigate } from "rwsdk/client";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import type { ToolInvocation } from "@/lib/conversation";
 import type { RenderedBranchAnchor } from "@/lib/conversation/rendered";
@@ -20,7 +20,8 @@ interface BranchableMessageProps {
   renderedHtml: string;
   toolInvocations?: ToolInvocation[] | null;
   branchAnchors?: RenderedBranchAnchor[];
-  branchNavigationPath?: "/app" | "/app/legacy";
+  onOpenBranch?: (branchId: string) => void;
+  onBranchCreated?: (response: SendMessageResponse) => void;
 }
 
 type SelectionState = {
@@ -39,7 +40,8 @@ export function BranchableMessage({
   renderedHtml,
   toolInvocations,
   branchAnchors = [],
-  branchNavigationPath = "/app",
+  onOpenBranch,
+  onBranchCreated,
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -114,33 +116,21 @@ export function BranchableMessage({
           if (!createdBranchId) {
             throw new Error("Branch was not created");
           }
-          const params = new URLSearchParams({
-            conversationId,
-            branchId: createdBranchId,
-            compare: "1",
-            focus: "1",
-          });
-          navigate(`${branchNavigationPath}?${params.toString()}`);
+          onBranchCreated?.(response);
         } catch (cause) {
           console.error("createBranchFromSelection failed", cause);
           setError("Could not create and send this branch. Please try again.");
         }
       });
     },
-    [branchId, branchNavigationPath, clearSelection, conversationId, messageId],
+    [branchId, clearSelection, conversationId, messageId, onBranchCreated],
   );
 
   const openChildBranch = useCallback(
     (branchId: string) => {
-      const params = new URLSearchParams({
-        conversationId,
-        branchId,
-        compare: "1",
-        focus: "1",
-      });
-      navigate(`${branchNavigationPath}?${params.toString()}`);
+      onOpenBranch?.(branchId);
     },
-    [branchNavigationPath, conversationId],
+    [onOpenBranch],
   );
 
   return (

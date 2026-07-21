@@ -572,3 +572,7 @@
 - Decisions: canvas schema v2 separates card expansion from descendant folding; v1 snapshots expand only the root during normalization; new roots start expanded; atomic branch-first-send also expands and focuses the child in the same DO apply.
 - Files: src/lib/conversation/model.ts, src/lib/conversation/validation.ts, src/lib/conversation/model.test.ts, src/lib/durable-objects/ConversationStore.ts, src/app/pages/conversation/functions.ts, progress.txt.
 - Notes: types and 24 tests passed; card UI cutover follows in the next checkpoint.
+2026-07-21 — Cut over to card-native chat as the only workspace. Ref: Core Experience branch navigation + conversation management + UX & A11y.
+- Decisions: compact card click expands; selected expanded card click collapses; multiple cards remain expanded while only the focused card owns a composer; cached cards focus without refetch races; expanded parent cards keep inline branch creation/navigation; legacy split URL redirects to canvas; canvas drawer and card controls retain conversation/branch management.
+- Files: src/app/components/conversation/{BranchColumn.tsx,BranchableMessage.tsx,CanvasConversationLayout.tsx,ConversationCanvas.tsx}, src/app/pages/conversation/{ConversationPage.tsx,functions.ts}, src/worker.tsx, progress.txt.
+- Notes: Chrome vision QA passed multi-card expansion, single-composer focus transfer, second-click collapse, reload persistence, Tidy, and legacy redirect; no browser warnings/errors.

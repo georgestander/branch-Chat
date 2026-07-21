@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import dagre from "@dagrejs/dagre";
 import {
   Background,
@@ -14,6 +21,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  useUpdateNodeInternals,
   type Edge,
   type Node,
   type NodeProps,
@@ -30,16 +38,21 @@ import type {
 } from "@/lib/conversation";
 import { cn } from "@/lib/utils";
 import {
-  Focus,
   GitBranch,
   LayoutGrid,
   Layers3,
+  Loader2,
+  Maximize2,
   MessageSquareText,
+  Minimize2,
+  Pencil,
   Trash2,
 } from "lucide-react";
 
 const CARD_WIDTH = 310;
 const CARD_HEIGHT = 190;
+const EXPANDED_CARD_WIDTH = 680;
+const EXPANDED_CARD_HEIGHT = 700;
 
 type BranchCardSummary = {
   branch: Branch;
@@ -48,13 +61,17 @@ type BranchCardSummary = {
   messageCount: number;
   isStreaming: boolean;
   folded: boolean;
+  expanded: boolean;
 };
 
 type BranchNodeData = {
   summary: BranchCardSummary;
   active: boolean;
-  onOpen: (branchId: BranchId) => void;
+  loading: boolean;
+  thread: ReactNode;
+  onToggleCard: (branchId: BranchId) => void;
   onToggleFold: (branchId: BranchId) => void;
+  onRename: (branchId: BranchId) => void;
   onDelete: (branchId: BranchId) => void;
 };
 
@@ -63,9 +80,13 @@ type BranchFlowNode = Node<BranchNodeData, "branch">;
 interface ConversationCanvasProps {
   snapshot: ConversationGraphSnapshot;
   activeBranchId: BranchId;
+  renderBranchThread: (branch: Branch, active: boolean) => ReactNode;
+  isBranchLoading: (branchId: BranchId) => boolean;
   onOpenBranch: (branchId: BranchId) => void;
+  onCollapseBranch: (branchId: BranchId) => void;
   onPatchCanvas: (patch: ConversationCanvasPatch) => void;
   onDeleteBranch: (branchId: BranchId) => void;
+  onRenameBranch: (branchId: BranchId) => void;
   className?: string;
 }
 
@@ -129,11 +150,17 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
 
   return (
     <article
+      onClick={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-card-interactive="true"]')) return;
+        data.onToggleCard(summary.branch.id);
+      }}
       className={cn(
-        "group relative h-[190px] w-[310px] rounded border bg-background px-4 py-3 text-left transition",
+        "group relative flex h-full w-full flex-col overflow-hidden rounded border bg-background text-left transition-[border-color,box-shadow]",
         data.active || selected
           ? "border-foreground ring-2 ring-ring"
           : "border-border hover:border-foreground/45",
+        summary.expanded ? "cursor-default" : "cursor-pointer",
       )}
       aria-label={`${summary.branch.title} branch card`}
     >
@@ -157,7 +184,7 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
         </>
       ) : null}
 
-      <div className="flex items-start justify-between gap-3">
+      <header className="canvas-card-drag-handle flex shrink-0 cursor-pointer items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
             <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
@@ -172,60 +199,123 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
             Live
           </span>
         ) : null}
-      </div>
-
-      {summary.branch.createdFrom.excerpt ? (
-        <p className="mt-2 line-clamp-2 rounded bg-muted/55 px-2 py-1 text-[11px] leading-4 text-muted-foreground">
-          “{summary.branch.createdFrom.excerpt}”
-        </p>
-      ) : (
-        <p className="mt-2 line-clamp-2 text-xs leading-4 text-muted-foreground">
-          {preview}
-        </p>
-      )}
-
-      <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5">
-            <MessageSquareText className="h-3 w-3" aria-hidden="true" />
-            {summary.messageCount}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5">
-            <Layers3 className="h-3 w-3" aria-hidden="true" />
-            {summary.descendantCount}
-          </span>
-        </div>
-        <div className="nodrag nopan flex items-center gap-1">
-          {summary.descendantCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => data.onToggleFold(summary.branch.id)}
-              className="rounded border border-border px-1.5 py-1 text-[10px] font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`${summary.folded ? "Unfold" : "Fold"} ${summary.branch.title}`}
-            >
-              {summary.folded ? `Unfold ${summary.descendantCount}` : "Fold"}
-            </button>
-          ) : null}
-          {summary.branch.parentId ? (
-            <button
-              type="button"
-              onClick={() => data.onDelete(summary.branch.id)}
-              className="rounded border border-destructive/35 p-1 text-destructive hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
-              aria-label={`Delete ${summary.branch.title}`}
-            >
-              <Trash2 className="h-3 w-3" aria-hidden="true" />
-            </button>
-          ) : null}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onRename(summary.branch.id);
+          }}
+          className="nodrag nopan ml-auto rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-card-interactive="true"
+          aria-label={`Rename ${summary.branch.title}`}
+        >
+          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+        {summary.expanded && summary.descendantCount > 0 ? (
           <button
             type="button"
-            onClick={() => data.onOpen(summary.branch.id)}
-            className="rounded border border-foreground bg-foreground p-1 text-background hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`Open ${summary.branch.title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onToggleFold(summary.branch.id);
+            }}
+            className="nodrag nopan rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-card-interactive="true"
+            aria-label={`${summary.folded ? "Unfold" : "Fold"} descendants of ${summary.branch.title}`}
           >
-            <Focus className="h-3 w-3" aria-hidden="true" />
+            <Layers3 className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
+        ) : null}
+        {summary.expanded && summary.branch.parentId ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onDelete(summary.branch.id);
+            }}
+            className="nodrag nopan rounded border border-destructive/35 p-1.5 text-destructive hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+            data-card-interactive="true"
+            aria-label={`Delete ${summary.branch.title}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onToggleCard(summary.branch.id);
+          }}
+          className="nodrag nopan rounded border border-border p-1.5 text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-card-interactive="true"
+          aria-label={`${summary.expanded ? "Collapse" : "Expand"} ${summary.branch.title}`}
+        >
+          {summary.expanded ? (
+            <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+        </button>
+      </header>
+
+      {summary.expanded ? (
+        <div className="nodrag nowheel nopan flex min-h-0 flex-1 flex-col" data-card-interactive="true">
+          {data.loading ? (
+            <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Loading chat…
+            </div>
+          ) : (
+            data.thread
+          )}
         </div>
-      </div>
+      ) : (
+        <div className="relative min-h-0 flex-1 px-4 py-3">
+          {summary.branch.createdFrom.excerpt ? (
+            <p className="line-clamp-2 rounded bg-muted/55 px-2 py-1 text-[11px] leading-4 text-muted-foreground">
+              “{summary.branch.createdFrom.excerpt}”
+            </p>
+          ) : (
+            <p className="line-clamp-2 text-xs leading-4 text-muted-foreground">
+              {preview}
+            </p>
+          )}
+
+          <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5">
+                <MessageSquareText className="h-3 w-3" aria-hidden="true" />
+                {summary.messageCount}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5">
+                <Layers3 className="h-3 w-3" aria-hidden="true" />
+                {summary.descendantCount}
+              </span>
+            </div>
+            <div className="nodrag nopan flex items-center gap-1" data-card-interactive="true">
+              {summary.descendantCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => data.onToggleFold(summary.branch.id)}
+                  className="rounded border border-border px-1.5 py-1 text-[10px] font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`${summary.folded ? "Unfold" : "Fold"} ${summary.branch.title}`}
+                >
+                  {summary.folded ? `Unfold ${summary.descendantCount}` : "Fold"}
+                </button>
+              ) : null}
+              {summary.branch.parentId ? (
+                <button
+                  type="button"
+                  onClick={() => data.onDelete(summary.branch.id)}
+                  className="rounded border border-destructive/35 p-1 text-destructive hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+                  aria-label={`Delete ${summary.branch.title}`}
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -235,12 +325,17 @@ const nodeTypes = { branch: BranchNode };
 function CanvasFlow({
   snapshot,
   activeBranchId,
+  renderBranchThread,
+  isBranchLoading,
   onOpenBranch,
+  onCollapseBranch,
   onPatchCanvas,
   onDeleteBranch,
+  onRenameBranch,
   className,
 }: ConversationCanvasProps) {
   const flow = useReactFlow<BranchFlowNode, Edge>();
+  const updateNodeInternals = useUpdateNodeInternals();
   const viewportTimer = useRef<number | null>(null);
   const persistedViewport = useRef(snapshot.canvas.viewport);
   const [selectedId, setSelectedId] = useState<BranchId>(activeBranchId);
@@ -275,10 +370,24 @@ function CanvasFlow({
             last.content.trim().length === 0,
         ),
         folded: folded[branch.id] === true,
+        expanded: snapshot.canvas.nodes[branch.id]?.expanded === true,
       });
     }
     return result;
   }, [childMap, folded, snapshot]);
+
+  const toggleCard = useCallback(
+    (branchId: BranchId) => {
+      const expanded = snapshot.canvas.nodes[branchId]?.expanded === true;
+      if (expanded && selectedId === branchId) {
+        onCollapseBranch(branchId);
+        return;
+      }
+      setSelectedId(branchId);
+      onOpenBranch(branchId);
+    },
+    [onCollapseBranch, onOpenBranch, selectedId, snapshot.canvas.nodes],
+  );
 
   const toggleFold = useCallback(
     (branchId: BranchId) => {
@@ -300,17 +409,27 @@ function CanvasFlow({
       .filter((branch) => visibleIds.has(branch.id))
       .map((branch) => {
         const saved = snapshot.canvas.nodes[branch.id];
+        const expanded = saved?.expanded === true;
         return {
           id: branch.id,
           type: "branch",
           position: { x: saved?.x ?? 0, y: saved?.y ?? 0 },
-          initialWidth: CARD_WIDTH,
-          initialHeight: CARD_HEIGHT,
+          initialWidth: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
+          initialHeight: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
+          style: {
+            width: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
+            height: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
+          },
           data: {
             summary: summaries.get(branch.id)!,
-            active: branch.id === activeBranchId,
-            onOpen: onOpenBranch,
+            active: branch.id === selectedId,
+            loading: isBranchLoading(branch.id),
+            thread: expanded
+              ? renderBranchThread(branch, branch.id === selectedId)
+              : null,
+            onToggleCard: toggleCard,
             onToggleFold: toggleFold,
+            onRename: onRenameBranch,
             onDelete: onDeleteBranch,
           },
           selected: branch.id === selectedId,
@@ -318,12 +437,16 @@ function CanvasFlow({
       });
   }, [
     activeBranchId,
+    isBranchLoading,
     onDeleteBranch,
+    onRenameBranch,
     onOpenBranch,
+    renderBranchThread,
     selectedId,
     snapshot.branches,
     snapshot.canvas.nodes,
     summaries,
+    toggleCard,
     toggleFold,
     visibleIds,
   ]);
@@ -341,9 +464,23 @@ function CanvasFlow({
     });
   }, [desiredNodes, setNodes]);
 
+  const expansionSignature = useMemo(
+    () =>
+      Object.values(snapshot.canvas.nodes)
+        .map((node) => `${node.branchId}:${node.expanded ? 1 : 0}`)
+        .sort()
+        .join("|"),
+    [snapshot.canvas.nodes],
+  );
   useEffect(() => {
-    setSelectedId(activeBranchId);
-  }, [activeBranchId]);
+    for (const branchId of Object.keys(snapshot.branches)) {
+      updateNodeInternals(branchId);
+    }
+  }, [expansionSignature, snapshot.branches, updateNodeInternals]);
+
+  useEffect(() => {
+    setSelectedId(snapshot.canvas.focusedBranchId ?? activeBranchId);
+  }, [activeBranchId, snapshot.canvas.focusedBranchId]);
 
   useEffect(() => {
     persistedViewport.current = snapshot.canvas.viewport;
@@ -385,16 +522,25 @@ function CanvasFlow({
     const graph = new dagre.graphlib.Graph();
     graph.setDefaultEdgeLabel(() => ({}));
     graph.setGraph({ rankdir: "LR", ranksep: 110, nodesep: 70, marginx: 40, marginy: 40 });
-    for (const node of nodes) graph.setNode(node.id, { width: CARD_WIDTH, height: CARD_HEIGHT });
+    for (const node of nodes) {
+      const expanded = node.data.summary.expanded;
+      graph.setNode(node.id, {
+        width: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
+        height: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
+      });
+    }
     for (const edge of edges) graph.setEdge(edge.source, edge.target);
     dagre.layout(graph);
 
     const patchNodes: NonNullable<ConversationCanvasPatch["nodes"]> = {};
     const nextNodes = nodes.map((node) => {
       const positioned = graph.node(node.id) as { x: number; y: number };
+      const expanded = node.data.summary.expanded;
+      const width = expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH;
+      const height = expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT;
       const position = {
-        x: positioned.x - CARD_WIDTH / 2,
-        y: positioned.y - CARD_HEIGHT / 2,
+        x: positioned.x - width / 2,
+        y: positioned.y - height / 2,
       };
       patchNodes[node.id] = position;
       return { ...node, position };
@@ -423,6 +569,14 @@ function CanvasFlow({
         onDeleteBranch(selectedId);
         return;
       }
+      if (
+        event.key === "Escape" &&
+        snapshot.canvas.nodes[selectedId]?.expanded
+      ) {
+        event.preventDefault();
+        onCollapseBranch(selectedId);
+        return;
+      }
       if (!event.altKey) return;
       const direction =
         event.key.toLowerCase() === "a"
@@ -436,7 +590,7 @@ function CanvasFlow({
                 : null;
       if (event.key === "Enter") {
         event.preventDefault();
-        onOpenBranch(selectedId);
+        toggleCard(selectedId);
         return;
       }
       if (event.code === "Space") {
@@ -472,9 +626,11 @@ function CanvasFlow({
   }, [
     nodes,
     onDeleteBranch,
-    onOpenBranch,
+    onCollapseBranch,
     selectedId,
     snapshot.conversation.rootBranchId,
+    snapshot.canvas.nodes,
+    toggleCard,
     toggleFold,
   ]);
 
@@ -505,8 +661,6 @@ function CanvasFlow({
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
-        onNodeClick={(_, node) => setSelectedId(node.id)}
-        onNodeDoubleClick={(_, node) => onOpenBranch(node.id)}
         onNodeDragStop={(_, node) =>
           onPatchCanvas({
             focusedBranchId: node.id,

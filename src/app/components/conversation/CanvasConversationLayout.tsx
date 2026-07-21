@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
 import {
-  ArrowLeft,
+  Archive,
+  ArchiveRestore,
   ChevronDown,
   Command,
   GitBranch,
@@ -30,7 +32,10 @@ import type {
   ConversationModelId,
   ReasoningEffort,
 } from "@/lib/conversation";
-import { DEFAULT_CONVERSATION_MODEL } from "@/lib/conversation";
+import {
+  applyCanvasPatch,
+  DEFAULT_CONVERSATION_MODEL,
+} from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
@@ -39,26 +44,33 @@ import { supportsReasoningEffortModel } from "@/lib/openai/models";
 import { cn } from "@/lib/utils";
 import {
   createConversation,
+  archiveConversation,
   deleteBranch,
+  deleteConversation,
+  openCanvasBranchCard,
+  renameBranch,
+  unarchiveConversation,
   updateConversationCanvas,
   updateConversationSettings,
+  type SendMessageResponse,
 } from "@/app/pages/conversation/functions";
 import { ConversationCanvas } from "@/app/components/conversation/ConversationCanvas";
 import { BranchColumn } from "@/app/components/conversation/BranchColumn";
 import { ToastProvider } from "@/app/components/ui/Toast";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
+import {
+  PERSISTED_MESSAGES_EVENT,
+  type PersistedMessagesDetail,
+} from "@/app/components/conversation/messageEvents";
 
 interface CanvasConversationLayoutProps {
   snapshot: ConversationGraphSnapshot;
   conversation: Conversation;
-  activeBranch: Branch;
-  activeMessages: RenderedMessage[];
-  parentBranch: Branch | null;
-  parentMessages: RenderedMessage[];
+  initialActiveBranchId: BranchId;
+  initialMessagesByBranch: Record<BranchId, RenderedMessage[]>;
   conversationId: ConversationModelId;
   conversations: ConversationDirectoryEntry[];
   openRouterModels: OpenRouterModelOption[];
-  focusRequested: boolean;
 }
 
 const VALID_TOOLS = new Set<ConversationComposerTool>([
@@ -77,29 +89,28 @@ function normalizeTools(value: unknown): ConversationComposerTool[] {
   );
 }
 
-function canvasHref(
-  conversationId: string,
-  branchId?: string | null,
-  focus = false,
-): string {
+function escapeMessageHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function canvasHref(conversationId: string): string {
   const params = new URLSearchParams({ conversationId });
-  if (branchId) params.set("branchId", branchId);
-  if (focus) params.set("focus", "1");
-  if (focus && branchId) params.set("compare", "1");
   return `/app?${params.toString()}`;
 }
 
 export function CanvasConversationLayout({
   snapshot,
   conversation,
-  activeBranch,
-  activeMessages,
-  parentBranch,
-  parentMessages,
+  initialActiveBranchId,
+  initialMessagesByBranch,
   conversationId,
   conversations,
   openRouterModels,
-  focusRequested,
 }: CanvasConversationLayoutProps) {
   const initialModel = conversation.settings.model || DEFAULT_CONVERSATION_MODEL;
   const [model, setModel] = useState(initialModel);
@@ -120,6 +131,13 @@ export function CanvasConversationLayout({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [canvasError, setCanvasError] = useState<string | null>(null);
+  const [canvasSnapshot, setCanvasSnapshot] = useState(snapshot);
+  const [directoryEntries, setDirectoryEntries] = useState(conversations);
+  const [messagesByBranch, setMessagesByBranch] = useState(initialMessagesByBranch);
+  const [loadingBranchIds, setLoadingBranchIds] = useState<Set<BranchId>>(
+    () => new Set(),
+  );
+  const autoOpenedBranchRef = useRef<BranchId | null>(null);
   const [isCreating, startCreate] = useTransition();
   const [isDeleting, startDelete] = useTransition();
   const [isPatching, startPatch] = useTransition();
@@ -135,6 +153,60 @@ export function CanvasConversationLayout({
     setPreset(conversation.settings.composerDefaults?.preset ?? "fast");
     setTools(normalizeTools(conversation.settings.composerDefaults?.tools ?? []));
   }, [conversation.settings]);
+
+  useEffect(() => {
+    setCanvasSnapshot(snapshot);
+    setDirectoryEntries(conversations);
+    setMessagesByBranch(initialMessagesByBranch);
+    setLoadingBranchIds(new Set());
+  }, [conversationId, conversations, initialMessagesByBranch, snapshot]);
+
+  useEffect(() => {
+    const handlePersistedMessages = (event: Event) => {
+      const detail = (event as CustomEvent<PersistedMessagesDetail>).detail;
+      if (!detail || detail.conversationId !== conversationId) return;
+      setCanvasSnapshot((current) => {
+        const branch = current.branches[detail.branchId];
+        if (!branch) return current;
+        const nextMessages = { ...current.messages };
+        const nextMessageIds = [...branch.messageIds];
+        for (const message of detail.messages) {
+          nextMessages[message.id] = {
+            ...message,
+            branchId: detail.branchId,
+          };
+          if (!nextMessageIds.includes(message.id)) nextMessageIds.push(message.id);
+        }
+        return {
+          ...current,
+          branches: {
+            ...current.branches,
+            [branch.id]: { ...branch, messageIds: nextMessageIds },
+          },
+          messages: nextMessages,
+        };
+      });
+      setMessagesByBranch((current) => {
+        const existing = new Map(
+          (current[detail.branchId] ?? []).map((message) => [message.id, message]),
+        );
+        for (const message of detail.messages) {
+          existing.set(message.id, {
+            ...message,
+            renderedHtml:
+              message.renderedHtml?.trim() ||
+              `<p>${escapeMessageHtml(message.content)}</p>`,
+            hasBranchHighlight: false,
+            branchAnchors: [],
+          });
+        }
+        return { ...current, [detail.branchId]: [...existing.values()] };
+      });
+    };
+    window.addEventListener(PERSISTED_MESSAGES_EVENT, handlePersistedMessages);
+    return () =>
+      window.removeEventListener(PERSISTED_MESSAGES_EVENT, handlePersistedMessages);
+  }, [conversationId]);
 
   useEffect(() => {
     try {
@@ -162,15 +234,11 @@ export function CanvasConversationLayout({
       if (event.key !== "Escape") return;
       if (drawerOpen) {
         setDrawerOpen(false);
-        return;
-      }
-      if (focusRequested) {
-        navigate(canvasHref(conversationId, activeBranch.id, false));
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeBranch.id, conversationId, drawerOpen, focusRequested]);
+  }, [drawerOpen]);
 
   const handleSettingsChange = useCallback(
     async (
@@ -220,6 +288,10 @@ export function CanvasConversationLayout({
   const patchCanvas = useCallback(
     (patch: ConversationCanvasPatch) => {
       setCanvasError(null);
+      setCanvasSnapshot((current) => ({
+        ...current,
+        canvas: applyCanvasPatch(current, patch),
+      }));
       startPatch(async () => {
         try {
           await updateConversationCanvas({
@@ -242,20 +314,84 @@ export function CanvasConversationLayout({
 
   const openBranch = useCallback(
     (branchId: BranchId) => {
-      navigate(canvasHref(conversationId, branchId, true));
+      if (messagesByBranch[branchId]) {
+        patchCanvas({
+          focusedBranchId: branchId,
+          nodes: { [branchId]: { expanded: true } },
+        });
+        return;
+      }
+      setCanvasError(null);
+      setCanvasSnapshot((current) => ({
+        ...current,
+        canvas: applyCanvasPatch(current, {
+          focusedBranchId: branchId,
+          nodes: { [branchId]: { expanded: true } },
+        }),
+      }));
+      setLoadingBranchIds((current) => new Set(current).add(branchId));
+      startPatch(async () => {
+        try {
+          const result = await openCanvasBranchCard({ conversationId, branchId });
+          setCanvasSnapshot(result.snapshot);
+          setMessagesByBranch((current) => ({
+            ...current,
+            [branchId]: result.messages,
+          }));
+        } catch (error) {
+          console.error("[Canvas] open card failed", error);
+          setCanvasError("This chat card could not be opened.");
+          setCanvasSnapshot((current) => ({
+            ...current,
+            canvas: applyCanvasPatch(current, {
+              nodes: { [branchId]: { expanded: false } },
+            }),
+          }));
+        } finally {
+          setLoadingBranchIds((current) => {
+            const next = new Set(current);
+            next.delete(branchId);
+            return next;
+          });
+        }
+      });
     },
-    [conversationId],
+    [conversationId, messagesByBranch, patchCanvas],
+  );
+
+  const collapseBranch = useCallback(
+    (branchId: BranchId) => {
+      patchCanvas({ nodes: { [branchId]: { expanded: false } } });
+    },
+    [patchCanvas],
+  );
+
+  useEffect(() => {
+    if (autoOpenedBranchRef.current === initialActiveBranchId) return;
+    autoOpenedBranchRef.current = initialActiveBranchId;
+    if (canvasSnapshot.canvas.nodes[initialActiveBranchId]?.expanded) return;
+    openBranch(initialActiveBranchId);
+  }, [canvasSnapshot.canvas.nodes, initialActiveBranchId, openBranch]);
+
+  const handleBranchCreated = useCallback(
+    (response: SendMessageResponse) => {
+      const branchId = response.createdBranch?.id;
+      if (!branchId) return;
+      setCanvasSnapshot(response.snapshot);
+      openBranch(branchId);
+    },
+    [openBranch],
   );
 
   const removeBranch = useCallback(
     (branchId: BranchId) => {
-      const branch = snapshot.branches[branchId];
+      const branch = canvasSnapshot.branches[branchId];
       if (!branch?.parentId || isDeleting) return;
-      const descendants = Object.values(snapshot.branches).filter((candidate) => {
+      const descendants = Object.values(canvasSnapshot.branches).filter((candidate) => {
         let current: Branch | undefined = candidate;
         while (current?.parentId) {
           if (current.parentId === branchId) return true;
-          current = snapshot.branches[current.parentId];
+          current = canvasSnapshot.branches[current.parentId];
         }
         return false;
       }).length;
@@ -266,14 +402,22 @@ export function CanvasConversationLayout({
       startDelete(async () => {
         try {
           const result = await deleteBranch({ conversationId, branchId });
-          navigate(canvasHref(conversationId, result.parentBranchId, false));
+          setCanvasSnapshot(result.snapshot);
+          setMessagesByBranch((current) => {
+            const next = { ...current };
+            for (const cachedBranchId of Object.keys(next)) {
+              if (!result.snapshot.branches[cachedBranchId]) delete next[cachedBranchId];
+            }
+            return next;
+          });
+          openBranch(result.parentBranchId);
         } catch (error) {
           console.error("[Canvas] delete branch failed", error);
           window.alert("Unable to delete this branch. Please try again.");
         }
       });
     },
-    [conversationId, isDeleting, snapshot.branches],
+    [canvasSnapshot.branches, conversationId, isDeleting, openBranch],
   );
 
   const createNewCanvas = useCallback(() => {
@@ -281,13 +425,7 @@ export function CanvasConversationLayout({
     startCreate(async () => {
       try {
         const result = await createConversation();
-        navigate(
-          canvasHref(
-            result.conversationId,
-            result.snapshot.conversation.rootBranchId,
-            true,
-          ),
-        );
+        navigate(canvasHref(result.conversationId));
       } catch (error) {
         console.error("[Canvas] create conversation failed", error);
         setCanvasError("Unable to start a new canvas.");
@@ -295,13 +433,79 @@ export function CanvasConversationLayout({
     });
   }, [isCreating]);
 
+  const renameCanvasBranch = useCallback(
+    (branchId: BranchId) => {
+      const branch = canvasSnapshot.branches[branchId];
+      if (!branch) return;
+      const title = window.prompt("Rename this chat card", branch.title)?.trim();
+      if (!title || title === branch.title) return;
+      startPatch(async () => {
+        try {
+          const result = await renameBranch({ conversationId, branchId, title });
+          setCanvasSnapshot(result.snapshot);
+          if (branchId === result.snapshot.conversation.rootBranchId) {
+            setDirectoryEntries((current) =>
+              current.map((entry) =>
+                entry.id === conversationId ? { ...entry, title } : entry,
+              ),
+            );
+          }
+        } catch (error) {
+          console.error("[Canvas] rename branch failed", error);
+          setCanvasError("This card could not be renamed.");
+        }
+      });
+    },
+    [canvasSnapshot.branches, conversationId],
+  );
+
+  const toggleConversationArchive = useCallback(
+    (entry: ConversationDirectoryEntry) => {
+      startPatch(async () => {
+        try {
+          const result = entry.archivedAt
+            ? await unarchiveConversation({ conversationId: entry.id })
+            : await archiveConversation({ conversationId: entry.id });
+          setDirectoryEntries((current) =>
+            current.map((candidate) =>
+              candidate.id === entry.id ? result.entry : candidate,
+            ),
+          );
+        } catch (error) {
+          console.error("[Canvas] archive conversation failed", error);
+          setCanvasError("This canvas could not be updated.");
+        }
+      });
+    },
+    [],
+  );
+
+  const removeConversation = useCallback(
+    (entry: ConversationDirectoryEntry) => {
+      if (!window.confirm(`Delete “${entry.title}”? This cannot be undone.`)) return;
+      startDelete(async () => {
+        try {
+          await deleteConversation({ conversationId: entry.id });
+          setDirectoryEntries((current) =>
+            current.filter((candidate) => candidate.id !== entry.id),
+          );
+          if (entry.id === conversationId) navigate("/");
+        } catch (error) {
+          console.error("[Canvas] delete conversation failed", error);
+          setCanvasError("This canvas could not be deleted.");
+        }
+      });
+    },
+    [conversationId],
+  );
+
   const visibleConversations = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return conversations;
-    return conversations.filter((entry) =>
+    if (!normalized) return directoryEntries;
+    return directoryEntries.filter((entry) =>
       entry.title.toLowerCase().includes(normalized),
     );
-  }, [conversations, query]);
+  }, [directoryEntries, query]);
 
   const branchColumnCommon = {
     conversationId,
@@ -316,6 +520,29 @@ export function CanvasConversationLayout({
     onClearConversationSettingsError: () => setSettingsError(null),
   };
 
+  const renderBranchThread = useCallback(
+    (branch: Branch, active: boolean) => (
+      <BranchColumn
+        {...branchColumnCommon}
+        branch={branch}
+        messages={messagesByBranch[branch.id] ?? []}
+        isActive={active}
+        className="h-full min-h-0"
+        composerBootstrapMessage={active ? bootstrapMessage : null}
+        onComposerBootstrapConsumed={() => setBootstrapMessage(null)}
+        onOpenBranch={(branchId) => openBranch(branchId)}
+        onBranchCreated={handleBranchCreated}
+      />
+    ),
+    [
+      bootstrapMessage,
+      branchColumnCommon,
+      handleBranchCreated,
+      messagesByBranch,
+      openBranch,
+    ],
+  );
+
   return (
     <ToastProvider>
       <main className="app-shell relative flex h-screen min-h-screen w-full flex-col overflow-hidden bg-background text-foreground">
@@ -329,25 +556,19 @@ export function CanvasConversationLayout({
             >
               <LayoutDashboard className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="max-w-[46vw] truncate text-sm font-semibold sm:max-w-[28rem]">
-                {snapshot.branches[snapshot.conversation.rootBranchId]?.title ||
+                {canvasSnapshot.branches[canvasSnapshot.conversation.rootBranchId]?.title ||
                   "Untitled canvas"}
               </span>
               <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             </button>
             <span className="hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:inline">
-              {Object.keys(snapshot.branches).length} branches
+              {Object.keys(canvasSnapshot.branches).length} branches
             </span>
           </div>
           <div className="flex items-center gap-2">
             {isPatching ? (
               <span className="hidden text-[10px] text-muted-foreground sm:inline">Saving layout…</span>
             ) : null}
-            <a
-              href={`/app/legacy?conversationId=${encodeURIComponent(conversationId)}&branchId=${encodeURIComponent(activeBranch.id)}`}
-              className="hidden rounded px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground md:inline-flex"
-            >
-              Legacy view
-            </a>
             <ThemeToggle />
             <button
               type="button"
@@ -364,92 +585,16 @@ export function CanvasConversationLayout({
         <section className="relative min-h-0 flex-1">
           <ConversationCanvas
             key={conversationId}
-            snapshot={snapshot}
-            activeBranchId={activeBranch.id}
+            snapshot={canvasSnapshot}
+            activeBranchId={initialActiveBranchId}
+            renderBranchThread={renderBranchThread}
+            isBranchLoading={(branchId) => loadingBranchIds.has(branchId)}
             onOpenBranch={openBranch}
+            onCollapseBranch={collapseBranch}
             onPatchCanvas={patchCanvas}
             onDeleteBranch={removeBranch}
+            onRenameBranch={renameCanvasBranch}
           />
-
-          {focusRequested ? (
-            <section
-              className="absolute inset-x-3 bottom-3 top-3 z-30 flex min-h-0 overflow-hidden rounded border border-foreground/35 bg-background sm:inset-x-6 lg:inset-x-[5vw]"
-              aria-label="Expanded branch conversation"
-            >
-              {parentBranch ? (
-                <div className="grid min-h-0 w-full grid-cols-[minmax(320px,0.8fr)_minmax(520px,1.2fr)] overflow-hidden">
-                  <BranchColumn
-                    {...branchColumnCommon}
-                    branch={parentBranch}
-                    messages={parentMessages}
-                    isActive={false}
-                    highlightedBranchId={activeBranch.id}
-                    className="nodrag nowheel nopan min-h-0 border-r border-border bg-background"
-                    onActivateBranch={() =>
-                      navigate(canvasHref(conversationId, parentBranch.id, true))
-                    }
-                  />
-                  <BranchColumn
-                    {...branchColumnCommon}
-                    branch={activeBranch}
-                    messages={activeMessages}
-                    isActive
-                    parentBranchTitle={parentBranch.title}
-                    composerBootstrapMessage={bootstrapMessage}
-                    onComposerBootstrapConsumed={() => setBootstrapMessage(null)}
-                    className="nodrag nowheel nopan min-h-0 min-w-0"
-                    headerActions={
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => removeBranch(activeBranch.id)}
-                          disabled={isDeleting}
-                          className="rounded border border-destructive/40 p-1.5 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                          aria-label="Delete active branch"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(canvasHref(conversationId, activeBranch.id, false))
-                          }
-                          className="rounded border border-border p-1.5 text-foreground hover:bg-muted"
-                          aria-label="Collapse branch to canvas"
-                        >
-                          <X className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="mx-auto flex min-h-0 w-full max-w-5xl">
-                  <BranchColumn
-                    {...branchColumnCommon}
-                    branch={activeBranch}
-                    messages={activeMessages}
-                    isActive
-                    composerBootstrapMessage={bootstrapMessage}
-                    onComposerBootstrapConsumed={() => setBootstrapMessage(null)}
-                    className="nodrag nowheel nopan min-h-0 min-w-0 flex-1"
-                    headerActions={
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigate(canvasHref(conversationId, activeBranch.id, false))
-                        }
-                        className="rounded border border-border p-1.5 text-foreground hover:bg-muted"
-                        aria-label="Collapse chat to canvas"
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    }
-                  />
-                </div>
-              )}
-            </section>
-          ) : null}
         </section>
 
         {canvasError ? (
@@ -497,24 +642,46 @@ export function CanvasConversationLayout({
               <nav className="min-h-0 flex-1 overflow-y-auto p-3" aria-label="Conversation canvases">
                 <div className="space-y-1.5">
                   {visibleConversations.map((entry) => (
-                    <a
+                    <div
                       key={entry.id}
-                      href={canvasHref(entry.id)}
                       className={cn(
                         "flex items-center justify-between gap-3 rounded border px-3 py-2.5",
                         entry.id === conversationId
                           ? "border-foreground bg-muted"
                           : "border-transparent hover:border-border hover:bg-muted/60",
+                        entry.archivedAt ? "opacity-65" : "",
                       )}
                     >
-                      <span className="min-w-0">
+                      <a href={canvasHref(entry.id)} className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{entry.title}</span>
                         <span className="block text-[10px] text-muted-foreground">
-                          {entry.branchCount} branches
+                          {entry.branchCount} branches{entry.archivedAt ? " · archived" : ""}
                         </span>
-                      </span>
-                      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    </a>
+                      </a>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleConversationArchive(entry)}
+                          className="rounded border border-border p-1.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                          aria-label={`${entry.archivedAt ? "Unarchive" : "Archive"} ${entry.title}`}
+                        >
+                          {entry.archivedAt ? (
+                            <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" />
+                          ) : (
+                            <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeConversation(entry)}
+                          disabled={isDeleting}
+                          className="rounded border border-destructive/30 p-1.5 text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50"
+                          aria-label={`Delete ${entry.title}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </nav>
@@ -527,13 +694,6 @@ export function CanvasConversationLayout({
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   New canvas
                 </button>
-                <a
-                  href={`/app/legacy?conversationId=${encodeURIComponent(conversationId)}`}
-                  className="mt-2 flex items-center justify-center gap-1.5 rounded px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                  Manage conversations in legacy view
-                </a>
               </div>
             </aside>
           </div>

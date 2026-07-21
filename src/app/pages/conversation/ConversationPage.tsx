@@ -1,12 +1,10 @@
 import {
-  buildBranchTree,
   ensureConversationSnapshot,
   getBranchMessages,
   resolveConversationId,
 } from "@/app/shared/conversation.server";
 import { enrichMessagesWithHtml } from "@/app/shared/markdown.server";
 import type { MessageBranchHighlight } from "@/app/shared/markdown.server";
-import { ConversationLayout } from "@/app/components/conversation/ConversationLayout";
 import { CanvasConversationLayout } from "@/app/components/conversation/CanvasConversationLayout";
 import type { AppRequestInfo } from "@/worker";
 import type { Branch, ConversationGraphSnapshot, Message } from "@/lib/conversation";
@@ -81,87 +79,32 @@ export async function ConversationPage({
   });
 
   const activeBranch = determineActiveBranch(snapshot, requestedBranchId);
-  const legacyView = requestUrl.pathname === "/app/legacy";
-  const focusRequested = requestUrl.searchParams.get("focus") === "1";
-
-  if (!legacyView && !focusRequested) {
-    return (
-      <CanvasConversationLayout
-        snapshot={snapshot}
-        conversation={snapshot.conversation}
-        activeBranch={activeBranch}
-        activeMessages={[]}
-        parentBranch={null}
-        parentMessages={[]}
-        conversationId={result.conversationId}
-        conversations={summaries}
-        openRouterModels={[]}
-        focusRequested={false}
-      />
-    );
-  }
-
-  const parentBranch = activeBranch.parentId
-    ? snapshot.branches[activeBranch.parentId] ?? null
-    : null;
-
-  const activeMessages = getBranchMessages(snapshot, activeBranch.id);
-  const parentMessages = parentBranch
-    ? getBranchMessages(snapshot, parentBranch.id)
-    : [];
-
-  const activeRenderedMessages = await enrichMessagesWithHtmlForBranch(
-    activeMessages,
-    {
-      isActiveBranch: true,
-      highlights: getBranchHighlights(snapshot, activeBranch.id),
-    },
+  const expandedBranchIds = new Set(
+    Object.values(snapshot.canvas.nodes)
+      .filter((node) => node.expanded)
+      .map((node) => node.branchId),
   );
-
-  const parentRenderedMessages = await enrichMessagesWithHtmlForBranch(
-    parentMessages,
-    {
-      isActiveBranch: false,
-      highlights: parentBranch
-        ? getBranchHighlights(snapshot, parentBranch.id)
-        : [],
-    },
+  expandedBranchIds.add(activeBranch.id);
+  const renderedEntries = await Promise.all(
+    [...expandedBranchIds].map(async (branchId) => {
+      const messages = getBranchMessages(snapshot, branchId);
+      return [
+        branchId,
+        await enrichMessagesWithHtmlForBranch(messages, {
+          isActiveBranch: branchId === activeBranch.id,
+          highlights: getBranchHighlights(snapshot, branchId),
+        }),
+      ] as const;
+    }),
   );
-
-  if (!legacyView) {
-    return (
-      <CanvasConversationLayout
-        snapshot={snapshot}
-        conversation={snapshot.conversation}
-        activeBranch={activeBranch}
-        activeMessages={activeRenderedMessages}
-        parentBranch={parentBranch}
-        parentMessages={parentRenderedMessages}
-        conversationId={result.conversationId}
-        conversations={summaries}
-        openRouterModels={[]}
-        focusRequested={focusRequested}
-      />
-    );
-  }
-
-  const tree = buildBranchTree(snapshot);
-  const compareModeRequested = requestUrl.searchParams.get("compare") === "1";
-  const shouldAutoCollapseParent = !compareModeRequested;
 
   return (
-    <ConversationLayout
+    <CanvasConversationLayout
+      snapshot={snapshot}
       conversation={snapshot.conversation}
-      tree={tree}
-      activeBranch={activeBranch}
-      activeMessages={activeRenderedMessages}
-      parentBranch={parentBranch}
-      parentMessages={parentRenderedMessages}
+      initialActiveBranchId={activeBranch.id}
+      initialMessagesByBranch={Object.fromEntries(renderedEntries)}
       conversationId={result.conversationId}
-      initialSidebarCollapsed={false}
-      initialParentCollapsed={shouldAutoCollapseParent}
-      compareModeRequested={compareModeRequested}
-      activeBranchId={activeBranch.id}
       conversations={summaries}
       openRouterModels={[]}
     />

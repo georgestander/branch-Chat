@@ -267,7 +267,11 @@ const app = defineApp<AppRequestInfo>([
       return LandingPage(requestInfo);
     }),
     route("/app", Home),
-    route("/app/legacy", Home),
+    route("/app/legacy", ({ request }) => {
+      const target = new URL(request.url);
+      target.pathname = "/app";
+      return Response.redirect(target, 308);
+    }),
     route("/landing", ({ request }) => {
       const url = new URL(request.url);
       const target = new URL("/", url);

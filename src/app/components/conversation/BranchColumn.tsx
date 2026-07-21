@@ -10,12 +10,9 @@ import {
 } from "react";
 
 import {
-  CornerUpLeft,
   File as FileIcon,
   FileText,
   Image as ImageIcon,
-  PencilLine,
-  TextQuote,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,8 +48,8 @@ import {
   type CompleteStreamingDetail,
   type StartStreamingDetail,
 } from "@/app/components/conversation/streamingEvents";
-import { navigate } from "rwsdk/client";
 import type { OpenRouterModelOption } from "@/lib/openrouter/models";
+import type { SendMessageResponse } from "@/app/pages/conversation/functions";
 
 const SCROLL_EPSILON_PX = 120;
 type OptimisticMessageStatus = "pending" | "resolved";
@@ -95,6 +92,8 @@ interface BranchColumnProps {
   composerBootstrapMessage?: string | null;
   onComposerBootstrapConsumed?: () => void;
   branchNavigationPath?: "/app" | "/app/legacy";
+  onOpenBranch?: (branchId: string) => void;
+  onBranchCreated?: (response: SendMessageResponse) => void;
 }
 
 function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
@@ -207,13 +206,7 @@ export function BranchColumn({
   conversationId,
   isActive,
   className,
-  withLeftBorder = true,
-  headerActions,
-  leadingActions,
-  onActivateBranch,
-  style,
   highlightedBranchId,
-  parentBranchTitle,
   conversationModel,
   reasoningEffort,
   composerPreset,
@@ -225,9 +218,9 @@ export function BranchColumn({
   onClearConversationSettingsError,
   composerBootstrapMessage,
   onComposerBootstrapConsumed,
-  branchNavigationPath = "/app",
+  onOpenBranch,
+  onBranchCreated,
 }: BranchColumnProps) {
-  const scrollPaddingClass = isActive ? "pb-44" : "pb-10";
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const lastHighlightScrollRef = useRef<string | null>(null);
@@ -391,20 +384,14 @@ export function BranchColumn({
       if (!targetBranchId) {
         return;
       }
-      const params = new URLSearchParams({
-        conversationId,
-        branchId: targetBranchId,
-        compare: "1",
-        focus: "1",
-      });
-      navigate(`${branchNavigationPath}?${params.toString()}`);
+      onOpenBranch?.(targetBranchId);
     };
 
     container.addEventListener("click", handleHighlightClick);
     return () => {
       container.removeEventListener("click", handleHighlightClick);
     };
-  }, [branchNavigationPath, conversationId]);
+  }, [onOpenBranch]);
 
   useEffect(() => {
     setOptimisticMessages((current) => {
@@ -625,107 +612,24 @@ export function BranchColumn({
     });
   }, [isActive, isStreamingAssistant, lastMessage?.id, scrollSignature]);
 
-  const stateLabel = isActive ? "Active" : "Parent";
-  const StateIcon = isActive ? PencilLine : CornerUpLeft;
   const referenceText = useMemo(
     () => normalizeBranchContextExcerpt(branch.createdFrom?.excerpt ?? null),
     [branch.createdFrom?.excerpt],
   );
-
-  const truncatedReference = useMemo(() => {
-    if (!referenceText) {
-      return "";
-    }
-
-    if (referenceText.length <= 84) {
-      return referenceText;
-    }
-
-    return `${referenceText.slice(0, 84).trimEnd()}…`;
-  }, [referenceText]);
-
-  const sourceBranchLabel = useMemo(() => {
-    const trimmed = parentBranchTitle?.trim();
-    if (!trimmed) {
-      return "parent branch";
-    }
-    if (trimmed.length <= 24) {
-      return trimmed;
-    }
-    return `${trimmed.slice(0, 24).trimEnd()}…`;
-  }, [parentBranchTitle]);
-
-  const shouldShowStateLabel = !isActive || !referenceText;
 
   return (
     <section
       aria-label={`${branch.title || "Untitled branch"} branch conversation`}
       data-branch-id={branch.id}
       className={cn(
-        "relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent",
-        withLeftBorder ? "border-l border-border" : "",
+        "flex min-h-0 min-w-0 flex-1 flex-col bg-background",
         className,
       )}
-      style={style}
     >
-      <header className="flex min-h-[64px] items-center gap-3 border-b border-border bg-background px-6 py-4 text-sm">
-        {leadingActions ? (
-          <div className="flex items-center gap-2">{leadingActions}</div>
-        ) : null}
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-base font-semibold text-foreground sm:text-[1.05rem]">
-            {branch.title || "Untitled Branch"}
-          </h2>
-          {shouldShowStateLabel ? (
-            <>
-              <span className="hidden h-4 w-px bg-border sm:inline" aria-hidden="true" />
-              {!isActive && onActivateBranch ? (
-                <button
-                  type="button"
-                  onClick={onActivateBranch}
-                  className="interactive-target inline-flex items-center gap-1.5 rounded border border-foreground/25 bg-secondary px-2.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-foreground transition hover:border-foreground/45 hover:bg-foreground hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:text-[0.7rem]"
-                  title={`Open ${branch.title || "parent branch"} and close split view`}
-                >
-                  <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>{stateLabel} Branch</span>
-                </button>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-[0.65rem] uppercase tracking-[0.24em] text-muted-foreground sm:text-[0.7rem]">
-                  <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>{stateLabel} Branch</span>
-                </span>
-              )}
-            </>
-          ) : null}
-          {referenceText ? (
-            <span
-              className="inline-flex min-w-0 max-w-[68vw] items-center gap-1.5 rounded border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground sm:max-w-[34rem]"
-              title={`From ${sourceBranchLabel}: "${referenceText}"`}
-            >
-              <TextQuote aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="hidden shrink-0 text-muted-foreground sm:inline">
-                {`From ${sourceBranchLabel}:`}
-              </span>
-              <span className="truncate font-bold text-foreground">
-                “{truncatedReference}”
-              </span>
-            </span>
-          ) : null}
-        </div>
-        <span className="grow" aria-hidden="true" />
-        {headerActions ? (
-          <div className="flex items-center gap-2">{headerActions}</div>
-        ) : null}
-        <span
-          className={`inline-flex items-center rounded border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? "border-foreground/40 bg-foreground text-background" : "border-border bg-secondary text-muted-foreground"}`}
-        >
-          {isActive ? "Editing" : "Branchable"}
-        </span>
-      </header>
-
       <div
         ref={scrollContainerRef}
-        className={cn("flex-1 overflow-y-auto px-6 py-8", scrollPaddingClass)}
+        className="nowheel nodrag nopan min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        data-card-interactive="true"
       >
         <ol className="flex w-full flex-col gap-4">
           {visibleMessages.map((message) => (
@@ -743,7 +647,8 @@ export function BranchColumn({
                 isActive={isActive}
                 conversationId={conversationId}
                 branch={branch}
-                branchNavigationPath={branchNavigationPath}
+                onOpenBranch={onOpenBranch ?? (() => undefined)}
+                onBranchCreated={onBranchCreated ?? (() => undefined)}
               />
             </li>
           ))}
@@ -761,32 +666,35 @@ export function BranchColumn({
       </div>
 
       {isActive ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center">
-          <div className="pointer-events-auto w-full max-w-[640px] px-4 sm:px-5">
-            <div className="floating-composer halo-border rounded px-4 py-3">
-              <ConversationComposer
-                branchId={branch.id}
-                conversationId={conversationId}
-                autoFocus
-                className=""
-                conversationModel={conversationModel}
-                reasoningEffort={reasoningEffort}
-                composerPreset={composerPreset}
-                composerTools={composerTools}
-                openRouterModels={openRouterModels}
-                onConversationSettingsChange={onConversationSettingsChange}
-                conversationSettingsSaving={conversationSettingsSaving}
-                conversationSettingsError={conversationSettingsError}
-                onClearConversationSettingsError={onClearConversationSettingsError}
-                branchContextExcerpt={hasPersistedUserMessage ? null : referenceText}
-                bootstrapMessage={composerBootstrapMessage}
-                onBootstrapConsumed={onComposerBootstrapConsumed}
-                onStreamStart={(streamId) => setActiveStreamId(streamId)}
-              />
-            </div>
-          </div>
+        <div
+          className="nowheel nodrag nopan shrink-0 border-t border-border bg-background p-3"
+          data-card-interactive="true"
+        >
+          <ConversationComposer
+            branchId={branch.id}
+            conversationId={conversationId}
+            autoFocus
+            className=""
+            conversationModel={conversationModel}
+            reasoningEffort={reasoningEffort}
+            composerPreset={composerPreset}
+            composerTools={composerTools}
+            openRouterModels={openRouterModels}
+            onConversationSettingsChange={onConversationSettingsChange}
+            conversationSettingsSaving={conversationSettingsSaving}
+            conversationSettingsError={conversationSettingsError}
+            onClearConversationSettingsError={onClearConversationSettingsError}
+            branchContextExcerpt={hasPersistedUserMessage ? null : referenceText}
+            bootstrapMessage={composerBootstrapMessage}
+            onBootstrapConsumed={onComposerBootstrapConsumed}
+            onStreamStart={(streamId) => setActiveStreamId(streamId)}
+          />
         </div>
-      ) : null}
+      ) : (
+        <div className="shrink-0 border-t border-border bg-muted/35 px-4 py-2 text-center text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          Select this card to continue
+        </div>
+      )}
     </section>
   );
 }
@@ -796,13 +704,15 @@ function MessageBubble({
   isActive,
   conversationId,
   branch,
-  branchNavigationPath,
+  onOpenBranch,
+  onBranchCreated,
 }: {
   message: RenderedMessage;
   isActive: boolean;
   conversationId: ConversationModelId;
   branch: Branch;
-  branchNavigationPath: "/app" | "/app/legacy";
+  onOpenBranch: (branchId: string) => void;
+  onBranchCreated: (response: SendMessageResponse) => void;
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
@@ -830,7 +740,8 @@ function MessageBubble({
           renderedHtml={message.renderedHtml}
           toolInvocations={message.toolInvocations}
           branchAnchors={message.branchAnchors}
-          branchNavigationPath={branchNavigationPath}
+          onOpenBranch={onOpenBranch}
+          onBranchCreated={onBranchCreated}
         />
         {isStreaming ? (
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">

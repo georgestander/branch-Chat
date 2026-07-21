@@ -10,6 +10,7 @@ import {
   buildStudyAgentInputFromBranch,
   draftBranchFromSelection,
   generateConversationId,
+  getBranchMessages,
   maybeApplyRootBranchFallbackTitle,
   maybeAutoSummarizeRootBranchTitle,
   sanitizeBranchTitle,
@@ -39,7 +40,11 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   removeStagedAttachment as removeStagedAttachmentHelper,
 } from "@/app/shared/uploads.server";
-import { renderMarkdownToHtml } from "@/app/shared/markdown.server";
+import {
+  enrichMessagesWithHtml,
+  renderMarkdownToHtml,
+  type MessageBranchHighlight,
+} from "@/app/shared/markdown.server";
 import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import {
   buildRetrievalContext,
@@ -63,6 +68,7 @@ import type {
   ToolInvocationStatus,
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
+import type { RenderedMessage } from "@/lib/conversation/rendered";
 import {
   WEB_SEARCH_TOOL_NAME,
   type ConversationComposerTool,
@@ -518,6 +524,15 @@ export interface UpdateConversationCanvasInput extends ConversationPayload {
       expanded?: boolean;
     } | null
   >;
+}
+
+export interface OpenCanvasBranchCardInput extends ConversationPayload {
+  branchId: BranchId;
+}
+
+export interface OpenCanvasBranchCardResponse extends LoadConversationResponse {
+  branch: Branch;
+  messages: RenderedMessage[];
 }
 
 export interface ConversationSummary {
@@ -2602,6 +2617,70 @@ export async function deleteBranch(
     snapshot: applied.snapshot,
     version: applied.version,
     parentBranchId,
+  };
+}
+
+function listCanvasBranchHighlights(
+  snapshot: ConversationGraphSnapshot,
+  sourceBranchId: BranchId,
+): MessageBranchHighlight[] {
+  return Object.values(snapshot.branches)
+    .filter(
+      (branch) =>
+        branch.parentId === sourceBranchId &&
+        typeof branch.createdFrom?.messageId === "string",
+    )
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .map((branch) => ({
+      branchId: branch.id,
+      messageId: branch.createdFrom.messageId,
+      title: branch.title?.trim() || "Child branch",
+      excerpt: branch.createdFrom.excerpt?.trim() || null,
+      range: branch.createdFrom.span ?? null,
+    }));
+}
+
+export async function openCanvasBranchCard(
+  input: OpenCanvasBranchCardInput,
+): Promise<OpenCanvasBranchCardResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  const opened = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "canvas:update",
+      conversationId,
+      patch: {
+        focusedBranchId: input.branchId,
+        nodes: { [input.branchId]: { expanded: true } },
+      },
+    },
+  ]);
+  const branch = opened.snapshot.branches[input.branchId];
+  if (!branch) {
+    throw new Error(`Branch ${input.branchId} not found for conversation`);
+  }
+  const branchMessages = getBranchMessages(opened.snapshot, branch.id);
+  const lastMessage = branchMessages.at(-1);
+  const streamingMessageId =
+    lastMessage?.role === "assistant" && !lastMessage.tokenUsage
+      ? lastMessage.id
+      : null;
+  const messages = await enrichMessagesWithHtml(branchMessages, {
+    highlights: listCanvasBranchHighlights(opened.snapshot, branch.id),
+    streamingMessageId,
+  });
+
+  ctx.trace("canvas:card:open", {
+    conversationId,
+    branchId: branch.id,
+    messages: messages.length,
+  });
+
+  return {
+    ...opened,
+    branch,
+    messages,
   };
 }
 
