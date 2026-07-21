@@ -37,7 +37,10 @@ import type {
   Message,
 } from "@/lib/conversation";
 import type { BranchSelectionDraft } from "@/app/components/conversation/BranchableMessage";
-import { branchToneForId, type BranchTone } from "@/lib/conversation/branchTone";
+import {
+  branchToneForBranch,
+  type BranchTone,
+} from "@/lib/conversation/branchTone";
 import { cn } from "@/lib/utils";
 import {
   GitBranch,
@@ -66,7 +69,7 @@ type BranchCardSummary = {
   isStreaming: boolean;
   folded: boolean;
   expanded: boolean;
-  tone: BranchTone;
+  tone: BranchTone | null;
   parentTitle: string | null;
 };
 
@@ -180,7 +183,11 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
           : "border-border hover:border-foreground/45",
         summary.expanded ? "cursor-default" : "cursor-pointer",
       )}
-      style={{ borderLeftColor: summary.tone.color, borderLeftWidth: 4 }}
+      style={
+        summary.tone
+          ? { borderLeftColor: summary.tone.color, borderLeftWidth: 4 }
+          : undefined
+      }
       aria-label={`${summary.branch.title} branch card`}
     >
       <Handle
@@ -206,11 +213,13 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
       <header className="canvas-card-drag-handle flex shrink-0 cursor-pointer items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: summary.tone.color }}
-              aria-hidden="true"
-            />
+            {summary.tone ? (
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: summary.tone.color }}
+                aria-hidden="true"
+              />
+            ) : null}
             <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
             {summary.branch.parentId ? "Branch" : "Root chat"}
           </div>
@@ -477,7 +486,7 @@ function CanvasFlow({
         ),
         folded: folded[branch.id] === true,
         expanded: snapshot.canvas.nodes[branch.id]?.expanded === true,
-        tone: branchToneForId(branch.id),
+        tone: branchToneForBranch(snapshot, branch.id),
         parentTitle: branch.parentId
           ? snapshot.branches[branch.parentId]?.title || "Untitled branch"
           : null,
@@ -631,7 +640,9 @@ function CanvasFlow({
           type: "smoothstep",
           animated: summaries.get(branch.id)?.isStreaming === true,
           style: {
-            stroke: branchToneForId(branch.id).color,
+            stroke:
+              branchToneForBranch(snapshot, branch.id)?.color ??
+              "var(--border)",
             strokeWidth: 2,
           },
         }));

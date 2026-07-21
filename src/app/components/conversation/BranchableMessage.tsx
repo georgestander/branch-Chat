@@ -11,7 +11,10 @@ import type { ToolInvocation } from "@/lib/conversation";
 import type { RenderedBranchAnchor } from "@/lib/conversation/rendered";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
 import { GitBranch } from "lucide-react";
-import { branchToneForId } from "@/lib/conversation/branchTone";
+import {
+  branchToneByKey,
+  branchToneForId,
+} from "@/lib/conversation/branchTone";
 
 interface BranchableMessageProps {
   conversationId: string;
@@ -178,7 +181,9 @@ export function BranchableMessage({
           aria-label="Branches created from this message"
         >
           {branchAnchors.map((anchor) => {
-            const tone = branchToneForId(anchor.branchId);
+            const tone = anchor.tone
+              ? branchToneByKey(anchor.tone)
+              : branchToneForId(anchor.branchId);
             return (
               <button
                 key={anchor.branchId}

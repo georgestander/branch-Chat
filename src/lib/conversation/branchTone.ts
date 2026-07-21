@@ -8,6 +8,7 @@ export const BRANCH_TONES = [
 ] as const;
 
 export type BranchTone = (typeof BRANCH_TONES)[number];
+export type BranchToneKey = BranchTone["key"];
 
 export function branchToneForId(branchId: string): BranchTone {
   let hash = 2166136261;
@@ -17,3 +18,36 @@ export function branchToneForId(branchId: string): BranchTone {
   }
   return BRANCH_TONES[(hash >>> 0) % BRANCH_TONES.length]!;
 }
+
+export function branchToneByKey(key: BranchToneKey): BranchTone {
+  return BRANCH_TONES.find((tone) => tone.key === key) ?? BRANCH_TONES[0];
+}
+
+export function branchLineageId(
+  snapshot: Pick<ConversationGraphSnapshot, "conversation" | "branches">,
+  branchId: BranchId,
+): BranchId | null {
+  const rootBranchId = snapshot.conversation.rootBranchId;
+  if (branchId === rootBranchId) return null;
+
+  let current = snapshot.branches[branchId];
+  const visited = new Set<BranchId>();
+  while (current?.parentId && current.parentId !== rootBranchId) {
+    if (visited.has(current.id)) return null;
+    visited.add(current.id);
+    current = snapshot.branches[current.parentId];
+  }
+  return current?.parentId === rootBranchId ? current.id : null;
+}
+
+export function branchToneForBranch(
+  snapshot: Pick<ConversationGraphSnapshot, "conversation" | "branches">,
+  branchId: BranchId,
+): BranchTone | null {
+  const lineageId = branchLineageId(snapshot, branchId);
+  return lineageId ? branchToneForId(lineageId) : null;
+}
+import type {
+  BranchId,
+  ConversationGraphSnapshot,
+} from "./model";

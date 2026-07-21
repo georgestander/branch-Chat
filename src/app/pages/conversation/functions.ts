@@ -67,7 +67,10 @@ import type {
   ToolInvocation,
   ToolInvocationStatus,
 } from "@/lib/conversation";
-import { placeNewBranchOnCanvas } from "@/lib/conversation";
+import {
+  branchToneForBranch,
+  placeNewBranchOnCanvas,
+} from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import {
@@ -2646,13 +2649,17 @@ function listCanvasBranchHighlights(
         typeof branch.createdFrom?.messageId === "string",
     )
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .map((branch) => ({
-      branchId: branch.id,
-      messageId: branch.createdFrom.messageId,
-      title: branch.title?.trim() || "Child branch",
-      excerpt: branch.createdFrom.excerpt?.trim() || null,
-      range: branch.createdFrom.span ?? null,
-    }));
+    .map((branch) => {
+      const tone = branchToneForBranch(snapshot, branch.id);
+      return {
+        branchId: branch.id,
+        messageId: branch.createdFrom.messageId,
+        title: branch.title?.trim() || "Child branch",
+        excerpt: branch.createdFrom.excerpt?.trim() || null,
+        range: branch.createdFrom.span ?? null,
+        ...(tone ? { tone: tone.key } : {}),
+      };
+    });
 }
 
 async function renderCanvasBranchMessages(

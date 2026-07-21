@@ -8,6 +8,7 @@ import type { MessageBranchHighlight } from "@/app/shared/markdown.server";
 import { CanvasConversationLayout } from "@/app/components/conversation/CanvasConversationLayout";
 import type { AppRequestInfo } from "@/worker";
 import type { Branch, ConversationGraphSnapshot, Message } from "@/lib/conversation";
+import { branchToneForBranch } from "@/lib/conversation/branchTone";
 import {
   listConversationDirectoryEntries,
   touchConversationDirectoryEntry,
@@ -139,13 +140,17 @@ function getBranchHighlights(
         typeof branch.createdFrom?.messageId === "string",
     )
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .map((branch) => ({
-      branchId: branch.id,
-      messageId: branch.createdFrom.messageId,
-      title: branch.title?.trim() || "Child branch",
-      excerpt: branch.createdFrom.excerpt?.trim() || null,
-      range: branch.createdFrom.span ?? null,
-    }));
+    .map((branch) => {
+      const tone = branchToneForBranch(snapshot, branch.id);
+      return {
+        branchId: branch.id,
+        messageId: branch.createdFrom.messageId,
+        title: branch.title?.trim() || "Child branch",
+        excerpt: branch.createdFrom.excerpt?.trim() || null,
+        range: branch.createdFrom.span ?? null,
+        ...(tone ? { tone: tone.key } : {}),
+      };
+    });
 }
 
 function determineStreamingAssistantMessageId(messages: Message[]) {

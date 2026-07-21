@@ -19,7 +19,10 @@ import type {
   RenderedBranchAnchor,
   RenderedMessage,
 } from "@/lib/conversation/rendered";
-import { branchToneForId } from "../../lib/conversation/branchTone.ts";
+import {
+  branchToneForId,
+  type BranchToneKey,
+} from "../../lib/conversation/branchTone.ts";
 
 export interface MessageBranchHighlight extends RenderedBranchAnchor {
   messageId: string;
@@ -30,6 +33,7 @@ export interface MarkdownRenderOptions {
     range: { start: number; end: number };
     branchId: string;
     messageId: string;
+    tone?: BranchToneKey;
   }>;
   enableSyntaxHighlighting?: boolean;
 }
@@ -89,6 +93,7 @@ export async function enrichMessagesWithHtml(
           range: anchor.range,
           branchId: anchor.branchId,
           messageId: message.id,
+          tone: anchor.tone,
         }));
       const enableSyntaxHighlighting =
         !(options.streamingMessageId && options.streamingMessageId === message.id && message.role === "assistant");
@@ -325,6 +330,7 @@ function wrapHighlights(
     range: { start: number; end: number };
     branchId: string;
     messageId: string;
+    tone?: BranchToneKey;
   }>,
 ) {
   const normalized = highlights
@@ -382,7 +388,8 @@ function wrapHighlights(
             "data-branch-highlight": "true",
             "data-branch-id": highlight.branchId,
             "data-message-id": highlight.messageId,
-            "data-branch-tone": branchToneForId(highlight.branchId).key,
+            "data-branch-tone":
+              highlight.tone ?? branchToneForId(highlight.branchId).key,
           };
           fragments.push({
             type: "element",
