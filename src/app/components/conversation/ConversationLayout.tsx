@@ -30,6 +30,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   SquarePen,
+  Trash2,
 } from "lucide-react";
 import { navigate } from "rwsdk/client";
 import type { OpenRouterModelOption } from "@/lib/openrouter/models";
@@ -40,6 +41,7 @@ import { ToastProvider } from "@/app/components/ui/Toast";
 import { ParentContextSheet } from "@/app/components/conversation/ParentContextSheet";
 import {
   createConversation,
+  deleteBranch,
   updateConversationSettings,
 } from "@/app/pages/conversation/functions";
 
@@ -315,6 +317,7 @@ export function ConversationLayout({
       : PARENT_MIN_WIDTH_PX;
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isCreatingConversation, startCreateConversation] = useTransition();
+  const [isDeletingBranch, startDeleteBranch] = useTransition();
   const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
   const [isParentContextSheetOpen, setIsParentContextSheetOpen] =
     useState(false);
@@ -352,7 +355,7 @@ export function ConversationLayout({
       );
       setBootstrapMessage(null);
     }
-  }, [conversationId]);
+  }, [activeBranchId, conversationId]);
 
   useEffect(() => {
     if (parentBranch && isParentCollapsed) {
@@ -488,6 +491,33 @@ export function ConversationLayout({
       `/app?conversationId=${encodeURIComponent(conversationId)}&branchId=${encodeURIComponent(parentBranch.id)}`,
     );
   }, [conversationId, parentBranch]);
+
+  const handleDeleteActiveBranch = useCallback(() => {
+    if (!parentBranch || isDeletingBranch) {
+      return;
+    }
+    const confirmed = window.confirm(
+      "Delete this branch? Its messages and any child branches will also be deleted. This cannot be undone.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    startDeleteBranch(async () => {
+      try {
+        const result = await deleteBranch({
+          conversationId,
+          branchId: activeBranch.id,
+        });
+        navigate(
+          `/app?conversationId=${encodeURIComponent(conversationId)}&branchId=${encodeURIComponent(result.parentBranchId)}`,
+        );
+      } catch (error) {
+        console.error("[ConversationLayout] deleteBranch failed", error);
+        window.alert("Unable to delete this branch. Please try again.");
+      }
+    });
+  }, [activeBranch.id, conversationId, isDeletingBranch, parentBranch]);
 
   const clampRatioWithinBounds = useCallback(
     (ratio: number, widthOverride?: number) => {
@@ -804,6 +834,20 @@ export function ConversationLayout({
                 : undefined
             }
             withLeftBorder={showParentColumn}
+            headerActions={
+              parentBranch ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteActiveBranch}
+                  disabled={isDeletingBranch}
+                  className="interactive-target inline-flex items-center gap-1.5 rounded border border-destructive/45 bg-background px-2.5 py-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-destructive transition hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55 sm:text-[0.7rem]"
+                  title="Delete this branch"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{isDeletingBranch ? "Deleting…" : "Delete branch"}</span>
+                </button>
+              ) : null
+            }
             leadingActions={(() => {
               const parentToggleControl =
                 parentBranch && isParentCollapsed ? (

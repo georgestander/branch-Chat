@@ -553,3 +553,8 @@
 - Decisions: retain compact header placement and wording; add a persistent border, filled secondary surface, stronger typography, and inverted hover state so the navigation reads as clickable before interaction.
 - Files: src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: in-app browser visual check passed at the compact split-view width; button remains readable beside the truncated parent title. Existing React dev-runtime reload errors remain unrelated to this CSS-only change.
+2026-07-21 — Fixed runaway branch selections and added safe branch lifecycle controls. Ref: Core Experience branch creation + conversation management.
+- Task: keep a selected point's exact text range, avoid empty branches before the first question, and allow erroneous child branches to be deleted.
+- Decisions: calculate offsets from cloned DOM text so element-boundary selections cannot fall through to message end; require selection excerpt/range agreement server-side; collect the first prompt before persisting and bootstrap-send it after navigation; delete non-root branch subtrees with confirmation and return to the parent.
+- Files: src/app/components/conversation/BranchableMessage.tsx, src/app/components/conversation/ConversationLayout.tsx, src/app/pages/conversation/functions.ts, src/app/shared/conversation.server.ts, src/lib/conversation/model.ts, src/lib/conversation/model.test.ts, src/lib/durable-objects/ConversationStore.ts, progress.txt.
+- Notes: live QA passed deferred draft, ChatGPT send, and confirmed branch deletion; test branch removed. `pnpm types`, 22 tests, lint, and production build passed; Wrangler log write emitted a sandbox EPERM warning without failing the build.

@@ -486,6 +486,14 @@ export interface RenameBranchResponse extends LoadConversationResponse {
   branch: Branch;
 }
 
+export interface DeleteBranchInput extends ConversationPayload {
+  branchId: BranchId;
+}
+
+export interface DeleteBranchResponse extends LoadConversationResponse {
+  parentBranchId: BranchId;
+}
+
 export interface ConversationSummary {
   conversationId: ConversationModelId;
   title: string;
@@ -2457,6 +2465,45 @@ export async function renameBranch(
     snapshot: applied.snapshot,
     version: applied.version,
     branch,
+  };
+}
+
+export async function deleteBranch(
+  input: DeleteBranchInput,
+): Promise<DeleteBranchResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const branch = ensured.snapshot.branches[input.branchId];
+
+  if (!branch) {
+    throw new Error(`Branch ${input.branchId} not found for conversation`);
+  }
+  if (!branch.parentId) {
+    throw new Error("The root branch cannot be deleted");
+  }
+
+  const parentBranchId = branch.parentId;
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    {
+      type: "branch:delete",
+      conversationId,
+      branchId: branch.id,
+    },
+  ]);
+
+  ctx.trace("branch:delete", {
+    conversationId,
+    branchId: branch.id,
+    parentBranchId,
+  });
+
+  return {
+    conversationId,
+    snapshot: applied.snapshot,
+    version: applied.version,
+    parentBranchId,
   };
 }
 

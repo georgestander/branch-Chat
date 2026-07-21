@@ -223,6 +223,11 @@ export type ConversationGraphUpdate =
       branch: Branch;
     }
   | {
+      type: "branch:delete";
+      conversationId: ConversationModelId;
+      branchId: BranchId;
+    }
+  | {
       type: "conversation:update";
       conversation: Conversation;
     };
@@ -331,4 +336,43 @@ export function cloneConversationSnapshot(
       }),
     ),
   };
+}
+
+export function deleteBranchSubtree(
+  snapshot: ConversationGraphSnapshot,
+  branchId: BranchId,
+): BranchId[] {
+  if (branchId === snapshot.conversation.rootBranchId) {
+    throw new Error("The root branch cannot be deleted");
+  }
+  if (!snapshot.branches[branchId]) {
+    throw new Error(`Branch ${branchId} not found`);
+  }
+
+  const branchIds = new Set<BranchId>([branchId]);
+  let foundDescendant = true;
+  while (foundDescendant) {
+    foundDescendant = false;
+    for (const branch of Object.values(snapshot.branches)) {
+      if (
+        branch.parentId &&
+        branchIds.has(branch.parentId) &&
+        !branchIds.has(branch.id)
+      ) {
+        branchIds.add(branch.id);
+        foundDescendant = true;
+      }
+    }
+  }
+
+  for (const [messageId, message] of Object.entries(snapshot.messages)) {
+    if (branchIds.has(message.branchId)) {
+      delete snapshot.messages[messageId];
+    }
+  }
+  for (const deletedBranchId of branchIds) {
+    delete snapshot.branches[deletedBranchId];
+  }
+
+  return [...branchIds];
 }

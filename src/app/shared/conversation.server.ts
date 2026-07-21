@@ -352,6 +352,23 @@ export function draftBranchFromSelection(options: {
   if (!parentBranch) {
     throw new Error(`Parent branch ${parentBranchId} not found`);
   }
+  if (span) {
+    if (
+      !Number.isInteger(span.start) ||
+      !Number.isInteger(span.end) ||
+      span.start < 0 ||
+      span.end <= span.start
+    ) {
+      throw new Error("Branch selection range is invalid");
+    }
+    if (
+      excerpt !== null &&
+      excerpt !== undefined &&
+      excerpt.length !== span.end - span.start
+    ) {
+      throw new Error("Branch selection text does not match its range");
+    }
+  }
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();

@@ -1,5 +1,6 @@
 import {
   cloneConversationSnapshot,
+  deleteBranchSubtree,
   type ConversationGraphSnapshot,
   type ConversationGraphUpdate,
   type ConversationModelId,
@@ -1102,6 +1103,10 @@ export class ConversationStoreDO implements DurableObject {
         case "branch:create":
         case "branch:update": {
           next.branches[update.branch.id] = update.branch;
+          break;
+        }
+        case "branch:delete": {
+          deleteBranchSubtree(next, update.branchId);
           break;
         }
         case "message:append": {

@@ -24,8 +24,7 @@ interface BranchableMessageProps {
 }
 
 type SelectionState = {
-  start: number;
-  end: number;
+  span?: { start: number; end: number };
   text: string;
   rect: DOMRect;
 };
@@ -76,13 +75,17 @@ export function BranchableMessage({
       return;
     }
 
-    const text = sel.toString();
+    const text = range.cloneContents().textContent ?? "";
+    if (!text) {
+      setSelection(null);
+      return;
+    }
     const rect = range.getBoundingClientRect();
-    setSelection({ start, end, text, rect });
+    setSelection({ span: { start, end }, text, rect });
   }, []);
 
   const runCreateBranch = useCallback(
-    (span?: { start: number; end: number }, excerpt?: string) => {
+    (draft: SelectionState, prompt: string) => {
       setError(null);
       startTransition(async () => {
         try {
@@ -90,10 +93,14 @@ export function BranchableMessage({
             conversationId,
             parentBranchId: branchId,
             messageId,
-            span: span ? { start: span.start, end: span.end } : undefined,
-            excerpt: excerpt ?? null,
+            span: draft.span,
+            excerpt: draft.text,
           };
           const response = await createBranchFromSelection(payload);
+          window.sessionStorage.setItem(
+            `connexus:bootstrap:${conversationId}`,
+            prompt,
+          );
           clearSelection();
           const params = new URLSearchParams({
             conversationId,
@@ -103,7 +110,7 @@ export function BranchableMessage({
           navigate(`/app?${params.toString()}`);
         } catch (cause) {
           console.error("createBranchFromSelection failed", cause);
-          setError("Could not create branch. Please try again.");
+          setError("Could not create and send this branch. Please try again.");
         }
       });
     },
@@ -176,12 +183,14 @@ export function BranchableMessage({
 
         <button
           type="button"
-          onClick={() =>
-            runCreateBranch(
-              undefined,
-              content.length > 280 ? `${content.slice(0, 277)}…` : content,
-            )
-          }
+          onClick={(event) => {
+            const excerpt =
+              content.length > 280 ? `${content.slice(0, 277)}…` : content;
+            setSelection({
+              text: excerpt,
+              rect: event.currentTarget.getBoundingClientRect(),
+            });
+          }}
           disabled={isPending}
           className="interactive-target inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
         >
@@ -193,12 +202,7 @@ export function BranchableMessage({
         <SelectionPopover
           selection={selection}
           isPending={isPending}
-          onCreate={() =>
-            runCreateBranch(
-              { start: selection.start, end: selection.end },
-              selection.text,
-            )
-          }
+          onCreate={(prompt) => runCreateBranch(selection, prompt)}
           onCancel={clearSelection}
         />
       ) : null}
@@ -214,33 +218,64 @@ function SelectionPopover({
 }: {
   selection: SelectionState;
   isPending: boolean;
-  onCreate: () => void;
+  onCreate: (prompt: string) => void;
   onCancel: () => void;
 }) {
+  const [prompt, setPrompt] = useState("");
+  const selectionLabel = `${selection.text.slice(0, 80)}${
+    selection.text.length > 80 ? "…" : ""
+  }`;
+  const popoverWidth = Math.min(384, window.innerWidth - 16);
+  const popoverHeight = 230;
   const style: React.CSSProperties = {
     position: "fixed",
-    top: Math.max(8, selection.rect.bottom + 6),
-    left: Math.max(8, selection.rect.left),
+    top: Math.min(
+      Math.max(8, selection.rect.bottom + 6),
+      Math.max(8, window.innerHeight - popoverHeight - 8),
+    ),
+    left: Math.min(
+      Math.max(8, selection.rect.left),
+      Math.max(8, window.innerWidth - popoverWidth - 8),
+    ),
     zIndex: 50,
   };
 
   return (
     <div
       style={style}
-      className="rounded border border-border bg-popover px-3 py-2 shadow-sm"
+      className="w-[min(24rem,calc(100vw-1rem))] rounded border border-border bg-popover px-3 py-3 shadow-sm"
     >
-      <div className="flex flex-col gap-2">
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const trimmedPrompt = prompt.trim();
+          if (trimmedPrompt) {
+            onCreate(trimmedPrompt);
+          }
+        }}
+      >
         <span className="max-w-xs text-xs text-muted-foreground">
-          Branch from “{selection.text.slice(0, 80)}{selection.text.length > 80 ? "…" : ""}”
+          Branch from “{selectionLabel}”
+        </span>
+        <textarea
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          placeholder="Ask a question on this new branch…"
+          rows={3}
+          autoFocus
+          className="w-full resize-none rounded border border-border bg-background px-2.5 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/40 focus:ring-2 focus:ring-ring"
+        />
+        <span className="text-[11px] text-muted-foreground">
+          The branch is only created when you send this prompt.
         </span>
         <div className="flex items-center gap-2">
           <button
-            type="button"
-            onClick={onCreate}
-            disabled={isPending}
+            type="submit"
+            disabled={isPending || prompt.trim().length === 0}
             className="interactive-target inline-flex items-center rounded bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
           >
-            {isPending ? "Creating…" : "Branch Selection"}
+            {isPending ? "Creating…" : "Create & send"}
           </button>
           <button
             type="button"
@@ -250,40 +285,21 @@ function SelectionPopover({
             Cancel
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
 
 function computeOffsets(root: HTMLElement, range: Range) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let index = 0;
-  let start = 0;
-  let end = 0;
-  let node: Node | null = walker.nextNode();
+  return {
+    start: computeTextOffset(root, range.startContainer, range.startOffset),
+    end: computeTextOffset(root, range.endContainer, range.endOffset),
+  };
+}
 
-  while (node) {
-    const length = node.textContent?.length ?? 0;
-    if (node === range.startContainer) {
-      start = index + range.startOffset;
-    }
-    if (node === range.endContainer) {
-      end = index + range.endOffset;
-      break;
-    }
-    index += length;
-    node = walker.nextNode();
-  }
-
-  if (end === 0) {
-    end = index;
-  }
-
-  if (start > end) {
-    const temp = start;
-    start = end;
-    end = temp;
-  }
-
-  return { start, end };
+function computeTextOffset(root: HTMLElement, container: Node, offset: number) {
+  const prefix = document.createRange();
+  prefix.selectNodeContents(root);
+  prefix.setEnd(container, offset);
+  return prefix.cloneContents().textContent?.length ?? 0;
 }
