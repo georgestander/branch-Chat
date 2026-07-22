@@ -16,6 +16,7 @@ import {
 } from "@/app/shared/auth.server";
 import { getCodexAccountStatus } from "@/app/shared/codexBridge.server";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
+import { handleDictationRequest } from "@/app/shared/dictationProxy.server";
 import { handleDirectUploadRequest } from "@/app/shared/uploadsProxy.server";
 import { handleGeneratedImageRequest } from "@/app/shared/generatedImages.server";
 import { createSSEStream } from "@/app/shared/streaming.server";
@@ -260,6 +261,7 @@ const app = defineApp<AppRequestInfo>([
   setCommonHeaders(),
   route("/_uploads", handleDirectUploadRequest),
   route("/_generated-image", handleGeneratedImageRequest),
+  route("/_dictation/transcribe", handleDictationRequest),
   render(Document, [
     route("/", (requestInfo) => {
       const url = new URL(requestInfo.request.url);

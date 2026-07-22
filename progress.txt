@@ -712,3 +712,7 @@
 - Decisions: the loopback-only bridge validates bounded mono 24 kHz PCM16 WAV input, streams it through an ephemeral Codex realtime v2 session, collects only the user transcript, permits one transcription at a time, and always stops and deletes the temporary thread. The signed-in Codex account remains the sole credential boundary.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
 - Notes: a live synthetic speech probe returned the exact expected transcript through the installed Codex app-server; the backend rejected its nominal transcription session type, so the bridge uses a temporary conversational session instructed to remain silent and stops it as soon as the input transcript settles.
+2026-07-22 — Added the authenticated Worker boundary for native dictation. Ref: native voice implementation checkpoint 2.
+- Decisions: the application accepts only POSTed WAV audio on a dedicated authenticated route, enforces the six-megabyte limit from both declared and received bytes, forwards binary audio to the loopback Codex bridge, returns no-store JSON, and records only size, timing, and status trace metadata.
+- Files: src/app/shared/{codexBridge.server.ts,dictationProxy.server.ts,dictationProxy.server.test.ts}, src/worker.tsx, progress.txt.
+- Notes: focused coverage verifies binary forwarding, media-type rejection, declared-size rejection, and actionable upstream status preservation; no user audio or transcript content is logged.

@@ -6,6 +6,10 @@ export interface CodexAccountStatus {
   planType: string | null;
 }
 
+export interface CodexDictationResult {
+  transcript: string;
+}
+
 export interface CodexBridgeModel {
   id: string;
   model: string;
@@ -111,6 +115,34 @@ export async function getCodexAccountStatus(
           : "Local Codex bridge unavailable",
     };
   }
+}
+
+export async function transcribeCodexAudio(
+  bytes: Uint8Array,
+  env?: Env,
+): Promise<CodexDictationResult> {
+  const body = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  const response = await fetch(`${getBridgeUrl(env)}/dictation/transcribe`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "audio/wav",
+    },
+    body,
+  });
+  if (!response.ok) {
+    const error = new Error(await readError(response)) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+  const result = (await response.json()) as { transcript?: unknown };
+  if (typeof result.transcript !== "string" || !result.transcript.trim()) {
+    throw new Error("Codex bridge returned an empty transcript");
+  }
+  return { transcript: result.transcript.trim() };
 }
 
 export async function listCodexModels(env?: Env): Promise<CodexBridgeModel[]> {
