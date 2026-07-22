@@ -17,6 +17,7 @@ import {
 import { getCodexAccountStatus } from "@/app/shared/codexBridge.server";
 import { getConversationStoreClient } from "@/app/shared/conversationStore.server";
 import { handleDirectUploadRequest } from "@/app/shared/uploadsProxy.server";
+import { handleGeneratedImageRequest } from "@/app/shared/generatedImages.server";
 import { createSSEStream } from "@/app/shared/streaming.server";
 import {
   ConversationDirectoryClient,
@@ -258,6 +259,7 @@ const app = defineApp<AppRequestInfo>([
   provideAppContext(),
   setCommonHeaders(),
   route("/_uploads", handleDirectUploadRequest),
+  route("/_generated-image", handleGeneratedImageRequest),
   render(Document, [
     route("/", (requestInfo) => {
       const url = new URL(requestInfo.request.url);

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -181,6 +181,8 @@ export class CodexAppServerClient {
     this.workspaceReady = null;
     this.activeThreadIds = new Set();
     this.activeStreams = new Map();
+    this.pendingInterrupts = new Map();
+    this.generatedImages = new Map();
   }
 
   start() {
@@ -204,6 +206,7 @@ export class CodexAppServerClient {
         this.accountReady = null;
         this.activeThreadIds.clear();
         this.activeStreams.clear();
+        this.pendingInterrupts.clear();
       });
       this.request("initialize", {
         clientInfo: {
@@ -362,6 +365,7 @@ export class CodexAppServerClient {
         ? input.developerInstructions
         : "You are Connexus, a helpful general chat assistant.",
       "Do not use shell commands, filesystem tools, code execution, subagents, or project automation.",
+      "Native image generation is allowed. When the user asks to create or edit an image, use the image generation capability and return the generated artifact.",
       webSearch
         ? "Live web search is available and should be used whenever current or externally verifiable information would improve the answer."
         : "Web search is disabled for this turn.",
@@ -538,6 +542,10 @@ export class CodexAppServerClient {
       },
     };
     if (streamId) this.activeStreams.set(streamId, activeStream);
+    if (streamId && this.pendingInterrupts.delete(streamId)) {
+      await activeStream.cancel();
+      return;
+    }
 
     emit({
       type: "context",
@@ -591,6 +599,21 @@ export class CodexAppServerClient {
       }
       if (message.method === "item/completed" && params.item?.type === "webSearch") {
         emit({ type: "tool_progress", tool: "web_search", callId: params.item.id, status: "succeeded", query: params.item.query ?? "" });
+        return;
+      }
+      if (message.method === "item/completed" && params.item?.type === "imageGeneration") {
+        const item = params.item;
+        if (typeof item.id === "string" && typeof item.savedPath === "string") {
+          this.generatedImages.set(item.id, {
+            path: item.savedPath,
+            revisedPrompt: item.revisedPrompt ?? null,
+          });
+          emit({
+            type: "image_generation",
+            id: item.id,
+            revisedPrompt: item.revisedPrompt ?? null,
+          });
+        }
         return;
       }
       if (message.method === "turn/completed") {
@@ -665,8 +688,28 @@ export class CodexAppServerClient {
     const normalized = typeof streamId === "string" ? streamId.trim() : "";
     if (!normalized) throw new Error("streamId is required");
     const active = this.activeStreams.get(normalized);
-    if (!active) return { interrupted: false, settled: true };
+    if (!active) {
+      const cutoff = Date.now() - 60_000;
+      for (const [id, queuedAt] of this.pendingInterrupts) {
+        if (queuedAt < cutoff) this.pendingInterrupts.delete(id);
+      }
+      this.pendingInterrupts.set(normalized, Date.now());
+      return { interrupted: true, settled: false, queued: true };
+    }
     return { interrupted: await active.cancel(), settled: false };
+  }
+
+  async generatedImage(imageId) {
+    const image = this.generatedImages.get(imageId);
+    if (!image) return null;
+    const bytes = await readFile(image.path);
+    const extension = image.path.toLowerCase().split(".").at(-1);
+    const contentType = extension === "jpg" || extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "webp"
+        ? "image/webp"
+        : "image/png";
+    return { bytes, contentType };
   }
 
   stop() {
@@ -708,6 +751,21 @@ export async function startCodexBridge({
       if (request.method === "POST" && url.pathname === "/turns/interrupt") {
         const body = await readJson(request);
         writeJson(response, 200, await client.interruptStream(body.streamId));
+        return;
+      }
+      if (request.method === "GET" && url.pathname.startsWith("/images/")) {
+        const imageId = decodeURIComponent(url.pathname.slice("/images/".length));
+        const image = await client.generatedImage(imageId);
+        if (!image) {
+          writeJson(response, 404, { error: "Generated image not found" });
+          return;
+        }
+        response.writeHead(200, {
+          "content-type": image.contentType,
+          "content-length": image.bytes.byteLength,
+          "cache-control": "no-store",
+        });
+        response.end(image.bytes);
         return;
       }
       if (request.method === "POST" && url.pathname === "/threads/delete") {

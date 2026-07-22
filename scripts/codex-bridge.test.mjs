@@ -105,9 +105,11 @@ test("interrupting a stream delegates to its active cancellation handle", async 
   });
   assert.equal(cancelled, 1);
   assert.deepEqual(await client.interruptStream("missing"), {
-    interrupted: false,
-    settled: true,
+    interrupted: true,
+    settled: false,
+    queued: true,
   });
+  assert.equal(client.pendingInterrupts.has("missing"), true);
 });
 
 function createProtocolClient(handler) {

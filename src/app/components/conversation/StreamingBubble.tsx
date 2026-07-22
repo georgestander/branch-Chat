@@ -157,6 +157,8 @@ export function StreamingBubble({
         const toolLabel =
           data?.tool === "web_search"
             ? "Web search"
+            : data?.tool === "image_generation"
+              ? "Image generation"
             : data?.tool === "attachment_retrieval"
               ? "Attachments"
               : "Tool";

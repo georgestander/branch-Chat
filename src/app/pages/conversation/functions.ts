@@ -99,6 +99,7 @@ import {
 import { createOpenAIClient } from "@/lib/openai/client";
 import {
   deleteCodexThreads,
+  fetchCodexGeneratedImage,
   getCodexAccountStatus,
   interruptCodexTurn,
   streamCodexTurn,
@@ -1240,6 +1241,8 @@ async function sendMessageWithCodex(options: {
   let completionTokens = 0;
   let codexThreadId: string | null = null;
   let codexTurnId: string | null = null;
+  const generatedImageUrls: string[] = [];
+  const generatedImageStorageKeys: string[] = [];
   const startedAt = Date.now();
   ctx.trace("codex:stream:start", {
     conversationId,
@@ -1375,7 +1378,41 @@ async function sendMessageWithCodex(options: {
       if (event.type === "error") {
         throw new Error(event.message || "Codex response failed");
       }
+      if (event.type === "image_generation") {
+        const image = await fetchCodexGeneratedImage(event.id, ctx.env);
+        const storageKey = `generated/${conversationId}/${assistantMessage.id}/${crypto.randomUUID()}`;
+        await ctx.getUploadsBucket().put(storageKey, image.bytes, {
+          httpMetadata: { contentType: image.contentType },
+        });
+        generatedImageStorageKeys.push(storageKey);
+        const imageUrl = `/_generated-image?conversationId=${encodeURIComponent(conversationId)}&messageId=${encodeURIComponent(assistantMessage.id)}&imageId=${encodeURIComponent(event.id)}`;
+        generatedImageUrls.push(imageUrl);
+        toolInvocationMap.set(event.id, {
+          id: event.id,
+          toolType: "image_generation",
+          toolName: "image_generation",
+          status: "succeeded",
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          input: event.revisedPrompt ? { prompt: event.revisedPrompt } : null,
+          output: { storageKey, contentType: image.contentType, imageUrl },
+          error: null,
+        });
+        if (input.streamId) {
+          sendSSE(input.streamId, "tool_progress", {
+            tool: "image_generation",
+            callId: event.id,
+            status: "succeeded",
+          });
+        }
+        continue;
+      }
       if (event.type === "cancelled") {
+        await Promise.all(
+          generatedImageStorageKeys.map((storageKey) =>
+            ctx.getUploadsBucket().delete(storageKey).catch(() => undefined),
+          ),
+        );
         const cancellationUpdates: Parameters<typeof applyConversationUpdates>[2] =
           createdBranch
             ? [{ type: "branch:delete", conversationId, branchId }]
@@ -1466,6 +1503,14 @@ async function sendMessageWithCodex(options: {
     };
   }
 
+  if (generatedImageUrls.length > 0) {
+    const imageMarkdown = generatedImageUrls
+      .map((url) => `![Generated image](${url})`)
+      .join("\n\n");
+    finalContent = finalContent
+      ? `${finalContent.trim()}\n\n${imageMarkdown}`
+      : imageMarkdown;
+  }
   if (!finalContent) finalContent = "Assistant response interrupted. Please try again.";
   const finalToolInvocations = Array.from(toolInvocationMap.values());
   let renderedHtml: string | null = null;
@@ -2803,7 +2848,7 @@ export async function sendMessage(
 
 export async function cancelMessage(
   input: CancelMessageInput,
-): Promise<{ interrupted: boolean; settled: boolean }> {
+): Promise<{ interrupted: boolean; settled: boolean; queued?: boolean }> {
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
   const conversationId = resolveConversationId(ctx, input.conversationId);

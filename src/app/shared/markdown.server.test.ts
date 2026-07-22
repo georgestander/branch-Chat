@@ -75,6 +75,14 @@ test("keeps span and whole-message branch anchors on rendered messages", async (
   );
 });
 
+test("renders authenticated generated-image URLs in assistant Markdown", async () => {
+  const html = await renderMarkdownToHtml(
+    "![Generated image](/_generated-image?conversationId=chat-1&messageId=msg-1&imageId=img-1)",
+  );
+  assert.match(html, /<img[^>]+alt="Generated image"/);
+  assert.match(html, /src="\/_generated-image\?conversationId=chat-1&#x26;messageId=msg-1&#x26;imageId=img-1"/);
+});
+
 test("links only allowlisted attachment citations to message-scoped sources", async () => {
   const fragmentId = attachmentCitationFragmentId("message-1", "A1");
   const html = await renderMarkdownToHtml(

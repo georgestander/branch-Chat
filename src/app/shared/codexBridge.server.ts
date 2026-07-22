@@ -66,7 +66,8 @@ export type CodexBridgeStreamEvent =
       historyTruncated?: boolean;
     }
   | { type: "error"; message: string }
-  | { type: "cancelled" };
+  | { type: "cancelled" }
+  | { type: "image_generation"; id: string; revisedPrompt?: string | null };
 
 function getBridgeUrl(env?: Env): string {
   const configured = env?.CODEX_BRIDGE_URL?.trim();
@@ -187,14 +188,37 @@ export async function* streamCodexTurn(options: {
 export async function interruptCodexTurn(
   streamId: string,
   env?: Env,
-): Promise<{ interrupted: boolean; settled: boolean }> {
+): Promise<{ interrupted: boolean; settled: boolean; queued?: boolean }> {
   const response = await fetch(`${getBridgeUrl(env)}/turns/interrupt`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({ streamId }),
   });
   if (!response.ok) throw new Error(await readError(response));
-  return (await response.json()) as { interrupted: boolean; settled: boolean };
+  return (await response.json()) as {
+    interrupted: boolean;
+    settled: boolean;
+    queued?: boolean;
+  };
+}
+
+export async function fetchCodexGeneratedImage(
+  imageId: string,
+  env?: Env,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const response = await fetch(
+    `${getBridgeUrl(env)}/images/${encodeURIComponent(imageId)}`,
+    { headers: { accept: "image/*" } },
+  );
+  if (!response.ok) throw new Error(await readError(response));
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > 20 * 1024 * 1024) {
+    throw new Error("Generated image payload is invalid");
+  }
+  return {
+    bytes,
+    contentType: response.headers.get("content-type") || "image/png",
+  };
 }
 
 export async function deleteCodexThreads(
