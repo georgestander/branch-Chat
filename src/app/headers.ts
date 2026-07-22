@@ -1,4 +1,7 @@
-import { RouteMiddleware } from "rwsdk/router";
+import type { RouteMiddleware } from "rwsdk/router";
+
+export const COMMON_PERMISSIONS_POLICY =
+  "geolocation=(), microphone=(self), camera=()";
 
 export const setCommonHeaders =
   (): RouteMiddleware =>
@@ -18,11 +21,8 @@ export const setCommonHeaders =
     // Stops browsers from sending the referring webpage URL in HTTP headers
     response.headers.set("Referrer-Policy", "no-referrer");
 
-    // Explicitly disables access to specific browser features/APIs
-    response.headers.set(
-      "Permissions-Policy",
-      "geolocation=(), microphone=(), camera=()",
-    );
+    // Allows same-origin dictation while keeping unused sensitive APIs disabled.
+    response.headers.set("Permissions-Policy", COMMON_PERMISSIONS_POLICY);
 
     // Defines trusted sources for content loading and script execution:
     const scriptSrc = isDev

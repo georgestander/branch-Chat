@@ -704,3 +704,7 @@
 - Decisions: each dictation start first calls getUserMedia for audio, prevents duplicate requests while the native prompt is pending, immediately stops every temporary media track, and only then starts speech recognition; denial keeps the existing anchored recovery popover and Retry repeats the native request.
 - Files: src/app/components/conversation/{ConversationComposer.tsx,dictation.ts,dictation.test.ts}, progress.txt.
 - Notes: focused tests verify the audio-only request, deterministic track release, and native error propagation; the prompt itself remains browser-owned and requires the user's click when first shown.
+2026-07-22 — Permitted same-origin microphone capture in the document policy. Ref: real Chrome reproduction after browser and macOS permissions were confirmed enabled.
+- Decisions: the common Permissions-Policy now allows microphone capture only from the same origin while geolocation and camera remain disabled; the header value is a tested contract.
+- Files: src/app/{headers.ts,headers.test.ts}, progress.txt.
+- Notes: live Chrome previously failed before showing a prompt because the app sent microphone=(); after reload the live response sends microphone=(self), Chrome completed its native permission request, and live speech was transcribed into the editable draft.
