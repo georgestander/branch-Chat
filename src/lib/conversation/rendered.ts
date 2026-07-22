@@ -14,3 +14,19 @@ export interface RenderedMessage extends Message {
   hasBranchHighlight: boolean;
   branchAnchors: RenderedBranchAnchor[];
 }
+
+export function hasSameCanonicalRenderedMessageState(
+  left: RenderedMessage,
+  right: RenderedMessage,
+): boolean {
+  return (
+    left.role === right.role &&
+    left.content === right.content &&
+    JSON.stringify(left.tokenUsage ?? null) ===
+      JSON.stringify(right.tokenUsage ?? null) &&
+    JSON.stringify(left.toolInvocations ?? null) ===
+      JSON.stringify(right.toolInvocations ?? null) &&
+    JSON.stringify(left.attachments ?? null) ===
+      JSON.stringify(right.attachments ?? null)
+  );
+}

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import { clearStreamPrompt, emitCompleteStreaming, readStreamPrompt } from "@/app/components/conversation/streamingEvents";
 import { cancelMessage } from "@/app/pages/conversation/functions";
+import { emitPersistedMessages } from "@/app/components/conversation/messageEvents";
 import { Pencil, Square, Trash2 } from "lucide-react";
 import {
   ImageGenerationStatus,
@@ -234,6 +235,19 @@ export function StreamingBubble({
         }
         if (typeof data?.reasoningSummary === "string") {
           setReasoningSummary(data.reasoningSummary);
+        }
+        if (
+          data?.message?.role === "assistant" &&
+          typeof data.message.id === "string" &&
+          typeof data.message.branchId === "string" &&
+          typeof data.message.content === "string" &&
+          typeof data.message.createdAt === "string"
+        ) {
+          emitPersistedMessages({
+            conversationId,
+            branchId,
+            messages: [data.message],
+          });
         }
       } catch {}
       setStatus("complete");

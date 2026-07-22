@@ -25,7 +25,10 @@ import type {
   ReasoningEffort,
 } from "@/lib/conversation";
 import type { ConversationComposerTool } from "@/lib/conversation/tools";
-import type { RenderedMessage } from "@/lib/conversation/rendered";
+import {
+  hasSameCanonicalRenderedMessageState,
+  type RenderedMessage,
+} from "@/lib/conversation/rendered";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/app/shared/uploads.config";
 
@@ -243,6 +246,7 @@ export function BranchColumn({
     [],
   );
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
+  const [isRetryComposerOpen, setIsRetryComposerOpen] = useState(false);
 
   const handleOptimisticAppend = useCallback(
     (detail: OptimisticMessageDetail) => {
@@ -446,9 +450,13 @@ export function BranchColumn({
     if (persistedMessages.length === 0) {
       return;
     }
-    const serverMessageIds = new Set(messages.map((message) => message.id));
+    const serverMessages = new Map(messages.map((message) => [message.id, message]));
     setPersistedMessages((current) => {
-      const next = current.filter((message) => !serverMessageIds.has(message.id));
+      const next = current.filter((message) => {
+        const serverMessage = serverMessages.get(message.id);
+        if (!serverMessage) return true;
+        return !hasSameCanonicalRenderedMessageState(serverMessage, message);
+      });
       return next.length === current.length ? current : next;
     });
   }, [messages, persistedMessages.length]);
@@ -459,9 +467,7 @@ export function BranchColumn({
       merged.set(message.id, message);
     }
     for (const message of persistedMessages) {
-      if (!merged.has(message.id)) {
-        merged.set(message.id, message);
-      }
+      merged.set(message.id, message);
     }
     for (const entry of optimisticMessages) {
       if (!merged.has(entry.message.id)) {
@@ -681,6 +687,7 @@ export function BranchColumn({
                     .find((candidate) => candidate.role === "user")?.content ?? null
                 }
                 onRetryPrompt={(prompt) => {
+                  setIsRetryComposerOpen(true);
                   onOpenBranch?.(branch.id);
                   emitComposerDraft({
                     conversationId,
@@ -688,6 +695,7 @@ export function BranchColumn({
                     content: prompt,
                   });
                 }}
+                showStreamingStopControls={!isRetryComposerOpen}
               />
             </li>
           ))}
@@ -714,7 +722,9 @@ export function BranchColumn({
         </div>
       )}
 
-      {isActive && (showCanvasStartComposer || (showComposer && composerVariant === "default")) ? (
+      {isActive &&
+      (showCanvasStartComposer ||
+        ((showComposer || isRetryComposerOpen) && composerVariant === "default")) ? (
         <div
           className={cn(
             "nowheel nodrag nopan bg-background",
@@ -766,6 +776,7 @@ function MessageBubble({
   activeStreamId,
   originalPrompt,
   onRetryPrompt,
+  showStreamingStopControls,
 }: {
   message: RenderedMessage;
   isActive: boolean;
@@ -778,6 +789,7 @@ function MessageBubble({
   activeStreamId: string | null;
   originalPrompt: string | null;
   onRetryPrompt: (prompt: string) => void;
+  showStreamingStopControls: boolean;
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
@@ -816,6 +828,7 @@ function MessageBubble({
               branchId={branch.id}
               originalPrompt={originalPrompt}
               compact
+              showStopControls={showStreamingStopControls}
             />
           ) : (
             <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">

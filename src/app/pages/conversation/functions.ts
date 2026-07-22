@@ -1671,6 +1671,17 @@ async function sendMessageWithCodex(options: {
       promptTokens,
       completionTokens,
       reasoningSummary: reasoningSummary || null,
+      message: {
+        id: finalAssistantMessage.id,
+        branchId: finalAssistantMessage.branchId,
+        role: "assistant",
+        content: finalAssistantMessage.content,
+        renderedHtml,
+        createdAt: finalAssistantMessage.createdAt,
+        tokenUsage: finalAssistantMessage.tokenUsage,
+        attachments: finalAssistantMessage.attachments ?? null,
+        toolInvocations: finalAssistantMessage.toolInvocations ?? null,
+      },
     });
     closeSSE(input.streamId);
   }
