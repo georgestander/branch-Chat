@@ -797,6 +797,7 @@ function MessageBubble({
       <ToolInvocationSummary
         toolInvocations={message.toolInvocations}
         fallbackHtml={message.renderedHtml}
+        messageId={message.id}
         className="mt-3"
       />
     </div>
@@ -900,6 +901,7 @@ function UserMessageBubble({ message }: { message: RenderedMessage }) {
             <ToolInvocationSummary
               toolInvocations={message.toolInvocations}
               fallbackHtml={message.renderedHtml}
+              messageId={message.id}
               className="mt-3"
             />
           </div>

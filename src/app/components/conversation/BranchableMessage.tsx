@@ -175,6 +175,7 @@ export function BranchableMessage({
       <ToolInvocationSummary
         toolInvocations={toolInvocations}
         fallbackHtml={renderedHtml}
+        messageId={messageId}
       />
 
       {branchAnchors.length > 0 ? (

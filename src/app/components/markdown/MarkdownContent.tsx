@@ -26,6 +26,12 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
 
       const anchors = root.querySelectorAll<HTMLAnchorElement>("a[href]");
       anchors.forEach((anchor) => {
+        const href = anchor.getAttribute("href");
+        if (href?.startsWith("#")) {
+          anchor.removeAttribute("target");
+          anchor.removeAttribute("rel");
+          return;
+        }
         anchor.setAttribute("target", "_blank");
         anchor.setAttribute("rel", "noopener noreferrer");
       });

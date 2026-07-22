@@ -23,6 +23,11 @@ import {
   branchToneForId,
   type BranchToneKey,
 } from "../../lib/conversation/branchTone.ts";
+import {
+  attachmentCitationFragmentId,
+  buildAttachmentCitationManifest,
+  type AttachmentCitationManifest,
+} from "../../lib/conversation/attachmentCitations.ts";
 
 export interface MessageBranchHighlight extends RenderedBranchAnchor {
   messageId: string;
@@ -36,6 +41,7 @@ export interface MarkdownRenderOptions {
     tone?: BranchToneKey;
   }>;
   enableSyntaxHighlighting?: boolean;
+  citationManifest?: AttachmentCitationManifest;
 }
 
 const SANITIZE_SCHEMA = createSanitizeSchema();
@@ -61,6 +67,10 @@ export async function renderMarkdownToHtml(
     processor.use(() => (tree: HastRoot) => {
       wrapHighlights(tree, options.highlights!);
     });
+  }
+
+  if (options.citationManifest?.sources.length) {
+    processor.use(rehypeAttachmentCitations, options.citationManifest);
   }
 
   processor.use(rehypeSanitize, SANITIZE_SCHEMA).use(rehypeStringify, {
@@ -101,6 +111,10 @@ export async function enrichMessagesWithHtml(
       const renderedHtml = await renderMarkdownToHtml(message.content, {
         highlights: textHighlights,
         enableSyntaxHighlighting,
+        citationManifest: buildAttachmentCitationManifest(
+          message.id,
+          message.toolInvocations,
+        ),
       });
 
       const hasBranchHighlight = branchAnchors.length > 0;
@@ -146,6 +160,12 @@ function createSanitizeSchema(): typeof defaultSchema {
   extend("button", ["className", "type", "data-copy-code", "data-copy-state"]);
   extend("section", ["className", "aria-labelledby", "aria-label"]);
   extend("sup", ["className"]);
+  extend("a", [
+    "className",
+    "aria-label",
+    "data-attachment-citation",
+    "data-attachment-citation-id",
+  ]);
 
   schema.attributes = attributes;
   schema.tagNames = Array.from(
@@ -153,6 +173,121 @@ function createSanitizeSchema(): typeof defaultSchema {
   );
 
   return schema as typeof defaultSchema;
+}
+
+function rehypeAttachmentCitations(manifest: AttachmentCitationManifest) {
+  const citationIds = new Set(manifest.sources.map((source) => source.id));
+
+  return (tree: HastRoot) => {
+    function descend(node: HastParent, citationsAllowed: boolean) {
+      const children = node.children as Array<HastElement | HastText>;
+
+      for (let index = 0; index < children.length; index += 1) {
+        const child = children[index];
+        if (!child) {
+          continue;
+        }
+
+        if (child.type === "text") {
+          if (!citationsAllowed) {
+            continue;
+          }
+
+          const fragments = splitAttachmentCitations(
+            child.value ?? "",
+            citationIds,
+            manifest.messageId,
+          );
+          if (fragments.length === 1 && fragments[0]?.type === "text") {
+            continue;
+          }
+
+          children.splice(index, 1, ...fragments);
+          index += fragments.length - 1;
+          continue;
+        }
+
+        if (!("children" in child) || !Array.isArray(child.children)) {
+          continue;
+        }
+
+        const childAllowsCitations =
+          citationsAllowed &&
+          child.tagName !== "a" &&
+          child.tagName !== "code" &&
+          child.tagName !== "pre" &&
+          child.tagName !== "style" &&
+          child.tagName !== "script";
+        descend(child as HastParent, childAllowsCitations);
+      }
+    }
+
+    descend(tree as unknown as HastParent, true);
+  };
+}
+
+function splitAttachmentCitations(
+  value: string,
+  citationIds: Set<string>,
+  messageId: string | null | undefined,
+): Array<HastElement | HastText> {
+  const fragments: Array<HastElement | HastText> = [];
+  const pattern = /\[(A[1-9]\d*)\]/g;
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(pattern)) {
+    const citationId = match[1];
+    const matchIndex = match.index;
+    if (!citationId || matchIndex == null || !citationIds.has(citationId)) {
+      continue;
+    }
+
+    if (matchIndex > lastIndex) {
+      fragments.push({
+        type: "text",
+        value: value.slice(lastIndex, matchIndex),
+      });
+    }
+
+    fragments.push(createAttachmentCitation(messageId, citationId));
+    lastIndex = matchIndex + match[0].length;
+  }
+
+  if (lastIndex === 0) {
+    return [{ type: "text", value }];
+  }
+  if (lastIndex < value.length) {
+    fragments.push({ type: "text", value: value.slice(lastIndex) });
+  }
+
+  return fragments;
+}
+
+function createAttachmentCitation(
+  messageId: string | null | undefined,
+  citationId: string,
+): HastElement {
+  return {
+    type: "element",
+    tagName: "sup",
+    properties: {
+      className: ["attachment-citation"],
+    },
+    children: [
+      {
+        type: "element",
+        tagName: "a",
+        properties: {
+          href: `#${attachmentCitationFragmentId(messageId, citationId)}`,
+          className: ["attachment-citation__link"],
+          "aria-label": `View attachment source ${citationId}`,
+          "data-attachment-citation": "true",
+          "data-attachment-citation-id": citationId,
+        },
+        children: [{ type: "text", value: `[${citationId}]` }],
+      },
+    ],
+  };
 }
 
 function rehypeEnhanceCodeBlocks() {

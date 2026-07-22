@@ -4,44 +4,55 @@ import { useEffect, useState } from "react";
 
 import type { ToolInvocation } from "@/lib/conversation";
 import {
+  ATTACHMENT_RETRIEVAL_TOOL_NAME,
+  attachmentCitationFragmentId,
+  extractAttachmentCitationSources,
+} from "@/lib/conversation/attachmentCitations";
+import {
   extractWebSearchResults,
   WEB_SEARCH_TOOL_NAME,
   type WebSearchResultSummary,
 } from "@/lib/conversation/tools";
 import { cn } from "@/lib/utils";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, FileText } from "lucide-react";
 
 interface ToolInvocationSummaryProps {
   toolInvocations?: ToolInvocation[] | null;
   className?: string;
   fallbackHtml?: string;
+  messageId?: string;
 }
 
 export function ToolInvocationSummary({
   toolInvocations,
   className,
   fallbackHtml,
+  messageId,
 }: ToolInvocationSummaryProps) {
-  if (!toolInvocations || toolInvocations.length === 0) {
-    return null;
-  }
-
-  const webInvocations = toolInvocations.filter(
+  const invocations = toolInvocations ?? [];
+  const webInvocations = invocations.filter(
     (invocation) => invocation.toolType === WEB_SEARCH_TOOL_NAME,
   );
-
-  if (webInvocations.length === 0) {
-    return null;
-  }
+  const attachmentInvocations = invocations.filter(
+    (invocation) =>
+      invocation.toolType === ATTACHMENT_RETRIEVAL_TOOL_NAME,
+  );
 
   const results = extractWebSearchResults(webInvocations);
+  const attachmentSources = extractAttachmentCitationSources(
+    attachmentInvocations,
+  );
   const isSearching = webInvocations.some((invocation) =>
     invocation.status === "pending" || invocation.status === "running",
   );
-  const hasSucceeded = webInvocations.some(
-    (invocation) => invocation.status === "succeeded",
+  const isRetrievingAttachments = attachmentInvocations.some(
+    (invocation) =>
+      invocation.status === "pending" || invocation.status === "running",
   );
-  const failure = webInvocations.find(
+  const webFailure = webInvocations.find(
+    (invocation) => invocation.status === "failed" && invocation.error,
+  );
+  const attachmentFailure = attachmentInvocations.find(
     (invocation) => invocation.status === "failed" && invocation.error,
   );
 
@@ -50,12 +61,12 @@ export function ToolInvocationSummary({
   >([]);
 
   useEffect(() => {
-    if (!fallbackHtml) {
+    if (!fallbackHtml || webInvocations.length === 0) {
       setFallbackResults([]);
       return;
     }
     setFallbackResults(extractAnchorsFromHtml(fallbackHtml));
-  }, [fallbackHtml]);
+  }, [fallbackHtml, webInvocations.length]);
 
   const allResults = results.length > 0 ? results : fallbackResults;
   const externalResults = allResults
@@ -64,36 +75,20 @@ export function ToolInvocationSummary({
       externalUrl: resolveExternalUrl(result.url),
     }))
     .filter((result) => Boolean(result.externalUrl));
+  const hasRelevantInvocations =
+    webInvocations.length > 0 || attachmentInvocations.length > 0;
+  const isPending = isSearching || isRetrievingAttachments;
+  const failure = attachmentFailure ?? webFailure;
 
-  if (allResults.length === 0) {
-    if (failure) {
-      return (
-        <div
-          className={cn(
-            "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-destructive",
-            className,
-          )}
-        >
-          {failure.error?.message ?? "Web search failed."}
-        </div>
-      );
-    }
-    if (isSearching) {
-      return (
-        <div
-          className={cn(
-            "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-muted-foreground",
-            className,
-          )}
-        >
-          Searching…
-        </div>
-      );
-    }
+  if (!hasRelevantInvocations) {
     return null;
   }
 
-  if (externalResults.length === 0) {
+  if (
+    attachmentSources.length === 0 &&
+    allResults.length > 0 &&
+    externalResults.length === 0
+  ) {
     return (
       <div
         className={cn(
@@ -106,6 +101,34 @@ export function ToolInvocationSummary({
     );
   }
 
+  if (externalResults.length === 0 && attachmentSources.length === 0) {
+    if (failure) {
+      return (
+        <div
+          className={cn(
+            "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-destructive",
+            className,
+          )}
+        >
+          {failure.error?.message ?? "Source retrieval failed."}
+        </div>
+      );
+    }
+    if (isPending) {
+      return (
+        <div
+          className={cn(
+            "panel-surface panel-edge mt-4 rounded-xl p-4 text-sm text-muted-foreground",
+            className,
+          )}
+        >
+          {sourceProgressLabel(isSearching, isRetrievingAttachments)}
+        </div>
+      );
+    }
+    return null;
+  }
+
   return (
     <div
       className={cn(
@@ -115,10 +138,15 @@ export function ToolInvocationSummary({
     >
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Web Results
+          {sourceSectionLabel(
+            externalResults.length > 0,
+            attachmentSources.length > 0,
+          )}
         </span>
-        {isSearching && (
-          <span className="text-xs text-muted-foreground">Searching…</span>
+        {isPending && (
+          <span className="text-xs text-muted-foreground">
+            {sourceProgressLabel(isSearching, isRetrievingAttachments)}
+          </span>
         )}
       </div>
 
@@ -175,10 +203,89 @@ export function ToolInvocationSummary({
             </div>
           );
         })}
+
+        {attachmentSources.map((source) => {
+          const fragmentId = attachmentCitationFragmentId(
+            messageId,
+            source.id,
+          );
+          const pageLabel = source.pageNumber
+            ? `p. ${source.pageNumber}`
+            : null;
+
+          return (
+            <div
+              id={fragmentId}
+              key={`${source.id}-${source.attachmentId}`}
+              className="group relative inline-flex scroll-mt-6"
+              tabIndex={0}
+              role="note"
+              aria-label={`${source.id}: ${source.name}${pageLabel ? `, ${pageLabel}` : ""}`}
+            >
+              <span className="inline-flex items-center gap-2 rounded-full border border-foreground/15 bg-background px-3 py-1 text-xs font-medium text-foreground transition group-hover:border-primary group-hover:bg-primary/10 group-focus-visible:outline-none group-focus-visible:ring-2 group-focus-visible:ring-ring group-focus-visible:ring-offset-2">
+                <FileText
+                  className="h-3.5 w-3.5 text-primary"
+                  aria-hidden="true"
+                />
+                <span className="font-semibold text-primary">
+                  [{source.id}]
+                </span>
+                <span className="max-w-[18ch] truncate">{source.name}</span>
+                {pageLabel ? (
+                  <span className="text-muted-foreground">· {pageLabel}</span>
+                ) : null}
+              </span>
+
+              <div className="pointer-events-none absolute left-0 top-full z-50 mt-3 hidden w-80 rounded-xl border border-foreground/15 bg-popover p-4 text-left group-hover:pointer-events-auto group-hover:block group-focus-within:block">
+                <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                  <span>Attachment {source.id}</span>
+                  {pageLabel ? <span>{pageLabel}</span> : null}
+                </div>
+                <div className="text-sm font-semibold text-foreground">
+                  {source.name}
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {source.excerpt}
+                </p>
+                {source.contentType ? (
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    {source.contentType}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
     </div>
   );
+}
+
+function sourceSectionLabel(
+  hasWebSources: boolean,
+  hasAttachmentSources: boolean,
+): string {
+  if (hasWebSources && hasAttachmentSources) {
+    return "Sources";
+  }
+  if (hasAttachmentSources) {
+    return "Attachment Sources";
+  }
+  return "Web Results";
+}
+
+function sourceProgressLabel(
+  isSearching: boolean,
+  isRetrievingAttachments: boolean,
+): string {
+  if (isSearching && isRetrievingAttachments) {
+    return "Gathering sources…";
+  }
+  if (isRetrievingAttachments) {
+    return "Reading attachments…";
+  }
+  return "Searching…";
 }
 
 function resolveExternalUrl(url: string): string | null {
