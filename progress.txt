@@ -628,3 +628,7 @@
 - Decisions: Durable Object messages and branches remain canonical; optional Codex pointers are acceleration metadata only; branches store a resumable thread/head while assistant messages store the exact native source turn; legacy snapshots remain valid and user messages cannot carry provider pointers.
 - Files: src/lib/conversation/{model.ts,model.test.ts,validation.ts}, progress.txt.
 - Notes: `pnpm types`, 36 tests, and lint passed; validation and clone coverage includes legacy-safe optional fields and assistant-only source pointers.
+2026-07-22 — Added persistent Codex start/resume/fork and repair semantics to the local bridge. Ref: low-latency ChatGPT-context continuation.
+- Decisions: new threads persist; existing branches resume without replay; children fork through the exact inclusive source turn; only definitive missing-context errors trigger a bounded canonical rebuild; each native thread allows one active turn; cleanup is idempotent; recovery/truncation mode is emitted to callers.
+- Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
+- Notes: cached ChatGPT account/workspace setup removes repeated local round trips; additional context is bounded to 16 entries/48 KiB for later source grounding. `pnpm types`, 37 tests, and lint passed.
