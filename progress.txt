@@ -680,3 +680,7 @@
 - Decisions: each streamed Codex turn is addressable by its client stream ID; stop interrupts the provider and atomically removes the provisional user/assistant pair (or the whole provisional child branch), clears the branch provider pointer, and offers either prompt restoration or discard without leaving ghost context.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, src/lib/conversation/model.ts, src/lib/durable-objects/ConversationStore.ts, src/app/shared/codexBridge.server.ts, src/app/pages/conversation/functions.ts, src/app/components/conversation/{ConversationComposer.tsx,StreamingBubble.tsx}, progress.txt.
 - Notes: cancellation is authorized through the conversation Server Function and the abandoned provider thread is cleaned up asynchronously.
+2026-07-22 — Added review-before-send voice dictation to every composer. Ref: ChatGPT-style voice input on new canvases and temporary branch cards.
+- Decisions: the client uses the browser speech-recognition capability, appends speech to existing draft text, exposes a clear listening/stop state, preserves the transcript on errors, and never submits automatically.
+- Files: src/app/components/conversation/{ConversationComposer.tsx,dictation.ts,dictation.test.ts}, progress.txt.
+- Notes: unsupported browsers show the microphone as unavailable; microphone denial produces an actionable inline recovery message.

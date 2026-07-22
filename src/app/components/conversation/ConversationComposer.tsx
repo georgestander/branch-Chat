@@ -26,6 +26,8 @@ import {
   Square,
   Trash2,
   Maximize,
+  Mic,
+  MicOff,
   SlidersHorizontal,
   Upload,
   X,
@@ -82,6 +84,7 @@ import {
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
+import { mergeDictationText } from "@/app/components/conversation/dictation";
 import {
   OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES,
   OPENROUTER_DEFAULT_REASONING_MODEL_CANDIDATES,
@@ -122,6 +125,24 @@ type FloatingModelMenuPosition = {
   width: number;
   maxHeight: number;
 };
+
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 const TOOL_OPTIONS: ToolOption[] = [
   {
@@ -415,6 +436,8 @@ export function ConversationComposer({
   const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
   const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
+  const [isDictating, setIsDictating] = useState(false);
+  const [isDictationAvailable, setIsDictationAvailable] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
@@ -456,6 +479,7 @@ export function ConversationComposer({
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
   const pendingContentRef = useRef("");
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const cancellationModeRef = useRef<"edit" | "discard" | null>(null);
   const draftStreamWaiterRef = useRef<{
     streamId: string;
@@ -843,8 +867,63 @@ export function ConversationComposer({
   useEffect(() => {
     if (typeof window !== "undefined") {
       setIsBrowser(true);
+      const speechWindow = window as typeof window & {
+        SpeechRecognition?: SpeechRecognitionConstructor;
+        webkitSpeechRecognition?: SpeechRecognitionConstructor;
+      };
+      setIsDictationAvailable(
+        Boolean(speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition),
+      );
     }
   }, []);
+
+  useEffect(() => () => speechRecognitionRef.current?.abort(), []);
+
+  const toggleDictation = useCallback(() => {
+    if (isDictating) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const SpeechRecognition =
+      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Voice dictation is not available in this browser.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    const startingText = value;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || "en-US";
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index]?.[0]?.transcript ?? "";
+      }
+      setValue(mergeDictationText(startingText, transcript));
+    };
+    recognition.onerror = (event) => {
+      setIsDictating(false);
+      setError(
+        event.error === "not-allowed"
+          ? "Microphone access was denied. Allow it in your browser settings and retry."
+          : "Voice dictation stopped unexpectedly. Your transcript is still editable.",
+      );
+    };
+    recognition.onend = () => {
+      speechRecognitionRef.current = null;
+      setIsDictating(false);
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    };
+    speechRecognitionRef.current = recognition;
+    setError(null);
+    setIsDictating(true);
+    recognition.start();
+  }, [isDictating, value]);
 
   useEffect(() => {
     if (!isToolMenuOpen) {
@@ -1888,6 +1967,32 @@ export function ConversationComposer({
       ) : null}
     </div>
   ) : null;
+  const dictationButton = (
+    <button
+      type="button"
+      onClick={toggleDictation}
+      disabled={!isDictationAvailable || isPending}
+      aria-pressed={isDictating}
+      aria-label={isDictating ? "Stop voice dictation" : "Start voice dictation"}
+      title={
+        isDictationAvailable
+          ? isDictating
+            ? "Stop dictation and review text"
+            : "Dictate into the message"
+          : "Voice dictation is unavailable in this browser"
+      }
+      className={cn(
+        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35",
+        isDictating ? "border-destructive/60 text-destructive" : null,
+      )}
+    >
+      {isDictating ? (
+        <MicOff className="h-3 w-3" aria-hidden="true" />
+      ) : (
+        <Mic className="h-3 w-3" aria-hidden="true" />
+      )}
+    </button>
+  );
 
   if (isCompactCanvasComposer) {
     const excerpt = (isBranchDraft
@@ -1978,6 +2083,8 @@ export function ConversationComposer({
                 “{excerptPreview}”
               </blockquote>
             ) : null}
+
+            {dictationButton}
 
             <button
               type="button"
@@ -2808,6 +2915,10 @@ export function ConversationComposer({
               {sendDisabledReason}
             </span>
           ) : null}
+
+          <div className="flex h-9 w-9 items-center justify-center">
+            {dictationButton}
+          </div>
 
           <button
             type="button"
