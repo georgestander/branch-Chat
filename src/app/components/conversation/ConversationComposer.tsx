@@ -65,6 +65,12 @@ import {
 import { clearStreamPrompt, emitStartStreaming, writeStreamPrompt } from "@/app/components/conversation/streamingEvents";
 import { cancelledConversationPromptStorageKey, cancelledPromptStorageKey, StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import {
+  clearComposerDraft,
+  COMPOSER_DRAFT_EVENT,
+  readComposerDraft,
+  type ComposerDraftDetail,
+} from "@/app/components/conversation/composerDraftEvents";
+import {
   BYOK_STATUS_CHANGED_EVENT,
   emitByokStatusChanged,
   type ByokStatusChangedDetail,
@@ -881,7 +887,33 @@ export function ConversationComposer({
       if (recoveredPrompt) {
         setValue(recoveredPrompt);
       }
+      const composerDraft = readComposerDraft(conversationId, branchId);
+      if (composerDraft) {
+        clearComposerDraft(conversationId, branchId);
+        setValue(composerDraft);
+        window.setTimeout(() => textareaRef.current?.focus(), 0);
+      }
     }
+  }, [branchId, conversationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleComposerDraft = (event: Event) => {
+      const detail = (event as CustomEvent<ComposerDraftDetail>).detail;
+      if (
+        detail?.conversationId !== conversationId ||
+        detail?.branchId !== branchId ||
+        !detail.content.trim()
+      ) {
+        return;
+      }
+      clearComposerDraft(conversationId, branchId);
+      setError(null);
+      setValue(detail.content);
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    };
+    window.addEventListener(COMPOSER_DRAFT_EVENT, handleComposerDraft);
+    return () => window.removeEventListener(COMPOSER_DRAFT_EVENT, handleComposerDraft);
   }, [branchId, conversationId]);
 
   const releaseMicrophone = useCallback(() => {

@@ -6,6 +6,7 @@ import {
   resolveConversationId,
 } from "@/app/shared/conversation.server";
 import type { AppRequestInfo } from "@/worker";
+import { generatedImageContentDisposition } from "@/lib/conversation/generatedImages";
 
 export async function handleGeneratedImageRequest(
   requestInfo: AppRequestInfo,
@@ -42,5 +43,11 @@ export async function handleGeneratedImageRequest(
   object.writeHttpMetadata(headers);
   headers.set("cache-control", "private, max-age=31536000, immutable");
   headers.set("x-content-type-options", "nosniff");
+  if (url.searchParams.get("download") === "1") {
+    headers.set(
+      "content-disposition",
+      generatedImageContentDisposition(imageId, headers.get("content-type")),
+    );
+  }
   return new Response(object.body, { headers });
 }

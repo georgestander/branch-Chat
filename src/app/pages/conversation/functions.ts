@@ -1445,7 +1445,16 @@ async function sendMessageWithCodex(options: {
           status: "succeeded",
           startedAt: existing?.startedAt ?? new Date().toISOString(),
           completedAt: new Date().toISOString(),
-          input: event.revisedPrompt ? { prompt: event.revisedPrompt } : null,
+          input: {
+            prompt:
+              existing?.input &&
+              typeof existing.input === "object" &&
+              !Array.isArray(existing.input) &&
+              typeof (existing.input as Record<string, unknown>).prompt === "string"
+                ? (existing.input as Record<string, unknown>).prompt
+                : input.content.trim(),
+            revisedPrompt: event.revisedPrompt ?? null,
+          },
           output: { storageKey, contentType: image.contentType, imageUrl },
           error: null,
         });

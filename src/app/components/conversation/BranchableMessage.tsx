@@ -14,7 +14,7 @@ import {
   ImageGenerationStatus,
 } from "@/app/components/conversation/ImageGenerationStatus";
 import { hasPendingImageGeneration } from "@/lib/conversation/imageGeneration";
-import { GitBranch } from "lucide-react";
+import { Download, GitBranch, RotateCcw, TriangleAlert } from "lucide-react";
 import {
   branchToneByKey,
   branchToneForId,
@@ -32,6 +32,8 @@ interface BranchableMessageProps {
   onBranchCreated?: (response: SendMessageResponse) => void;
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
   showWholeReplyAction?: boolean;
+  originalPrompt?: string | null;
+  onRetryPrompt?: (prompt: string) => void;
 }
 
 export type BranchSelectionDraft = {
@@ -51,6 +53,20 @@ type SelectionState = {
   blockCount: number;
 };
 
+function imageInvocationPrompt(input: unknown): string | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  const prompt =
+    typeof record.revisedPrompt === "string"
+      ? record.revisedPrompt
+      : typeof record.prompt === "string"
+        ? record.prompt
+        : null;
+  return prompt?.trim() || null;
+}
+
 export function BranchableMessage({
   conversationId,
   branchId,
@@ -63,12 +79,19 @@ export function BranchableMessage({
   onBranchCreated,
   onStartBranchDraft,
   showWholeReplyAction = true,
+  originalPrompt = null,
+  onRetryPrompt,
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const isGeneratingImage = hasPendingImageGeneration(toolInvocations);
+  const completedImageInvocations = (toolInvocations ?? []).filter(
+    (invocation) =>
+      invocation.toolType === "image_generation" &&
+      (invocation.status === "succeeded" || invocation.status === "failed"),
+  );
 
   const clearSelection = useCallback(() => {
     setSelection(null);
@@ -184,6 +207,47 @@ export function BranchableMessage({
       />
 
       {isGeneratingImage ? <ImageGenerationStatus phase="generating" /> : null}
+
+      {completedImageInvocations.map((invocation) => {
+        const retryPrompt = originalPrompt ?? imageInvocationPrompt(invocation.input);
+        const downloadUrl = `/_generated-image?conversationId=${encodeURIComponent(
+          conversationId,
+        )}&messageId=${encodeURIComponent(messageId)}&imageId=${encodeURIComponent(
+          invocation.id,
+        )}&download=1`;
+        return (
+          <div
+            key={`image-actions-${invocation.id}`}
+            className="mt-3 flex flex-wrap items-center gap-2"
+          >
+            {invocation.status === "failed" ? (
+              <span className="mr-auto inline-flex items-center gap-1.5 text-xs text-destructive">
+                <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                {invocation.error?.message ?? "Image generation failed."}
+              </span>
+            ) : (
+              <a
+                href={downloadUrl}
+                download
+                className="interactive-target inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                Download
+              </a>
+            )}
+            {retryPrompt && onRetryPrompt ? (
+              <button
+                type="button"
+                onClick={() => onRetryPrompt(retryPrompt)}
+                className="interactive-target inline-flex items-center gap-1.5 rounded border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Edit prompt &amp; retry
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
 
       {branchAnchors.length > 0 ? (
         <nav

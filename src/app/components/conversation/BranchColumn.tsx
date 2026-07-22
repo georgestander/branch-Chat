@@ -53,6 +53,7 @@ import {
 } from "@/app/components/conversation/streamingEvents";
 import type { OpenRouterModelOption } from "@/lib/openrouter/models";
 import type { SendMessageResponse } from "@/app/pages/conversation/functions";
+import { emitComposerDraft } from "@/app/components/conversation/composerDraftEvents";
 
 const SCROLL_EPSILON_PX = 120;
 type OptimisticMessageStatus = "pending" | "resolved";
@@ -653,7 +654,7 @@ export function BranchColumn({
           data-card-interactive="true"
         >
         <ol className="flex w-full flex-col gap-4">
-          {visibleMessages.map((message) => (
+          {visibleMessages.map((message, messageIndex) => (
             <li
               key={message.id}
               className={cn(
@@ -674,10 +675,19 @@ export function BranchColumn({
                 showWholeReplyAction={showWholeReplyAction}
                 activeStreamId={effectiveActiveStreamId}
                 originalPrompt={
-                  [...visibleMessages]
+                  visibleMessages
+                    .slice(0, messageIndex)
                     .reverse()
                     .find((candidate) => candidate.role === "user")?.content ?? null
                 }
+                onRetryPrompt={(prompt) => {
+                  onOpenBranch?.(branch.id);
+                  emitComposerDraft({
+                    conversationId,
+                    branchId: branch.id,
+                    content: prompt,
+                  });
+                }}
               />
             </li>
           ))}
@@ -755,6 +765,7 @@ function MessageBubble({
   showWholeReplyAction,
   activeStreamId,
   originalPrompt,
+  onRetryPrompt,
 }: {
   message: RenderedMessage;
   isActive: boolean;
@@ -766,6 +777,7 @@ function MessageBubble({
   showWholeReplyAction: boolean;
   activeStreamId: string | null;
   originalPrompt: string | null;
+  onRetryPrompt: (prompt: string) => void;
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
@@ -793,6 +805,8 @@ function MessageBubble({
           onBranchCreated={onBranchCreated}
           onStartBranchDraft={onStartBranchDraft}
           showWholeReplyAction={showWholeReplyAction}
+          originalPrompt={originalPrompt}
+          onRetryPrompt={onRetryPrompt}
         />
         {isStreaming ? (
           activeStreamId ? (
