@@ -438,6 +438,7 @@ export function ConversationComposer({
   const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
   const [isDictating, setIsDictating] = useState(false);
   const [isDictationAvailable, setIsDictationAvailable] = useState(false);
+  const [isDictationPermissionOpen, setIsDictationPermissionOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
@@ -916,11 +917,12 @@ export function ConversationComposer({
     };
     recognition.onerror = (event) => {
       setIsDictating(false);
-      setError(
-        event.error === "not-allowed"
-          ? "Microphone access was denied. Allow it in your browser settings and retry."
-          : "Voice dictation stopped unexpectedly. Your transcript is still editable.",
-      );
+      if (event.error === "not-allowed") {
+        setError(null);
+        setIsDictationPermissionOpen(true);
+        return;
+      }
+      setError("Voice dictation stopped unexpectedly. Your transcript is still editable.");
     };
     recognition.onend = () => {
       speechRecognitionRef.current = null;
@@ -929,6 +931,7 @@ export function ConversationComposer({
     };
     speechRecognitionRef.current = recognition;
     setError(null);
+    setIsDictationPermissionOpen(false);
     setIsDictating(true);
     recognition.start();
   }, [isDictating, value]);
@@ -2012,6 +2015,47 @@ export function ConversationComposer({
       )}
     </button>
   );
+  const renderDictationControl = (containerClassName: string) => (
+    <div className={cn("relative flex items-center justify-center", containerClassName)}>
+      {dictationButton}
+      {isDictationPermissionOpen ? (
+        <div
+          role="dialog"
+          aria-label="Microphone permission required"
+          className="absolute bottom-full right-0 z-30 mb-2 w-64 rounded border border-border bg-popover p-3 text-left shadow-lg"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle
+              className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-foreground">Microphone blocked</p>
+              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                Allow microphone access for this site in your browser&apos;s address-bar or
+                site settings, then try again.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsDictationPermissionOpen(false)}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Close microphone help"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={toggleDictation}
+            className="mt-3 inline-flex h-7 w-full items-center justify-center rounded border border-border bg-foreground px-2 text-[11px] font-semibold text-background hover:bg-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 
   if (isCompactCanvasComposer) {
     const excerpt = (isBranchDraft
@@ -2102,8 +2146,6 @@ export function ConversationComposer({
                 “{excerptPreview}”
               </blockquote>
             ) : null}
-
-            {dictationButton}
 
             <button
               type="button"
@@ -2404,6 +2446,7 @@ export function ConversationComposer({
                   </button>
                 </div>
               ) : null}
+              {renderDictationControl("h-7 w-7")}
               <div className="flex flex-col items-center gap-1">
                 <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   ⌘ ↵
@@ -2936,9 +2979,7 @@ export function ConversationComposer({
             </span>
           ) : null}
 
-          <div className="flex h-9 w-9 items-center justify-center">
-            {dictationButton}
-          </div>
+          {renderDictationControl("h-9 w-9")}
 
           <button
             type="button"

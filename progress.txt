@@ -696,3 +696,7 @@
 - Decisions: the prompt is bound to its stream until canonical completion, pending optimistic streams survive the card remount, cancellation updates the branch before deleting provisional messages, and an embedded draft stream delegates recovery to its composer instead of reloading the page.
 - Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/{BranchColumn.tsx,ConversationComposer.tsx,StreamingBubble.tsx,streamingEvents.ts}, progress.txt.
 - Notes: live QA confirmed exact prompt restoration after stop-and-edit, no lingering pending controls, one Stop control per temporary card, and complete draft removal after stop-and-discard.
+2026-07-22 — Moved voice dictation into the composer action row and surfaced permission recovery. Ref: browser comment on temporary-card microphone placement.
+- Decisions: compact canvas and branch-draft cards place the microphone immediately left of Send; microphone denial opens a small anchored popover with site-permission guidance, close, and retry actions instead of relying on an easy-to-miss inline error.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: browser QA confirmed no microphone remains in the compact header, the footer control sits left of Send, and a simulated not-allowed response opens the accessible recovery dialog without losing the draft.
