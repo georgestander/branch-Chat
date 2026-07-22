@@ -71,6 +71,11 @@ import {
   arrangeFocusedChildOnCanvas,
   branchToneForBranch,
 } from "@/lib/conversation";
+import {
+  listCodexThreadIdsForBranchSubtree,
+  resolveCodexInferenceTarget,
+  selectCodexServiceTier,
+} from "@/lib/conversation/inference";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
 import {
@@ -86,6 +91,7 @@ import {
 } from "@/lib/openai/models";
 import { createOpenAIClient } from "@/lib/openai/client";
 import {
+  deleteCodexThreads,
   getCodexAccountStatus,
   streamCodexTurn,
 } from "@/app/shared/codexBridge.server";
@@ -1056,6 +1062,22 @@ async function sendMessageWithCodex(options: {
         message.role === "user" || message.role === "assistant",
     )
     .slice(0, -1);
+  const inferenceTarget = resolveCodexInferenceTarget(
+    options.snapshot,
+    branchId,
+  );
+  const serviceTier = selectCodexServiceTier(settings);
+  const branchSelection = createdBranch?.createdFrom.excerpt?.trim();
+  const additionalContext = branchSelection
+    ? {
+        "branch-source-selection": {
+          kind: "application" as const,
+          value:
+            "The user created this child from the following exact span of the parent assistant response. Treat it as the focus of the new question:\n\n" +
+            branchSelection,
+        },
+      }
+    : null;
 
   if (consumedAttachments.length > 0) {
     const attachmentSummary = consumedAttachments
@@ -1135,7 +1157,11 @@ async function sendMessageWithCodex(options: {
           message: assistantMessage,
         },
       ];
-  const appended = await applyConversationUpdates(ctx, conversationId, initialUpdates);
+  let appended = await applyConversationUpdates(
+    ctx,
+    conversationId,
+    initialUpdates,
+  );
 
   if (input.streamId) {
     const subscriber = await waitForSSESubscriber(input.streamId);
@@ -1154,14 +1180,17 @@ async function sendMessageWithCodex(options: {
   let reasoningSummary = "";
   let promptTokens = 0;
   let completionTokens = 0;
+  let codexThreadId: string | null = null;
+  let codexTurnId: string | null = null;
   const startedAt = Date.now();
   ctx.trace("codex:stream:start", {
     conversationId,
     branchId,
     model: settings.model,
     reasoningEffort: settings.reasoningEffort ?? null,
-    serviceTier: settings.composerDefaults.preset === "fast" ? "priority" : null,
+    serviceTier,
     webSearch,
+    inferenceMode: inferenceTarget.mode,
   });
 
   try {
@@ -1169,13 +1198,64 @@ async function sendMessageWithCodex(options: {
       env: ctx.env,
       model: settings.model,
       effort: settings.reasoningEffort ?? null,
-      serviceTier: settings.composerDefaults.preset === "fast" ? "priority" : null,
+      serviceTier,
       webSearch,
       content: input.content.trim(),
       messages,
       developerInstructions,
+      threadId:
+        inferenceTarget.mode === "resume" ? inferenceTarget.threadId : null,
+      forkFrom:
+        inferenceTarget.mode === "fork"
+          ? {
+              threadId: inferenceTarget.threadId,
+              turnId: inferenceTarget.turnId,
+            }
+          : null,
+      clientUserMessageId: userMessage.id,
+      additionalContext,
     })) {
+      if (event.type === "context") {
+        codexThreadId = event.threadId;
+        const currentBranch = appended.snapshot.branches[branchId];
+        if (
+          currentBranch &&
+          currentBranch.inferenceContext?.threadId !== event.threadId
+        ) {
+          appended = await applyConversationUpdates(ctx, conversationId, [
+            {
+              type: "branch:update",
+              conversationId,
+              branch: {
+                ...currentBranch,
+                inferenceContext: {
+                  provider: "codex",
+                  threadId: event.threadId,
+                  lastTurnId:
+                    currentBranch.inferenceContext?.lastTurnId ?? null,
+                },
+              },
+            },
+          ]);
+        }
+        ctx.trace("codex:context", {
+          conversationId,
+          branchId,
+          threadId: event.threadId,
+          mode: event.contextMode,
+          recovered: event.recovered,
+          historyTruncated: event.historyTruncated,
+        });
+        if (input.streamId && event.recovered) {
+          sendSSE(input.streamId, "context_recovery", {
+            historyTruncated: event.historyTruncated,
+          });
+        }
+        continue;
+      }
       if (event.type === "start") {
+        codexThreadId = event.threadId;
+        codexTurnId = event.turnId ?? codexTurnId;
         if (input.streamId) sendSSE(input.streamId, "start", { startedAt: Date.now() });
         continue;
       }
@@ -1226,6 +1306,8 @@ async function sendMessageWithCodex(options: {
         reasoningSummary = event.reasoningSummary ?? reasoningSummary;
         promptTokens = event.promptTokens ?? 0;
         completionTokens = event.completionTokens ?? 0;
+        codexThreadId = event.threadId ?? codexThreadId;
+        codexTurnId = event.turnId ?? codexTurnId;
         continue;
       }
       if (event.type === "error") {
@@ -1271,10 +1353,38 @@ async function sendMessageWithCodex(options: {
       cost: 0,
     },
     toolInvocations: Array.from(toolInvocationMap.values()),
+    inferenceContext:
+      codexThreadId && codexTurnId
+        ? {
+            provider: "codex",
+            threadId: codexThreadId,
+            turnId: codexTurnId,
+          }
+        : null,
   };
-  let applied = await applyConversationUpdates(ctx, conversationId, [
+  const finalUpdates: Parameters<typeof applyConversationUpdates>[2] = [
     { type: "message:update", conversationId, message: finalAssistantMessage },
-  ]);
+  ];
+  const completedBranch = appended.snapshot.branches[branchId];
+  if (completedBranch && codexThreadId) {
+    finalUpdates.push({
+      type: "branch:update",
+      conversationId,
+      branch: {
+        ...completedBranch,
+        inferenceContext: {
+          provider: "codex",
+          threadId: codexThreadId,
+          lastTurnId: codexTurnId,
+        },
+      },
+    });
+  }
+  let applied = await applyConversationUpdates(
+    ctx,
+    conversationId,
+    finalUpdates,
+  );
   const fallbackTitle = await maybeApplyRootBranchFallbackTitle({
     ctx,
     conversationId,
@@ -2717,6 +2827,10 @@ export async function deleteBranch(
   }
 
   const parentBranchId = branch.parentId;
+  const providerThreadIds = listCodexThreadIdsForBranchSubtree(
+    ensured.snapshot,
+    branch.id,
+  );
   const applied = await applyConversationUpdates(ctx, conversationId, [
     {
       type: "branch:delete",
@@ -2729,7 +2843,28 @@ export async function deleteBranch(
     conversationId,
     branchId: branch.id,
     parentBranchId,
+    providerThreadCount: providerThreadIds.length,
   });
+  if (providerThreadIds.length > 0) {
+    requestInfo.cf.waitUntil(
+      deleteCodexThreads(providerThreadIds, ctx.env)
+        .then((result) => {
+          ctx.trace("branch:delete:provider-cleanup", {
+            conversationId,
+            branchId: branch.id,
+            deleted: result.deleted.length,
+            failed: result.failed.length,
+          });
+        })
+        .catch((error) => {
+          ctx.trace("branch:delete:provider-cleanup-error", {
+            conversationId,
+            branchId: branch.id,
+            error: error instanceof Error ? error.message : "unknown",
+          });
+        }),
+    );
+  }
 
   return {
     conversationId,
@@ -2901,7 +3036,11 @@ export async function deleteConversation(
   const requestInfo = getRequestInfo() as AppRequestInfo;
   const ctx = requestInfo.ctx as AppContext;
   const conversationId = resolveConversationId(ctx, input.conversationId);
-  await ensureConversationSnapshot(ctx, conversationId);
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const providerThreadIds = listCodexThreadIdsForBranchSubtree(
+    ensured.snapshot,
+    ensured.snapshot.conversation.rootBranchId,
+  );
 
   const store = ctx.getConversationStore(conversationId);
   await store.reset().catch((error) => {
@@ -2915,7 +3054,28 @@ export async function deleteConversation(
   invalidateConversationCache(conversationId);
   await deleteConversationDirectoryEntry(ctx, { id: conversationId });
 
-  ctx.trace("conversation:delete", { conversationId });
+  ctx.trace("conversation:delete", {
+    conversationId,
+    providerThreadCount: providerThreadIds.length,
+  });
+  if (providerThreadIds.length > 0) {
+    requestInfo.cf.waitUntil(
+      deleteCodexThreads(providerThreadIds, ctx.env)
+        .then((result) => {
+          ctx.trace("conversation:delete:provider-cleanup", {
+            conversationId,
+            deleted: result.deleted.length,
+            failed: result.failed.length,
+          });
+        })
+        .catch((error) => {
+          ctx.trace("conversation:delete:provider-cleanup-error", {
+            conversationId,
+            error: error instanceof Error ? error.message : "unknown",
+          });
+        }),
+    );
+  }
 
   return { conversationId };
 }

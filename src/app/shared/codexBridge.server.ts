@@ -20,8 +20,30 @@ export interface CodexBridgeModel {
   isDefault: boolean;
 }
 
+export type CodexBridgeContextMode = "start" | "resume" | "fork" | "recovery";
+
+export interface CodexBridgeAdditionalContext {
+  [sourceId: string]: {
+    value: string;
+    kind: "untrusted" | "application";
+  };
+}
+
 export type CodexBridgeStreamEvent =
-  | { type: "start"; threadId?: string; turnId?: string }
+  | {
+      type: "context";
+      threadId: string;
+      contextMode: CodexBridgeContextMode;
+      recovered: boolean;
+      historyTruncated: boolean;
+    }
+  | {
+      type: "start";
+      threadId: string;
+      turnId?: string;
+      contextMode?: CodexBridgeContextMode;
+      recovered?: boolean;
+    }
   | { type: "delta"; delta: string }
   | { type: "reasoning_summary"; delta: string; content?: string }
   | {
@@ -39,6 +61,9 @@ export type CodexBridgeStreamEvent =
       completionTokens?: number;
       threadId?: string;
       turnId?: string;
+      contextMode?: CodexBridgeContextMode;
+      recovered?: boolean;
+      historyTruncated?: boolean;
     }
   | { type: "error"; message: string };
 
@@ -105,6 +130,10 @@ export async function* streamCodexTurn(options: {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   baseInstructions?: string | null;
   developerInstructions?: string | null;
+  threadId?: string | null;
+  forkFrom?: { threadId: string; turnId: string } | null;
+  clientUserMessageId?: string | null;
+  additionalContext?: CodexBridgeAdditionalContext | null;
 }): AsyncGenerator<CodexBridgeStreamEvent> {
   const response = await fetch(`${getBridgeUrl(options.env)}/turns`, {
     method: "POST",
@@ -121,6 +150,10 @@ export async function* streamCodexTurn(options: {
       messages: options.messages.map(({ role, content }) => ({ role, content })),
       baseInstructions: options.baseInstructions ?? null,
       developerInstructions: options.developerInstructions ?? null,
+      threadId: options.threadId ?? null,
+      forkFrom: options.forkFrom ?? null,
+      clientUserMessageId: options.clientUserMessageId ?? null,
+      additionalContext: options.additionalContext ?? null,
     }),
   });
   if (!response.ok) throw new Error(await readError(response));
@@ -146,4 +179,29 @@ export async function* streamCodexTurn(options: {
   } finally {
     reader.releaseLock();
   }
+}
+
+export async function deleteCodexThreads(
+  threadIds: string[],
+  env?: Env,
+): Promise<{ deleted: string[]; failed: Array<{ threadId: string; message: string }> }> {
+  const normalized = Array.from(
+    new Set(threadIds.map((threadId) => threadId.trim()).filter(Boolean)),
+  );
+  if (normalized.length === 0) {
+    return { deleted: [], failed: [] };
+  }
+  const response = await fetch(`${getBridgeUrl(env)}/threads/delete`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ threadIds: normalized }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as {
+    deleted: string[];
+    failed: Array<{ threadId: string; message: string }>;
+  };
 }

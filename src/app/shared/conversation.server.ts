@@ -19,6 +19,13 @@ import {
 } from "./conversationDirectory.server";
 import { buildAgentInstructions } from "@/lib/openai/agentPrompt";
 import { getDefaultConversationIdForUser } from "@/app/shared/auth.server";
+import { getEffectiveBranchMessages } from "./conversationContext.ts";
+
+export {
+  getBoundedBranchRecoveryMessages,
+  getEffectiveBranchAttachmentIds,
+  getEffectiveBranchMessages,
+} from "./conversationContext.ts";
 
 const DEFAULT_MODEL = DEFAULT_CONVERSATION_MODEL;
 const DEFAULT_TEMPERATURE = 0.1;
@@ -786,30 +793,7 @@ function assembleConversationMessages(options: {
     allowFileTools = true,
   } = options;
 
-  const chain = getBranchChain(snapshot, branchId);
-  const orderedMessages: Message[] = [];
-
-  for (let index = 0; index < chain.length; index++) {
-    const branchNode = chain[index];
-    const branchMessages = getBranchMessages(snapshot, branchNode.id);
-
-    const isTargetBranch = index === chain.length - 1;
-    if (isTargetBranch) {
-      orderedMessages.push(...branchMessages);
-      continue;
-    }
-
-    const childBranch = chain[index + 1];
-    const cutOffId = childBranch.createdFrom?.messageId;
-    if (!cutOffId) {
-      orderedMessages.push(...branchMessages);
-      continue;
-    }
-
-    const cutOffIndex = branchMessages.findIndex((message) => message.id === cutOffId);
-    const sliceEnd = cutOffIndex >= 0 ? cutOffIndex + 1 : branchMessages.length;
-    orderedMessages.push(...branchMessages.slice(0, sliceEnd));
-  }
+  const orderedMessages = getEffectiveBranchMessages(snapshot, branchId);
 
   if (orderedMessages.length > 0) {
     const lastMessage = orderedMessages[orderedMessages.length - 1];

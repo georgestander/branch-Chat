@@ -632,3 +632,7 @@
 - Decisions: new threads persist; existing branches resume without replay; children fork through the exact inclusive source turn; only definitive missing-context errors trigger a bounded canonical rebuild; each native thread allows one active turn; cleanup is idempotent; recovery/truncation mode is emitted to callers.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
 - Notes: cached ChatGPT account/workspace setup removes repeated local round trips; additional context is bounded to 16 entries/48 KiB for later source grounding. `pnpm types`, 37 tests, and lint passed.
+2026-07-22 — Wired canonical branch lineage to persistent Codex continuation. Ref: native continuation/fork performance and recoverable context.
+- Decisions: an established branch resumes its own thread, a new child forks the exact assistant source turn, and legacy or missing provider state rebuilds only from cutoff-aware Durable Object lineage; low/fast runs request the priority tier; branch selections stay explicit additional context; provider threads are best-effort cleaned after canonical branch/conversation deletion.
+- Files: src/app/pages/conversation/functions.ts, src/app/shared/{codexBridge.server.ts,conversation.server.ts,conversation.server.test.ts,conversationContext.ts}, src/lib/conversation/{inference.ts,inference.test.ts}, progress.txt.
+- Notes: branch lineage tests cover deep cutoffs, sibling exclusion, attachment inheritance, bounded recovery, resume/fork/rebuild targeting, low-latency tier selection, and deletion-subtree cleanup.
