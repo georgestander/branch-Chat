@@ -620,7 +620,7 @@ export function CanvasConversationLayout({
   );
 
   const renderBranchDraft = useCallback(
-    (draft: BranchSelectionDraft) => (
+    (draft: BranchSelectionDraft, onCancel: () => void) => (
       <ConversationComposer
         branchId={draft.parentBranchId}
         conversationId={conversationId}
@@ -643,6 +643,7 @@ export function CanvasConversationLayout({
           excerpt: draft.excerpt,
         }}
         variant="branch-draft"
+        onCancelDraft={onCancel}
         onDraftCreated={completeBranchDraft}
         onPendingChange={setIsCreatingBranch}
       />

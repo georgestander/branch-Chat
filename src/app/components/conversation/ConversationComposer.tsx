@@ -371,6 +371,7 @@ interface ConversationComposerProps {
   ) => Promise<void> | void;
   variant?: "default" | "branch-draft";
   onPendingChange?: (pending: boolean) => void;
+  onCancelDraft?: () => void;
 }
 
 export function ConversationComposer({
@@ -395,6 +396,7 @@ export function ConversationComposer({
   onDraftCreated,
   variant = "default",
   onPendingChange,
+  onCancelDraft,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1229,6 +1231,7 @@ export function ConversationComposer({
       nextModel: string,
       nextEffort: ReasoningEffort | null,
       presetOverride?: ComposerPreset,
+      options?: { keepMenuOpen?: boolean },
     ) => {
       const normalizedEffort = supportsReasoningEffortModel(nextModel)
         ? (nextEffort ?? "low")
@@ -1249,7 +1252,9 @@ export function ConversationComposer({
       });
       if (success) {
         setSelectedTools(nextTools);
-        setIsModelMenuOpen(false);
+        if (!options?.keepMenuOpen) {
+          setIsModelMenuOpen(false);
+        }
         if (supportsReasoningEffortModel(nextModel)) {
           const effortLabel = REASONING_EFFORT_LABELS[nextEffort ?? "low"];
           notify({
@@ -1665,6 +1670,381 @@ export function ConversationComposer({
     event.preventDefault();
     submitMessage();
   };
+
+  if (isBranchDraft) {
+    const excerpt = (branchDraft.excerpt ?? "Branch from this reply")
+      .replace(/\s+/g, " ")
+      .trim();
+    const excerptPreview =
+      excerpt.length > 96 ? `${excerpt.slice(0, 93).trimEnd()}…` : excerpt;
+    const webSearchSelected = selectedTools.includes("web-search");
+
+    return (
+      <div className={cn("flex h-full min-h-0 w-full flex-col", className)}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.txt,image/*"
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            void handleFilesSelected(event.target.files);
+          }}
+        />
+
+        {isBrowser && isByokPanelOpen
+          ? createPortal(
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="mx-4 w-full max-w-xl rounded border border-border bg-card p-5 shadow-xl">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        ChatGPT account
+                      </p>
+                      <p className="mt-2 text-sm text-foreground">
+                        {byokConnected
+                          ? accountState?.chatgpt.email ?? "Connected through Codex"
+                          : "Run `codex login`, choose ChatGPT, then restart Branch Chat."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsByokPanelOpen(false)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label="Close account dialog"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
+
+        <form
+          onSubmit={handleSubmit}
+          onKeyDown={(event) => {
+            if (!(event.metaKey || event.ctrlKey)) return;
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submitMessage();
+              return;
+            }
+            if (event.key.toLowerCase() === "n") {
+              event.preventDefault();
+              saveNote();
+            }
+          }}
+          className="flex h-full min-h-0 flex-col"
+        >
+          <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
+            <blockquote
+              className="mr-auto min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+              title={`“${excerpt}”`}
+            >
+              “{excerptPreview}”
+            </blockquote>
+
+            <button
+              type="button"
+              onClick={() => handleToolSelect("web-search")}
+              disabled={!webSearchSelectable || isPending}
+              aria-pressed={webSearchSelected}
+              aria-label={webSearchSelected ? "Disable web search" : "Enable web search"}
+              title={webSearchSelected ? "Web search on" : "Web search off"}
+              className={cn(
+                "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35",
+                webSearchSelected ? "bg-muted text-foreground" : "bg-background",
+              )}
+            >
+              <Globe className="h-3 w-3" aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                applyPresetModelSelection(
+                  isFastPreset ? "reasoning" : "fast",
+                  isFastPreset ? "high" : null,
+                )
+              }
+              disabled={conversationSettingsSaving || isPending}
+              aria-label={isFastPreset ? "Switch to reasoning mode" : "Switch to fast mode"}
+              title={isFastPreset ? "Fast mode" : "Reasoning mode"}
+              className={cn(
+                "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35",
+                isFastPreset ? "bg-muted text-foreground" : "bg-background",
+              )}
+            >
+              <Zap className="h-3 w-3" aria-hidden="true" />
+            </button>
+
+            <div className="relative" ref={modelMenuRef}>
+              <button
+                ref={modelButtonRef}
+                type="button"
+                onClick={() => setIsModelMenuOpen((open) => !open)}
+                disabled={conversationSettingsSaving || isPending}
+                aria-haspopup="dialog"
+                aria-expanded={isModelMenuOpen}
+                aria-controls={isModelMenuOpen ? modelMenuId : undefined}
+                aria-label="Choose model and reasoning"
+                title={currentModelLabel}
+                className={cn(
+                  "inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded border border-border px-1 text-[9px] font-bold uppercase tracking-[-0.02em] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35",
+                  isModelMenuOpen ? "bg-muted text-foreground" : "bg-background",
+                )}
+              >
+                M
+              </button>
+
+              {isModelMenuOpen ? (
+                <aside
+                  id={modelMenuId}
+                  role="dialog"
+                  aria-label="Model and reasoning picker"
+                  className="absolute left-[calc(100%+0.5rem)] top-8 z-50 flex max-h-[24rem] w-44 flex-col overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
+                >
+                  <div className="flex items-center justify-between px-1 pb-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Model
+                    </span>
+                    <span className="max-w-36 truncate text-[10px] text-muted-foreground" title={currentModelLabel}>
+                      {currentModelLabel}
+                    </span>
+                  </div>
+                  {CHATGPT_MODEL_OPTIONS.map((modelOption) => {
+                    const selected = conversationModel === modelOption.id;
+                    return (
+                      <button
+                        key={`draft-model-${modelOption.id}`}
+                        type="button"
+                        onClick={() => {
+                          void handleModelSelection(
+                            modelOption.id,
+                            resolveReasoningEffortForModel(
+                              modelOption.id,
+                              reasoningEffort,
+                            ),
+                            undefined,
+                            { keepMenuOpen: true },
+                          );
+                        }}
+                        disabled={conversationSettingsSaving}
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                          selected ? "bg-muted font-semibold text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        <span className="truncate">{modelOption.label}</span>
+                        {selected ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+
+                  {selectedChatGPTModel ? (
+                    <>
+                      <div className="mx-1 my-2 border-t border-border" />
+                      <span className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Reasoning
+                      </span>
+                      <div className="grid grid-cols-2 gap-1">
+                        {reasoningOptions.map((option) => {
+                          const selected = currentReasoningEffort === option;
+                          return (
+                            <button
+                              key={`draft-reasoning-${option}`}
+                              type="button"
+                              onClick={() => {
+                                void handleModelSelection(
+                                  conversationModel,
+                                  option,
+                                  undefined,
+                                  { keepMenuOpen: true },
+                                );
+                              }}
+                              disabled={conversationSettingsSaving}
+                              aria-pressed={selected}
+                              className={cn(
+                                "rounded border border-border px-2 py-1 text-[10px] font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                                selected ? "bg-foreground text-background" : "bg-background text-muted-foreground",
+                              )}
+                            >
+                              {REASONING_EFFORT_LABELS[option]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+
+                  {openRouterModels.length > 0 ? (
+                    <>
+                      <div className="mx-1 my-2 border-t border-border" />
+                      <span className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        OpenRouter
+                      </span>
+                      {openRouterModels.map((modelOption) => {
+                        const selected = conversationModel === modelOption.id;
+                        return (
+                          <button
+                            key={`draft-openrouter-${modelOption.id}`}
+                            type="button"
+                            onClick={() => {
+                              void handleModelSelection(
+                                modelOption.id,
+                                null,
+                                undefined,
+                                { keepMenuOpen: true },
+                              );
+                            }}
+                            disabled={conversationSettingsSaving}
+                            aria-pressed={selected}
+                            className={cn(
+                              "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                              selected ? "bg-muted font-semibold text-foreground" : "text-muted-foreground",
+                            )}
+                          >
+                            <span className="truncate">{modelOption.name}</span>
+                            {selected ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : null}
+                </aside>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={onCancelDraft}
+              disabled={isPending}
+              aria-label="Close branch draft"
+              title="Close draft"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </header>
+
+          <label htmlFor="branch-draft-composer" className="sr-only">
+            Branch draft
+          </label>
+          <textarea
+            id="branch-draft-composer"
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="Write a note or ask the model…"
+            className="min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-3 text-sm leading-5 text-foreground placeholder:text-muted-foreground/55 focus:outline-none disabled:opacity-60"
+            disabled={isPending}
+            aria-invalid={error ? true : undefined}
+          />
+
+          {attachments.length > 0 ? (
+            <div className="flex shrink-0 flex-wrap gap-1 border-t border-border px-2 py-1.5">
+              {attachments.map((attachment) => (
+                <span
+                  key={attachment.tempId}
+                  className="inline-flex max-w-full items-center gap-1 rounded border border-border px-1.5 py-1 text-[10px] text-muted-foreground"
+                >
+                  {attachment.status === "pending" || attachment.status === "uploading" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  ) : attachment.status === "error" ? (
+                    <AlertTriangle className="h-3 w-3 text-destructive" aria-hidden="true" />
+                  ) : (
+                    <Paperclip className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  <span className="max-w-40 truncate">{attachment.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(attachment.tempId)}
+                    className="rounded p-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={`Remove ${attachment.name}`}
+                  >
+                    <X className="h-2.5 w-2.5" aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {error || sendDisabledReason ? (
+            <p
+              className={cn(
+                "shrink-0 px-3 pb-1 text-[10px]",
+                error ? "text-destructive" : "text-muted-foreground",
+              )}
+              role="status"
+            >
+              {error ?? sendDisabledReason}
+            </p>
+          ) : null}
+
+          <footer className="flex h-12 shrink-0 items-end justify-between border-t border-border px-2 py-1.5">
+            <button
+              type="button"
+              onClick={openFilePicker}
+              disabled={!canAddMoreAttachments || isPending}
+              aria-label="Attach files"
+              title="Attach files"
+              className="inline-flex h-7 w-7 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+
+            <div className="flex items-end gap-1.5">
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  ⌘ N
+                </span>
+                <button
+                  type="button"
+                  onClick={saveNote}
+                  disabled={isPending || hasPendingAttachments || hasErroredAttachments}
+                  className="inline-flex h-7 items-center justify-center rounded border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+                >
+                  Save note
+                </button>
+              </div>
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  ⌘ ↵
+                </span>
+                <button
+                  type="submit"
+                  disabled={isSendDisabled}
+                  className="inline-flex h-7 items-center justify-center gap-1 rounded border border-foreground bg-foreground px-2.5 text-[11px] font-semibold text-background hover:bg-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+                >
+                  {isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <SendHorizontal className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  Send
+                </button>
+              </div>
+            </div>
+          </footer>
+        </form>
+
+        <p
+          className="sr-only"
+          role="status"
+          aria-live={!byokConnected ? "assertive" : "polite"}
+        >
+          {byokIndicatorText}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex w-full flex-col gap-2", className)}>

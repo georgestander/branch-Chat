@@ -66,8 +66,8 @@ const MIN_EXPANDED_CARD_HEIGHT = 320;
 const MAX_EXPANDED_CARD_WIDTH = 1_200;
 const MAX_EXPANDED_CARD_HEIGHT = 1_000;
 const DRAFT_NODE_ID = "__branch-draft__";
-const DRAFT_CARD_WIDTH = 430;
-const DRAFT_CARD_HEIGHT = 460;
+const DRAFT_CARD_WIDTH = 420;
+const DRAFT_CARD_HEIGHT = 360;
 const DRAFT_NODE_GAP = 110;
 
 type BranchCardSummary = {
@@ -102,10 +102,6 @@ type BranchNodeData = {
 type BranchFlowNode = Node<BranchNodeData, "branch">;
 
 type BranchDraftNodeData = {
-  draft: BranchSelectionDraft;
-  parentTitle: string;
-  pending: boolean;
-  onCancel: () => void;
   editor: ReactNode;
 };
 
@@ -126,7 +122,10 @@ interface ConversationCanvasProps {
   branchDraft: BranchSelectionDraft | null;
   isCreatingBranch: boolean;
   onCancelBranchDraft: () => void;
-  renderBranchDraft: (draft: BranchSelectionDraft) => ReactNode;
+  renderBranchDraft: (
+    draft: BranchSelectionDraft,
+    onCancel: () => void,
+  ) => ReactNode;
   className?: string;
 }
 
@@ -422,12 +421,9 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
 }
 
 function BranchDraftCard({ data }: { data: BranchDraftNodeData }) {
-  const excerpt = data.draft.excerpt.replace(/\s+/g, " ").trim();
-  const preview = excerpt.length > 150 ? `${excerpt.slice(0, 147)}…` : excerpt;
-
   return (
     <article
-      className="nodrag nopan flex h-full w-full flex-col overflow-visible rounded border border-amber-500 bg-background text-left ring-2 ring-amber-500/15"
+      className="nodrag nopan flex h-full w-full flex-col overflow-visible rounded border border-amber-500 bg-background text-left ring-2 ring-amber-500/10"
       aria-label="New branch draft"
       data-branch-draft-card="true"
     >
@@ -439,32 +435,7 @@ function BranchDraftCard({ data }: { data: BranchDraftNodeData }) {
         className="pointer-events-none! h-2! w-2! border-0! bg-amber-500!"
         style={{ top: 24 }}
       />
-      <header className="flex shrink-0 items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.17em] text-amber-700 dark:text-amber-300">
-            <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
-            New branch · not saved
-          </div>
-          <div className="mt-1 truncate text-xs text-muted-foreground">
-            From {data.parentTitle}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={data.onCancel}
-          disabled={data.pending}
-          className="rounded border border-amber-500/35 bg-background p-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          aria-label="Close branch draft"
-        >
-          <X className="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-        <blockquote className="line-clamp-2 border-l-2 border-amber-500 pl-2 text-[11px] leading-4 text-muted-foreground">
-          “{preview}”
-        </blockquote>
-        <div className="min-h-0 flex-1">{data.editor}</div>
-      </div>
+      <div className="min-h-0 flex-1">{data.editor}</div>
     </article>
   );
 }
@@ -660,12 +631,7 @@ function CanvasFlow({
       draggable: false,
       selectable: true,
       data: {
-        draft: branchDraft,
-        parentTitle:
-          snapshot.branches[branchDraft.parentBranchId]?.title || "Untitled branch",
-        pending: isCreatingBranch,
-        onCancel: onCancelBranchDraft,
-        editor: renderBranchDraft(branchDraft),
+        editor: renderBranchDraft(branchDraft, onCancelBranchDraft),
       },
     };
     return [...branchNodes, draftNode];

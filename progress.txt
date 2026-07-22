@@ -600,3 +600,7 @@
 - Decisions: expanded cards expose subtle side and corner controls; resize-end persists width, height, and any top/left position shift; collapsed cards keep their compact fixed size; Tidy and provisional-child placement respect custom parent dimensions.
 - Files: src/app/components/conversation/ConversationCanvas.tsx, src/lib/conversation/{model.ts,model.test.ts,validation.ts}, progress.txt.
 - Notes: browser QA resized the root width from 730 to 830 and confirmed 830 after reload, all eight controls rendered, the redundant whole-reply action stayed absent, and no browser errors appeared. `pnpm types`, 28 tests, and lint passed.
+2026-07-22 — Rebuilt the provisional branch card from the compact hand-drawn interaction sketch. Ref: user-supplied Photo 1.jpg.
+- Decisions: one flat node boundary contains a quoted-source header, web-search and speed toggles, model button, close control, blank writing surface, attachment button, and compact Save note/Send actions; the model button opens a narrow adjacent model/reasoning panel; `⌘N` saves a note and `⌘↵` sends to the model.
+- Files: src/app/components/conversation/{CanvasConversationLayout.tsx,ConversationCanvas.tsx,ConversationComposer.tsx}, progress.txt.
+- Notes: visual browser QA confirmed the requested control order, unobscured close control, side picker, empty-draft shortcut routing without writes, and clean draft dismissal. `pnpm types`, 28 tests, and lint passed.
