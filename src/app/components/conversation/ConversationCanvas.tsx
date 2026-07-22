@@ -44,6 +44,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   GitBranch,
+  CornerUpRight,
   LayoutGrid,
   Layers3,
   Loader2,
@@ -51,7 +52,6 @@ import {
   MessageSquareText,
   Minimize2,
   Pencil,
-  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -60,6 +60,10 @@ const CARD_WIDTH = 310;
 const CARD_HEIGHT = 190;
 const EXPANDED_CARD_WIDTH = 680;
 const EXPANDED_CARD_HEIGHT = 700;
+const DRAFT_NODE_ID = "__branch-draft__";
+const DRAFT_CARD_WIDTH = 430;
+const DRAFT_CARD_HEIGHT = 460;
+const DRAFT_NODE_GAP = 110;
 
 type BranchCardSummary = {
   branch: Branch;
@@ -71,6 +75,7 @@ type BranchCardSummary = {
   expanded: boolean;
   tone: BranchTone | null;
   parentTitle: string | null;
+  branchSource: Message | null;
 };
 
 type BranchNodeData = {
@@ -82,6 +87,7 @@ type BranchNodeData = {
   onToggleFold: (branchId: BranchId) => void;
   onRename: (branchId: BranchId) => void;
   onDelete: (branchId: BranchId) => void;
+  onStartBranchDraft: (branchId: BranchId, source: Message) => void;
 };
 
 type BranchFlowNode = Node<BranchNodeData, "branch">;
@@ -91,8 +97,11 @@ type BranchDraftNodeData = {
   parentTitle: string;
   pending: boolean;
   onCancel: () => void;
-  onSubmit: (prompt: string) => void;
+  editor: ReactNode;
 };
+
+type BranchDraftFlowNode = Node<BranchDraftNodeData, "branchDraft">;
+type CanvasFlowNode = BranchFlowNode | BranchDraftFlowNode;
 
 interface ConversationCanvasProps {
   snapshot: ConversationGraphSnapshot;
@@ -104,10 +113,11 @@ interface ConversationCanvasProps {
   onPatchCanvas: (patch: ConversationCanvasPatch) => void;
   onDeleteBranch: (branchId: BranchId) => void;
   onRenameBranch: (branchId: BranchId) => void;
+  onStartBranchDraft: (draft: BranchSelectionDraft) => void;
   branchDraft: BranchSelectionDraft | null;
   isCreatingBranch: boolean;
   onCancelBranchDraft: () => void;
-  onSubmitBranchDraft: (prompt: string) => void;
+  renderBranchDraft: (draft: BranchSelectionDraft) => ReactNode;
   className?: string;
 }
 
@@ -202,6 +212,14 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
         isConnectable={false}
         className="pointer-events-none! h-2! w-2! border-0! bg-foreground/40!"
       />
+      <Handle
+        id="draft-source"
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+        className="pointer-events-none! h-2! w-2! border-0! bg-amber-500!"
+        style={{ top: 24 }}
+      />
 
       {summary.folded && summary.descendantCount > 0 ? (
         <>
@@ -241,9 +259,25 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            if (summary.branchSource) {
+              data.onStartBranchDraft(summary.branch.id, summary.branchSource);
+            }
+          }}
+          disabled={!summary.branchSource}
+          className="nodrag nopan ml-auto rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35"
+          data-card-interactive="true"
+          aria-label={`Start a child branch from ${summary.branch.title}`}
+          title="Start child branch"
+        >
+          <CornerUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
             data.onRename(summary.branch.id);
           }}
-          className="nodrag nopan ml-auto rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="nodrag nopan rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           data-card-interactive="true"
           aria-label={`Rename ${summary.branch.title}`}
         >
@@ -359,16 +393,23 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
 }
 
 function BranchDraftCard({ data }: { data: BranchDraftNodeData }) {
-  const [prompt, setPrompt] = useState("");
   const excerpt = data.draft.excerpt.replace(/\s+/g, " ").trim();
   const preview = excerpt.length > 150 ? `${excerpt.slice(0, 147)}…` : excerpt;
 
   return (
     <article
-      className="nodrag nopan flex h-full w-full flex-col overflow-hidden rounded border-2 border-dashed border-amber-500 bg-background text-left ring-4 ring-amber-500/10"
+      className="nodrag nopan flex h-full w-full flex-col overflow-visible rounded border border-amber-500 bg-background text-left ring-2 ring-amber-500/15"
       aria-label="New branch draft"
       data-branch-draft-card="true"
     >
+      <Handle
+        id="draft-target"
+        type="target"
+        position={Position.Left}
+        isConnectable={false}
+        className="pointer-events-none! h-2! w-2! border-0! bg-amber-500!"
+        style={{ top: 24 }}
+      />
       <header className="flex shrink-0 items-start gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.17em] text-amber-700 dark:text-amber-300">
@@ -389,49 +430,17 @@ function BranchDraftCard({ data }: { data: BranchDraftNodeData }) {
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </header>
-      <form
-        className="flex min-h-0 flex-1 flex-col gap-3 p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const trimmed = prompt.trim();
-          if (trimmed) data.onSubmit(trimmed);
-        }}
-      >
-        <blockquote className="line-clamp-3 border-l-2 border-amber-500 pl-2 text-[11px] leading-4 text-muted-foreground">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <blockquote className="line-clamp-2 border-l-2 border-amber-500 pl-2 text-[11px] leading-4 text-muted-foreground">
           “{preview}”
         </blockquote>
-        <textarea
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder="Ask about this selection…"
-          rows={4}
-          autoFocus
-          disabled={data.pending}
-          className="nowheel min-h-0 flex-1 resize-none rounded border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-amber-500 focus:ring-2 focus:ring-amber-500/25 disabled:opacity-60"
-        />
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[10px] leading-4 text-muted-foreground">
-            Close or click the canvas to discard.
-          </span>
-          <button
-            type="submit"
-            disabled={data.pending || prompt.trim().length === 0}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded border border-amber-600 bg-amber-500 px-3 py-1.5 text-xs font-bold text-black hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {data.pending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <Send className="h-3.5 w-3.5" aria-hidden="true" />
-            )}
-            {data.pending ? "Creating…" : "Send & create"}
-          </button>
-        </div>
-      </form>
+        <div className="min-h-0 flex-1">{data.editor}</div>
+      </div>
     </article>
   );
 }
 
-const nodeTypes = { branch: BranchNode };
+const nodeTypes = { branch: BranchNode, branchDraft: BranchDraftCard };
 
 function CanvasFlow({
   snapshot,
@@ -443,13 +452,14 @@ function CanvasFlow({
   onPatchCanvas,
   onDeleteBranch,
   onRenameBranch,
+  onStartBranchDraft,
   branchDraft,
   isCreatingBranch,
   onCancelBranchDraft,
-  onSubmitBranchDraft,
+  renderBranchDraft,
   className,
 }: ConversationCanvasProps) {
-  const flow = useReactFlow<BranchFlowNode, Edge>();
+  const flow = useReactFlow<CanvasFlowNode, Edge>();
   const updateNodeInternals = useUpdateNodeInternals();
   const viewportTimer = useRef<number | null>(null);
   const persistedViewport = useRef(snapshot.canvas.viewport);
@@ -474,6 +484,9 @@ function CanvasFlow({
       const latest = [...messages]
         .reverse()
         .find((message) => message.role !== "system" && message.content.trim());
+      const branchSource = [...messages]
+        .reverse()
+        .find((message) => message.role === "assistant" && message.content.trim());
       result.set(branch.id, {
         branch,
         latestPreview: latest?.content ?? null,
@@ -490,6 +503,7 @@ function CanvasFlow({
         parentTitle: branch.parentId
           ? snapshot.branches[branch.parentId]?.title || "Untitled branch"
           : null,
+        branchSource: branchSource ?? null,
       });
     }
     return result;
@@ -530,8 +544,25 @@ function CanvasFlow({
     [folded, onPatchCanvas],
   );
 
-  const desiredNodes = useMemo<BranchFlowNode[]>(() => {
-    return Object.values(snapshot.branches)
+  const startBranchDraft = useCallback(
+    (branchId: BranchId, source: Message) => {
+      const excerpt =
+        source.content.length > 280
+          ? `${source.content.slice(0, 277)}…`
+          : source.content;
+      onStartBranchDraft({
+        parentBranchId: branchId,
+        messageId: source.id,
+        excerpt,
+        characterCount: excerpt.length,
+        blockCount: 1,
+      });
+    },
+    [onStartBranchDraft],
+  );
+
+  const desiredNodes = useMemo<CanvasFlowNode[]>(() => {
+    const branchNodes: BranchFlowNode[] = Object.values(snapshot.branches)
       .filter((branch) => visibleIds.has(branch.id))
       .map((branch) => {
         const saved = snapshot.canvas.nodes[branch.id];
@@ -557,27 +588,59 @@ function CanvasFlow({
             onToggleFold: toggleFold,
             onRename: onRenameBranch,
             onDelete: onDeleteBranch,
+            onStartBranchDraft: startBranchDraft,
           },
           selected: branch.id === selectedId,
         };
       });
+    if (!branchDraft || !snapshot.branches[branchDraft.parentBranchId]) {
+      return branchNodes;
+    }
+    const parentNode = snapshot.canvas.nodes[branchDraft.parentBranchId];
+    const parentWidth = parentNode?.expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH;
+    const draftNode: BranchDraftFlowNode = {
+      id: DRAFT_NODE_ID,
+      type: "branchDraft",
+      position: {
+        x: (parentNode?.x ?? 0) + parentWidth + DRAFT_NODE_GAP,
+        y: parentNode?.y ?? 0,
+      },
+      initialWidth: DRAFT_CARD_WIDTH,
+      initialHeight: DRAFT_CARD_HEIGHT,
+      style: { width: DRAFT_CARD_WIDTH, height: DRAFT_CARD_HEIGHT },
+      draggable: false,
+      selectable: true,
+      data: {
+        draft: branchDraft,
+        parentTitle:
+          snapshot.branches[branchDraft.parentBranchId]?.title || "Untitled branch",
+        pending: isCreatingBranch,
+        onCancel: onCancelBranchDraft,
+        editor: renderBranchDraft(branchDraft),
+      },
+    };
+    return [...branchNodes, draftNode];
   }, [
     activeBranchId,
     isBranchLoading,
     onDeleteBranch,
     onRenameBranch,
-    onOpenBranch,
+    branchDraft,
+    isCreatingBranch,
+    onCancelBranchDraft,
+    renderBranchDraft,
     renderBranchThread,
     selectedId,
     snapshot.branches,
     snapshot.canvas.nodes,
     summaries,
+    startBranchDraft,
     toggleCard,
     toggleFold,
     visibleIds,
   ]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<BranchFlowNode>(desiredNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>(desiredNodes);
   useEffect(() => {
     setNodes((current) => {
       const currentPositions = new Map(
@@ -589,6 +652,22 @@ function CanvasFlow({
       }));
     });
   }, [desiredNodes, setNodes]);
+
+  useEffect(() => {
+    if (!branchDraft) return;
+    const frame = window.requestAnimationFrame(() => {
+      const parent = flow.getNode(branchDraft.parentBranchId);
+      const draft = flow.getNode(DRAFT_NODE_ID);
+      if (!parent || !draft) return;
+      void flow.fitView({
+        nodes: [parent, draft],
+        padding: 0.18,
+        duration: 220,
+        maxZoom: 1,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [branchDraft, flow, nodes.length]);
 
 
   const expansionSignature = useMemo(
@@ -646,25 +725,42 @@ function CanvasFlow({
             strokeWidth: 2,
           },
         }));
+    if (branchDraft && snapshot.branches[branchDraft.parentBranchId]) {
+      branchEdges.push({
+        id: `${branchDraft.parentBranchId}:${DRAFT_NODE_ID}`,
+        source: branchDraft.parentBranchId,
+        sourceHandle: "draft-source",
+        target: DRAFT_NODE_ID,
+        targetHandle: "draft-target",
+        type: "smoothstep",
+        animated: true,
+        style: { stroke: "#f59e0b", strokeWidth: 2 },
+      });
+    }
     return branchEdges;
-  }, [snapshot.branches, summaries, visibleIds]);
+  }, [branchDraft, snapshot.branches, summaries, visibleIds]);
 
   const tidy = useCallback(() => {
     const graph = new dagre.graphlib.Graph();
     graph.setDefaultEdgeLabel(() => ({}));
     graph.setGraph({ rankdir: "LR", ranksep: 110, nodesep: 70, marginx: 40, marginy: 40 });
-    for (const node of nodes) {
+    const branchNodes = nodes.filter(
+      (node): node is BranchFlowNode => node.type === "branch",
+    );
+    for (const node of branchNodes) {
       const expanded = node.data.summary.expanded;
       graph.setNode(node.id, {
         width: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
         height: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
       });
     }
-    for (const edge of edges) graph.setEdge(edge.source, edge.target);
+    for (const edge of edges) {
+      if (edge.target !== DRAFT_NODE_ID) graph.setEdge(edge.source, edge.target);
+    }
     dagre.layout(graph);
 
     const patchNodes: NonNullable<ConversationCanvasPatch["nodes"]> = {};
-    const nextNodes = nodes.map((node) => {
+    const nextNodes = branchNodes.map((node) => {
       const positioned = graph.node(node.id) as { x: number; y: number };
       const expanded = node.data.summary.expanded;
       const width = expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH;
@@ -676,7 +772,10 @@ function CanvasFlow({
       patchNodes[node.id] = position;
       return { ...node, position };
     });
-    setNodes(nextNodes);
+    setNodes((current) => [
+      ...nextNodes,
+      ...current.filter((node) => node.type === "branchDraft"),
+    ]);
     onPatchCanvas({ nodes: patchNodes });
     window.setTimeout(() => void flow.fitView({ padding: 0.18, duration: 280 }), 0);
   }, [edges, flow, nodes, onPatchCanvas, setNodes]);
@@ -799,7 +898,7 @@ function CanvasFlow({
 
   return (
     <div className={cn("canvas-flow relative h-full min-h-[420px] w-full", className)}>
-      <ReactFlow<BranchFlowNode, Edge>
+      <ReactFlow<CanvasFlowNode, Edge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -847,21 +946,6 @@ function CanvasFlow({
           </span>
         </Panel>
       </ReactFlow>
-      {branchDraft && snapshot.branches[branchDraft.parentBranchId] ? (
-        <div className="absolute right-4 top-16 z-40 h-[300px] w-[360px] max-w-[calc(100%-2rem)]">
-          <BranchDraftCard
-            data={{
-              draft: branchDraft,
-              parentTitle:
-                snapshot.branches[branchDraft.parentBranchId]?.title ||
-                "Untitled branch",
-              pending: isCreatingBranch,
-              onCancel: onCancelBranchDraft,
-              onSubmit: onSubmitBranchDraft,
-            }}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }

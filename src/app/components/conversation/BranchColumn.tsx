@@ -98,6 +98,7 @@ interface BranchColumnProps {
   onOpenBranch?: (branchId: string) => void;
   onBranchCreated?: (response: SendMessageResponse) => void;
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
+  showComposer?: boolean;
 }
 
 function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
@@ -225,6 +226,7 @@ export function BranchColumn({
   onOpenBranch,
   onBranchCreated,
   onStartBranchDraft,
+  showComposer = true,
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -671,7 +673,7 @@ export function BranchColumn({
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
       </div>
 
-      {isActive ? (
+      {isActive && showComposer ? (
         <div
           className="nowheel nodrag nopan shrink-0 border-t border-border bg-background p-3"
           data-card-interactive="true"
@@ -696,11 +698,11 @@ export function BranchColumn({
             onStreamStart={(streamId) => setActiveStreamId(streamId)}
           />
         </div>
-      ) : (
+      ) : !isActive ? (
         <div className="shrink-0 border-t border-border bg-muted/35 px-4 py-2 text-center text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Select this card to continue
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

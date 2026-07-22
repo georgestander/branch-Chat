@@ -36,9 +36,12 @@ import {
   getComposerAccountState,
   getConversationSummary,
   removeAttachmentUploadAction,
+  saveBranchNote,
   saveComposerByokKey,
   sendMessage,
   type ComposerByokProvider,
+  type SaveBranchNoteResponse,
+  type SendMessageResponse,
 } from "@/app/pages/conversation/functions";
 import {
   formatBytes,
@@ -357,6 +360,17 @@ interface ConversationComposerProps {
   bootstrapMessage?: string | null;
   onBootstrapConsumed?: () => void;
   onStreamStart?: (streamId: string) => void;
+  branchDraft?: {
+    parentBranchId: string;
+    messageId: string;
+    span?: { start: number; end: number } | null;
+    excerpt?: string | null;
+  } | null;
+  onDraftCreated?: (
+    response: SendMessageResponse | SaveBranchNoteResponse,
+  ) => Promise<void> | void;
+  variant?: "default" | "branch-draft";
+  onPendingChange?: (pending: boolean) => void;
 }
 
 export function ConversationComposer({
@@ -377,6 +391,10 @@ export function ConversationComposer({
   bootstrapMessage,
   onBootstrapConsumed,
   onStreamStart,
+  branchDraft = null,
+  onDraftCreated,
+  variant = "default",
+  onPendingChange,
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -420,6 +438,10 @@ export function ConversationComposer({
   const autoSendPendingRef = useRef<string | null>(null);
   const webSearchSelectable = isWebSearchSelectableModel(conversationModel);
   const { notify } = useToast();
+  const isBranchDraft = variant === "branch-draft" && branchDraft !== null;
+  useEffect(() => {
+    onPendingChange?.(isPending);
+  }, [isPending, onPendingChange]);
   const selectedChatGPTModel = getChatGPTModelOption(conversationModel);
   const reasoningOptions: readonly ReasoningEffort[] =
     selectedChatGPTModel?.supportedReasoningEfforts ?? ["low", "medium", "high"];
@@ -1426,13 +1448,15 @@ export function ConversationComposer({
         ? crypto.randomUUID()
         : `optimistic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    emitOptimisticUserMessage({
-      conversationId,
-      branchId,
-      messageId: optimisticId,
-      content,
-      createdAt: new Date().toISOString(),
-    });
+    if (!isBranchDraft) {
+      emitOptimisticUserMessage({
+        conversationId,
+        branchId,
+        messageId: optimisticId,
+        content,
+        createdAt: new Date().toISOString(),
+      });
+    }
 
     startTransition(async () => {
       try {
@@ -1440,13 +1464,16 @@ export function ConversationComposer({
           typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()
             : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        onStreamStart?.(streamId);
-        emitStartStreaming({ conversationId, branchId, streamId });
+        if (!isBranchDraft) {
+          onStreamStart?.(streamId);
+          emitStartStreaming({ conversationId, branchId, streamId });
+        }
         const result = await sendMessage({
           conversationId,
-          branchId,
+          branchId: isBranchDraft ? undefined : branchId,
+          branchDraft: isBranchDraft ? branchDraft : undefined,
           content,
-          streamId,
+          streamId: isBranchDraft ? undefined : streamId,
           byok: true,
           sessionByok:
             !byokEnabled && sessionByokCredential
@@ -1457,6 +1484,12 @@ export function ConversationComposer({
         });
         setValue("");
         setAttachments([]);
+        attachmentsRef.current = [];
+
+        if (isBranchDraft) {
+          await onDraftCreated?.(result);
+          return;
+        }
 
         const branchCount = Object.keys(result.snapshot.branches).length;
         const rootBranch =
@@ -1544,12 +1577,14 @@ export function ConversationComposer({
           scheduleRefresh(4000);
         }
       } catch (cause) {
-        emitOptimisticMessageClear({
-          conversationId,
-          branchId,
-          messageId: optimisticId,
-          reason: "failed",
-        });
+        if (!isBranchDraft) {
+          emitOptimisticMessageClear({
+            conversationId,
+            branchId,
+            messageId: optimisticId,
+            reason: "failed",
+          });
+        }
         console.error("[Composer] sendMessage failed", cause);
         const errorMessage = extractErrorMessage(cause);
         if (
@@ -1562,6 +1597,44 @@ export function ConversationComposer({
       }
     });
     return true;
+  };
+
+  const saveNote = (): void => {
+    if (!isBranchDraft || !branchDraft || isPending) return;
+    const content = value.trim();
+    if (!content) {
+      setError("Enter a note before saving.");
+      return;
+    }
+    if (hasPendingAttachments) {
+      setError("Please wait for files to finish uploading before saving.");
+      return;
+    }
+    if (hasErroredAttachments) {
+      setError("Remove or retry failed uploads before saving.");
+      return;
+    }
+    const attachmentIds = attachments
+      .filter((attachment) => attachment.status === "ready" && attachment.id)
+      .map((attachment) => attachment.id as string);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const result = await saveBranchNote({
+          conversationId,
+          ...branchDraft,
+          content,
+          attachmentIds,
+        });
+        setValue("");
+        setAttachments([]);
+        attachmentsRef.current = [];
+        await onDraftCreated?.(result);
+      } catch (cause) {
+        console.error("[Composer] save branch note failed", cause);
+        setError(extractErrorMessage(cause) || "We couldn't save that note. Try again.");
+      }
+    });
   };
 
   useEffect(() => {
@@ -1670,7 +1743,12 @@ export function ConversationComposer({
       ) : null}
       <form
         onSubmit={handleSubmit}
-        className="rounded border border-border bg-background text-foreground shadow-sm"
+        className={cn(
+          "rounded border border-border bg-background text-foreground",
+          isBranchDraft
+            ? "flex min-h-0 flex-1 flex-col shadow-none"
+            : "shadow-sm",
+        )}
       >
         {(hasSelectedTools || isReasoningModel) ? (
           <div className="flex items-center gap-0.5 border-b border-border px-2 py-1">
@@ -1710,8 +1788,23 @@ export function ConversationComposer({
           </div>
         ) : null}
 
-        <div className="flex h-12 items-center gap-2 px-3">
-          <div className="relative" ref={toolMenuRef}>
+        <div
+          className={cn(
+            "flex items-center gap-2 px-3",
+            isBranchDraft
+              ? "min-h-0 flex-1 flex-wrap content-start py-3"
+              : "h-12",
+          )}
+        >
+          {isBranchDraft ? (
+            <span
+              className="order-1 mr-auto max-w-[14rem] truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+              title={currentModelLabel}
+            >
+              {currentModelLabel}
+            </span>
+          ) : null}
+          <div className={cn("relative", isBranchDraft ? "order-2" : null)} ref={toolMenuRef}>
             <button
               type="button"
               className="interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-background text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -1728,7 +1821,10 @@ export function ConversationComposer({
             <div
               id={toolMenuId}
               role="menu"
-              className="absolute left-0 bottom-full z-20 mb-2 w-56 rounded border border-border bg-popover p-1 shadow-xl"
+              className={cn(
+                "absolute left-0 z-20 w-56 rounded border border-border bg-popover p-1 shadow-xl",
+                isBranchDraft ? "top-full mt-2" : "bottom-full mb-2",
+              )}
             >
               {TOOL_OPTIONS.map((option) => {
                 const isSelected = selectedTools.includes(option.id);
@@ -1823,7 +1919,14 @@ export function ConversationComposer({
           ) : null}
           </div>
 
-          <div className="relative flex flex-1 items-center">
+          <div
+            className={cn(
+              "relative flex flex-1 items-center",
+              isBranchDraft
+                ? "order-5 min-h-[150px] basis-full items-start border-t border-border pt-3"
+                : null,
+            )}
+          >
             <label htmlFor="conversation-composer" className="sr-only">
               Message
             </label>
@@ -1832,8 +1935,12 @@ export function ConversationComposer({
               ref={textareaRef}
               value={value}
               onChange={(event) => setValue(event.target.value)}
-              placeholder="Ask Connexus to explore a new direction..."
-              rows={1}
+              placeholder={
+                isBranchDraft
+                  ? "Write a note or ask the model…"
+                  : "Ask Connexus to explore a new direction..."
+              }
+              rows={isBranchDraft ? 8 : 1}
               onKeyDown={(event) => {
                 if (
                   event.key === "Enter" &&
@@ -1844,11 +1951,14 @@ export function ConversationComposer({
                   submitMessage();
                 }
               }}
-              className="w-full resize-none border-none bg-transparent px-0 text-sm leading-tight text-foreground caret-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              className={cn(
+                "w-full resize-none border-none bg-transparent px-0 text-sm text-foreground caret-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70",
+                isBranchDraft ? "h-full min-h-[150px] leading-6" : "leading-tight",
+              )}
               disabled={isPending}
               aria-disabled={isPending}
               aria-invalid={error ? true : undefined}
-              style={{ height: BASE_TEXTAREA_HEIGHT }}
+              style={isBranchDraft ? undefined : { height: BASE_TEXTAREA_HEIGHT }}
             />
             <button
               type="button"
@@ -1863,7 +1973,7 @@ export function ConversationComposer({
           </div>
 
           {isAdvancedControlsOpen ? (
-            <div className="relative flex items-center gap-2">
+            <div className={cn("relative flex items-center gap-2", isBranchDraft ? "order-3" : null)}>
               <button
                 type="button"
                 ref={modelButtonRef}
@@ -1902,7 +2012,10 @@ export function ConversationComposer({
                   ref={modelMenuRef}
                   id={modelMenuId}
                   role="menu"
-                  className="absolute bottom-full right-0 z-30 mb-2 max-h-[calc(100vh-7rem)] w-72 overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
+                  className={cn(
+                    "absolute right-0 z-30 max-h-[calc(100vh-7rem)] w-72 overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl",
+                    isBranchDraft ? "top-full mt-2" : "bottom-full mb-2",
+                  )}
                 >
                 <button
                   type="button"
@@ -2058,6 +2171,7 @@ export function ConversationComposer({
             className={cn(
               "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               isAdvancedControlsOpen ? "bg-muted" : "bg-background",
+              isBranchDraft ? "order-4" : null,
             )}
             aria-label={isAdvancedControlsOpen ? "Hide controls" : "Show controls"}
             aria-expanded={isAdvancedControlsOpen}
@@ -2065,14 +2179,26 @@ export function ConversationComposer({
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
 
+          {isBranchDraft ? (
+            <button
+              type="button"
+              onClick={saveNote}
+              disabled={isPending || hasPendingAttachments || hasErroredAttachments}
+              className="interactive-target order-6 ml-auto inline-flex h-9 shrink-0 items-center justify-center rounded border border-border bg-background px-3 text-xs font-semibold text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              Save note
+            </button>
+          ) : null}
+
           <button
             type="submit"
             disabled={isSendDisabled}
             className={cn(
               "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-foreground text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55",
               isPending ? "animate-pulse" : "",
+              isBranchDraft ? "order-7" : null,
             )}
-            aria-label="Send message"
+            aria-label={isBranchDraft ? "Send to model and create branch" : "Send message"}
           >
             {isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -2204,12 +2330,14 @@ export function ConversationComposer({
         : null}
 
       <div className="flex items-center justify-between gap-2 px-2">
-        <span
-          className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
-          title={currentModelLabel}
-        >
-          {`Model ${currentModelLabel}`}
-        </span>
+        {!isBranchDraft ? (
+          <span
+            className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+            title={currentModelLabel}
+          >
+            {`Model ${currentModelLabel}`}
+          </span>
+        ) : null}
         {error ? (
           <p className="text-right text-xs text-destructive" role="status">
             {error}
@@ -2218,11 +2346,11 @@ export function ConversationComposer({
           <span className="text-right text-xs text-muted-foreground">
             {sendDisabledReason}
           </span>
-        ) : (
+        ) : !isBranchDraft ? (
           <span className="text-right text-xs text-muted-foreground">
             Enter to send · Shift+Enter for line break
           </span>
-        )}
+        ) : null}
       </div>
       <p
         className="sr-only"

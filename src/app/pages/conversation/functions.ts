@@ -484,6 +484,16 @@ export interface CreateBranchResponse extends LoadConversationResponse {
   branch: Branch;
 }
 
+export interface SaveBranchNoteInput extends CreateBranchInput {
+  content: string;
+  attachmentIds?: string[];
+}
+
+export interface SaveBranchNoteResponse extends LoadConversationResponse {
+  branch: Branch;
+  appendedMessages: Message[];
+}
+
 export interface CreateConversationInput extends ConversationPayload {
   title?: string;
   initialMessage?: string;
@@ -2518,6 +2528,102 @@ export async function createBranchFromSelection(
     snapshot: applied.snapshot,
     version: applied.version,
     branch,
+  };
+}
+
+export async function saveBranchNote(
+  input: SaveBranchNoteInput,
+): Promise<SaveBranchNoteResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  const content = input.content?.trim();
+  if (!content) {
+    throw new Error("Note content is required");
+  }
+
+  const attachmentIds = Array.isArray(input.attachmentIds)
+    ? input.attachmentIds
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index)
+    : [];
+  if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    throw new Error(
+      `A maximum of ${MAX_ATTACHMENTS_PER_MESSAGE} attachments are allowed per note.`,
+    );
+  }
+
+  const ensured = await ensureConversationSnapshot(ctx, conversationId);
+  const branch = draftBranchFromSelection({
+    snapshot: ensured.snapshot,
+    parentBranchId: input.parentBranchId,
+    messageId: input.messageId,
+    span: input.span,
+    title: input.title,
+    excerpt: input.excerpt,
+  });
+  const storeClient = ctx.getConversationStore(conversationId);
+  const consumedAttachments =
+    attachmentIds.length > 0
+      ? await storeClient.consumeAttachments(attachmentIds)
+      : [];
+  if (consumedAttachments.length !== attachmentIds.length) {
+    throw new Error(
+      "Some attachments are no longer available. Please re-upload and try again.",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const note: Message = {
+    id: crypto.randomUUID(),
+    branchId: branch.id,
+    role: "user",
+    content,
+    createdAt: now,
+    tokenUsage: null,
+    attachments: consumedAttachments.map((attachment) => ({
+      id: attachment.id,
+      kind: "file" as const,
+      name: attachment.name,
+      contentType: attachment.contentType,
+      size: attachment.size,
+      storageKey: attachment.storageKey,
+      openAIFileId: attachment.openAIFileId ?? null,
+      description: null,
+      uploadedAt: attachment.uploadedAt ?? now,
+    })),
+    toolInvocations: null,
+  };
+  const position = placeNewBranchOnCanvas(
+    ensured.snapshot,
+    input.parentBranchId,
+    branch.id,
+  );
+  const applied = await applyConversationUpdates(ctx, conversationId, [
+    { type: "branch:create", conversationId, branch },
+    {
+      type: "canvas:update",
+      conversationId,
+      patch: {
+        focusedBranchId: branch.id,
+        nodes: { [branch.id]: { ...position, expanded: true } },
+      },
+    },
+    { type: "message:append", conversationId, message: note },
+  ]);
+
+  await touchConversationDirectoryEntry(ctx, {
+    id: conversationId,
+    title:
+      applied.snapshot.branches[applied.snapshot.conversation.rootBranchId]?.title ||
+      conversationId,
+    branchCount: Object.keys(applied.snapshot.branches).length,
+  });
+
+  return {
+    ...applied,
+    branch,
+    appendedMessages: [note],
   };
 }
 

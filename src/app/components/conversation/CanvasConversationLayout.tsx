@@ -50,13 +50,13 @@ import {
   loadCanvasBranchCard,
   openCanvasBranchCard,
   renameBranch,
-  sendMessage,
   unarchiveConversation,
   updateConversationCanvas,
   updateConversationSettings,
 } from "@/app/pages/conversation/functions";
 import { ConversationCanvas } from "@/app/components/conversation/ConversationCanvas";
 import { BranchColumn } from "@/app/components/conversation/BranchColumn";
+import { ConversationComposer } from "@/app/components/conversation/ConversationComposer";
 import type { BranchSelectionDraft } from "@/app/components/conversation/BranchableMessage";
 import { ToastProvider } from "@/app/components/ui/Toast";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
@@ -64,6 +64,10 @@ import {
   PERSISTED_MESSAGES_EVENT,
   type PersistedMessagesDetail,
 } from "@/app/components/conversation/messageEvents";
+import type {
+  SaveBranchNoteResponse,
+  SendMessageResponse,
+} from "@/app/pages/conversation/functions";
 
 interface CanvasConversationLayoutProps {
   snapshot: ConversationGraphSnapshot;
@@ -163,9 +167,12 @@ export function CanvasConversationLayout({
     setDirectoryEntries(conversations);
     setMessagesByBranch(initialMessagesByBranch);
     setLoadingBranchIds(new Set());
+  }, [conversations, initialMessagesByBranch, snapshot]);
+
+  useEffect(() => {
     setBranchDraft(null);
     setIsCreatingBranch(false);
-  }, [conversationId, conversations, initialMessagesByBranch, snapshot]);
+  }, [conversationId]);
 
   useEffect(() => {
     const handlePersistedMessages = (event: Event) => {
@@ -401,55 +408,53 @@ export function CanvasConversationLayout({
     setBranchDraft(draft);
   }, []);
 
-  const submitBranchDraft = useCallback(
-    async (prompt: string) => {
-      if (!branchDraft || isCreatingBranch || !prompt.trim()) return;
-      setCanvasError(null);
-      setIsCreatingBranch(true);
-      try {
-        const response = await sendMessage({
-          conversationId,
-          content: prompt.trim(),
-          branchDraft: {
-            parentBranchId: branchDraft.parentBranchId,
-            messageId: branchDraft.messageId,
-            span: branchDraft.span,
-            excerpt: branchDraft.excerpt,
-          },
-        });
-        const createdBranch = response.createdBranch;
-        if (!createdBranch) throw new Error("Branch was not created");
+  const completeBranchDraft = useCallback(
+    async (response: SendMessageResponse | SaveBranchNoteResponse) => {
+      const activeDraft = branchDraft;
+      if (!activeDraft) return;
+      const createdBranch =
+        "branch" in response ? response.branch : response.createdBranch;
+      if (!createdBranch) throw new Error("Branch was not created");
 
+      const assistantRenderedHtml =
+        "assistantRenderedHtml" in response
+          ? response.assistantRenderedHtml
+          : null;
+      const childMessages: RenderedMessage[] = response.appendedMessages.map(
+        (message) => ({
+          ...message,
+          renderedHtml:
+            message.role === "assistant" && assistantRenderedHtml
+              ? assistantRenderedHtml
+              : `<p>${escapeMessageHtml(message.content)}</p>`,
+          hasBranchHighlight: false,
+          branchAnchors: [],
+        }),
+      );
+      setCanvasSnapshot(response.snapshot);
+      setMessagesByBranch((current) => ({
+        ...current,
+        [createdBranch.id]: childMessages,
+      }));
+      setBranchDraft(null);
+      setIsCreatingBranch(false);
+
+      try {
         const refreshedParent = await loadCanvasBranchCard({
           conversationId,
-          branchId: branchDraft.parentBranchId,
+          branchId: activeDraft.parentBranchId,
         });
-        const childMessages: RenderedMessage[] = response.appendedMessages.map(
-          (message) => ({
-            ...message,
-            renderedHtml:
-              message.role === "assistant" && response.assistantRenderedHtml
-                ? response.assistantRenderedHtml
-                : `<p>${escapeMessageHtml(message.content)}</p>`,
-            hasBranchHighlight: false,
-            branchAnchors: [],
-          }),
-        );
         setCanvasSnapshot(refreshedParent.snapshot);
         setMessagesByBranch((current) => ({
           ...current,
-          [branchDraft.parentBranchId]: refreshedParent.messages,
-          [createdBranch.id]: childMessages,
+          [activeDraft.parentBranchId]: refreshedParent.messages,
         }));
-        setBranchDraft(null);
       } catch (error) {
-        console.error("[Canvas] create branch failed", error);
-        setCanvasError("This branch could not be created. Your draft is still here.");
-      } finally {
-        setIsCreatingBranch(false);
+        console.error("[Canvas] refresh branch source failed", error);
+        setCanvasError("Branch created, but its source marker could not be refreshed.");
       }
     },
-    [branchDraft, conversationId, isCreatingBranch],
+    [branchDraft, conversationId],
   );
 
   const removeBranch = useCallback(
@@ -601,6 +606,7 @@ export function CanvasConversationLayout({
         onComposerBootstrapConsumed={() => setBootstrapMessage(null)}
         onOpenBranch={(branchId) => openBranch(branchId)}
         onStartBranchDraft={startBranchDraft}
+        showComposer={false}
       />
     ),
     [
@@ -609,6 +615,48 @@ export function CanvasConversationLayout({
       messagesByBranch,
       openBranch,
       startBranchDraft,
+    ],
+  );
+
+  const renderBranchDraft = useCallback(
+    (draft: BranchSelectionDraft) => (
+      <ConversationComposer
+        branchId={draft.parentBranchId}
+        conversationId={conversationId}
+        autoFocus
+        className="h-full min-h-0"
+        conversationModel={model}
+        reasoningEffort={effort}
+        composerPreset={preset}
+        composerTools={tools}
+        openRouterModels={openRouterModels}
+        onConversationSettingsChange={handleSettingsChange}
+        conversationSettingsSaving={isSavingSettings}
+        conversationSettingsError={settingsError}
+        onClearConversationSettingsError={() => setSettingsError(null)}
+        branchContextExcerpt={null}
+        branchDraft={{
+          parentBranchId: draft.parentBranchId,
+          messageId: draft.messageId,
+          span: draft.span,
+          excerpt: draft.excerpt,
+        }}
+        variant="branch-draft"
+        onDraftCreated={completeBranchDraft}
+        onPendingChange={setIsCreatingBranch}
+      />
+    ),
+    [
+      completeBranchDraft,
+      conversationId,
+      effort,
+      handleSettingsChange,
+      isSavingSettings,
+      model,
+      openRouterModels,
+      preset,
+      settingsError,
+      tools,
     ],
   );
 
@@ -663,10 +711,11 @@ export function CanvasConversationLayout({
             onPatchCanvas={patchCanvas}
             onDeleteBranch={removeBranch}
             onRenameBranch={renameCanvasBranch}
+            onStartBranchDraft={startBranchDraft}
             branchDraft={branchDraft}
             isCreatingBranch={isCreatingBranch}
             onCancelBranchDraft={() => setBranchDraft(null)}
-            onSubmitBranchDraft={submitBranchDraft}
+            renderBranchDraft={renderBranchDraft}
           />
         </section>
 
