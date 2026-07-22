@@ -608,3 +608,7 @@
 - Decisions: only an empty root branch receives the compact canvas-start composer; existing conversation cards remain composer-free; the starter reuses model, search, speed, attachment, and Send controls while omitting parent-only quote, note, and close actions.
 - Files: src/app/components/conversation/{BranchColumn.tsx,CanvasConversationLayout.tsx,ConversationCanvas.tsx,ConversationComposer.tsx}, progress.txt.
 - Notes: browser QA confirmed New canvas opens a compact focused starter, accepts typing, and routes `⌘↵` to empty-message validation without invoking a model. `pnpm types`, 28 tests, and lint passed.
+2026-07-22 — Tightened compact canvas header and action density. Ref: Browser comments on starter toolbar, branch quote, and draft shortcuts.
+- Decisions: the empty-root search, speed, and model controls now share the card header instead of consuming a second row; child headers display the longer source quote with its complete text in the hover title; draft shortcut hints gain deliberate space below the divider.
+- Files: src/app/components/conversation/{ConversationCanvas.tsx,ConversationComposer.tsx}, progress.txt.
+- Notes: browser QA covered the empty starter, quoted Go child header, full hover-title value, and transient draft footer; no model call or persistent draft write was made. `pnpm types`, 28 tests, and lint passed.

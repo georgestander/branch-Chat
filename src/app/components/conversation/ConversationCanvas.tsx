@@ -72,6 +72,7 @@ const DRAFT_NODE_GAP = 110;
 
 type BranchCardSummary = {
   branch: Branch;
+  isEmptyRoot: boolean;
   latestPreview: string | null;
   descendantCount: number;
   messageCount: number;
@@ -181,6 +182,8 @@ function visibleBranchIds(
 
 function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
   const { summary } = data;
+  const sourceQuote = summary.branch.createdFrom.excerpt?.trim() || null;
+  const headerTitle = sourceQuote || summary.branch.title || "Untitled branch";
   const preview = summary.latestPreview
     ? summary.latestPreview.length > 145
       ? `${summary.latestPreview.slice(0, 142)}…`
@@ -256,7 +259,7 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
       ) : null}
 
       <header className="canvas-card-drag-handle flex shrink-0 cursor-pointer items-start justify-between gap-3 border-b border-border px-4 py-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-muted-foreground">
             {summary.tone ? (
               <span
@@ -268,8 +271,14 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
             <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
             {summary.branch.parentId ? "Branch" : "Root chat"}
           </div>
-          <h2 className="mt-1 truncate text-sm font-semibold text-foreground">
-            {summary.branch.title || "Untitled branch"}
+          <h2
+            className={cn(
+              "mt-1 truncate text-sm font-semibold text-foreground",
+              sourceQuote && "cursor-help",
+            )}
+            title={sourceQuote ? `“${sourceQuote}”` : headerTitle}
+          >
+            {sourceQuote ? `“${sourceQuote}”` : headerTitle}
           </h2>
           {summary.parentTitle ? (
             <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
@@ -282,22 +291,24 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
             Live
           </span>
         ) : null}
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (summary.branchSource) {
-              data.onStartBranchDraft(summary.branch.id, summary.branchSource);
-            }
-          }}
-          disabled={!summary.branchSource}
-          className="nodrag nopan ml-auto rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35"
-          data-card-interactive="true"
-          aria-label={`Start a child branch from ${summary.branch.title}`}
-          title="Start child branch"
-        >
-          <CornerUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
+        {!summary.isEmptyRoot ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (summary.branchSource) {
+                data.onStartBranchDraft(summary.branch.id, summary.branchSource);
+              }
+            }}
+            disabled={!summary.branchSource}
+            className="nodrag nopan ml-auto rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-35"
+            data-card-interactive="true"
+            aria-label={`Start a child branch from ${summary.branch.title}`}
+            title="Start child branch"
+          >
+            <CornerUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={(event) => {
@@ -480,6 +491,9 @@ function CanvasFlow({
     const result = new Map<BranchId, BranchCardSummary>();
     for (const branch of Object.values(snapshot.branches)) {
       const messages = branchMessages(snapshot, branch.id);
+      const messageCount = messages.filter(
+        (message) => message.role !== "system",
+      ).length;
       const last = messages[messages.length - 1];
       const latest = [...messages]
         .reverse()
@@ -489,9 +503,11 @@ function CanvasFlow({
         .find((message) => message.role === "assistant" && message.content.trim());
       result.set(branch.id, {
         branch,
+        isEmptyRoot:
+          branch.id === snapshot.conversation.rootBranchId && messageCount === 0,
         latestPreview: latest?.content ?? null,
         descendantCount: descendantCount(branch.id, childMap),
-        messageCount: messages.filter((message) => message.role !== "system").length,
+        messageCount,
         isStreaming: Boolean(
           last?.role === "assistant" &&
             !last.tokenUsage &&

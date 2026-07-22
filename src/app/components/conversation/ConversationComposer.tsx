@@ -1746,7 +1746,14 @@ export function ConversationComposer({
           }}
           className="flex h-full min-h-0 flex-col"
         >
-          <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
+          <header
+            className={cn(
+              "flex items-center gap-1",
+              isCanvasStart
+                ? "absolute right-[5.75rem] top-3 z-10"
+                : "h-10 shrink-0 border-b border-border px-2",
+            )}
+          >
             {isBranchDraft ? (
               <blockquote
                 className="mr-auto min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
@@ -1754,11 +1761,7 @@ export function ConversationComposer({
               >
                 “{excerptPreview}”
               </blockquote>
-            ) : (
-              <span className="mr-auto text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                {excerptPreview}
-              </span>
-            )}
+            ) : null}
 
             <button
               type="button"
@@ -2004,7 +2007,7 @@ export function ConversationComposer({
             </p>
           ) : null}
 
-          <footer className="flex h-12 shrink-0 items-end justify-between border-t border-border px-2 py-1.5">
+          <footer className="flex h-14 shrink-0 items-end justify-between border-t border-border px-2 pb-1.5 pt-2.5">
             <button
               type="button"
               onClick={openFilePicker}
@@ -2018,7 +2021,7 @@ export function ConversationComposer({
 
             <div className="flex items-end gap-1.5">
               {isBranchDraft ? (
-                <div className="flex flex-col items-center gap-0.5">
+                <div className="flex flex-col items-center gap-1">
                   <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                     ⌘ N
                   </span>
@@ -2032,7 +2035,7 @@ export function ConversationComposer({
                   </button>
                 </div>
               ) : null}
-              <div className="flex flex-col items-center gap-0.5">
+              <div className="flex flex-col items-center gap-1">
                 <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   ⌘ ↵
                 </span>
