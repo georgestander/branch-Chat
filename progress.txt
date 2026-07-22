@@ -656,6 +656,10 @@
 - Decisions: removed `historyMode` from `thread/start` and `excludeTurns` from `thread/fork`/`thread/resume` because the stable app server rejects those fields without experimental capability; locked that behavior in tests so the bridge keeps using persistent threads without opt-in protocol flags.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
 - Notes: live QA had surfaced `thread/start.historyMode requires experimentalApi capability` and `thread/fork.excludeTurns requires experimentalApi capability`; this commit removes both failure modes.
+2026-07-22 — Folded bridge turn context into plain-text input for stable Codex turns. Ref: attachment grounding compatibility after live QA.
+- Decisions: the stable app server rejects `turn/start.additionalContext`, so branch-selection and attachment-grounding context is now serialized into the turn input with explicit application vs untrusted sections; tests now assert that `turn/start` sends no experimental `additionalContext` field while preserving grounded context semantics.
+- Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
+- Notes: this fixes the live `turn/start.additionalContext requires experimentalApi capability` failure without dropping attachment grounding or branch focus context.
 2026-07-22 — Buffered direct-upload fallback into a known-length body before R2 persistence. Ref: local attachment parity with provider-backed uploads.
 - Decisions: the fallback upload route now reads the actual stream into a bounded Uint8Array so Miniflare/R2 always receives a known byte length; size enforcement uses bytes actually received rather than trusting Content-Length; the stored size trace now reflects the real buffered payload.
 - Files: src/app/shared/{uploadBytes.ts,uploadBytes.test.ts,uploadsProxy.server.ts}, progress.txt.
