@@ -68,8 +68,8 @@ import type {
   ToolInvocationStatus,
 } from "@/lib/conversation";
 import {
+  arrangeFocusedChildOnCanvas,
   branchToneForBranch,
-  placeNewBranchOnCanvas,
 } from "@/lib/conversation";
 import type { ConversationDirectoryEntry } from "@/lib/durable-objects/ConversationDirectory";
 import type { RenderedMessage } from "@/lib/conversation/rendered";
@@ -1098,8 +1098,8 @@ async function sendMessageWithCodex(options: {
     attachments: null,
     toolInvocations: [],
   };
-  const createdBranchCanvasPosition = createdBranch
-    ? placeNewBranchOnCanvas(
+  const createdBranchCanvasNodes = createdBranch
+    ? arrangeFocusedChildOnCanvas(
         options.snapshot,
         createdBranch.parentId!,
         createdBranch.id,
@@ -1117,12 +1117,7 @@ async function sendMessageWithCodex(options: {
           conversationId,
           patch: {
             focusedBranchId: createdBranch.id,
-            nodes: {
-              [createdBranch.id]: {
-                ...createdBranchCanvasPosition,
-                expanded: true,
-              },
-            },
+            nodes: createdBranchCanvasNodes ?? {},
           },
         },
         { type: "message:append" as const, conversationId, message: userMessage },
@@ -2594,7 +2589,7 @@ export async function saveBranchNote(
     })),
     toolInvocations: null,
   };
-  const position = placeNewBranchOnCanvas(
+  const canvasNodes = arrangeFocusedChildOnCanvas(
     ensured.snapshot,
     input.parentBranchId,
     branch.id,
@@ -2606,7 +2601,7 @@ export async function saveBranchNote(
       conversationId,
       patch: {
         focusedBranchId: branch.id,
-        nodes: { [branch.id]: { ...position, expanded: true } },
+        nodes: canvasNodes,
       },
     },
     { type: "message:append", conversationId, message: note },

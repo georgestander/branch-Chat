@@ -473,20 +473,75 @@ export function applyCanvasPatch(
   });
 }
 
+const FOCUSED_CHILD_HORIZONTAL_GAP = 110;
+const FOCUSED_CHILD_CARD_HEIGHT = 360;
+const COLLAPSED_BRANCH_CARD_HEIGHT = 190;
+const FOCUSED_CHILD_VERTICAL_GAP = 32;
+
+export function arrangeFocusedChildOnCanvas(
+  snapshot: Pick<ConversationGraphSnapshot, "branches" | "canvas">,
+  parentBranchId: BranchId,
+  branchId: BranchId,
+): NonNullable<ConversationCanvasPatch["nodes"]> {
+  const parentNode = snapshot.canvas.nodes[parentBranchId];
+  const parentX = parentNode?.x ?? 0;
+  const parentY = parentNode?.y ?? 0;
+  const parentWidth = parentNode?.width ?? 680;
+  const updates: NonNullable<ConversationCanvasPatch["nodes"]> = {};
+
+  for (const existingBranch of Object.values(snapshot.branches)) {
+    if (existingBranch.id === parentBranchId || existingBranch.id === branchId) {
+      continue;
+    }
+    updates[existingBranch.id] = { expanded: false };
+  }
+
+  const siblings = Object.values(snapshot.branches)
+    .filter(
+      (existingBranch) =>
+        existingBranch.parentId === parentBranchId &&
+        existingBranch.id !== branchId,
+    )
+    .sort((left, right) => {
+      const leftY = snapshot.canvas.nodes[left.id]?.y ?? 0;
+      const rightY = snapshot.canvas.nodes[right.id]?.y ?? 0;
+      return (
+        leftY - rightY ||
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id)
+      );
+    });
+  const firstSiblingY =
+    parentY + FOCUSED_CHILD_CARD_HEIGHT + FOCUSED_CHILD_VERTICAL_GAP;
+  siblings.forEach((sibling, index) => {
+    updates[sibling.id] = {
+      ...updates[sibling.id],
+      y:
+        firstSiblingY +
+        index * (COLLAPSED_BRANCH_CARD_HEIGHT + FOCUSED_CHILD_VERTICAL_GAP),
+    };
+  });
+
+  updates[parentBranchId] = { expanded: true };
+  updates[branchId] = {
+    x: parentX + parentWidth + FOCUSED_CHILD_HORIZONTAL_GAP,
+    y: parentY,
+    expanded: true,
+  };
+  return updates;
+}
+
 export function placeNewBranchOnCanvas(
   snapshot: Pick<ConversationGraphSnapshot, "branches" | "canvas">,
   parentBranchId: BranchId,
   branchId: BranchId,
 ): { x: number; y: number } {
-  const parentNode = snapshot.canvas.nodes[parentBranchId];
-  const siblingIndex = Object.values(snapshot.branches).filter(
-    (branch) => branch.parentId === parentBranchId && branch.id !== branchId,
-  ).length;
-  const parentWidth = parentNode?.expanded ? parentNode.width ?? 680 : 310;
-  return {
-    x: (parentNode?.x ?? 0) + parentWidth + 100,
-    y: (parentNode?.y ?? 0) + siblingIndex * 360,
-  };
+  const placement = arrangeFocusedChildOnCanvas(
+    snapshot,
+    parentBranchId,
+    branchId,
+  )[branchId];
+  return { x: placement?.x ?? 0, y: placement?.y ?? 0 };
 }
 
 export function createConversationSnapshot(input: {

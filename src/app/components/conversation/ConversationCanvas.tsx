@@ -37,6 +37,7 @@ import type {
   ConversationGraphSnapshot,
   Message,
 } from "@/lib/conversation";
+import { arrangeFocusedChildOnCanvas } from "@/lib/conversation";
 import type { BranchSelectionDraft } from "@/app/components/conversation/BranchableMessage";
 import {
   branchToneForBranch,
@@ -68,7 +69,6 @@ const MAX_EXPANDED_CARD_HEIGHT = 1_000;
 const DRAFT_NODE_ID = "__branch-draft__";
 const DRAFT_CARD_WIDTH = 420;
 const DRAFT_CARD_HEIGHT = 360;
-const DRAFT_NODE_GAP = 110;
 
 type BranchCardSummary = {
   branch: Branch;
@@ -474,6 +474,11 @@ function CanvasFlow({
   const updateNodeInternals = useUpdateNodeInternals();
   const viewportTimer = useRef<number | null>(null);
   const persistedViewport = useRef(snapshot.canvas.viewport);
+  const draftViewportRef = useRef<{
+    key: string;
+    focusedBranchId: BranchId | null;
+    viewport: Viewport;
+  } | null>(null);
   const [selectedId, setSelectedId] = useState<BranchId>(activeBranchId);
   const [folded, setFolded] = useState<Record<BranchId, boolean>>(() =>
     Object.fromEntries(
@@ -485,6 +490,17 @@ function CanvasFlow({
   const visibleIds = useMemo(
     () => visibleBranchIds(snapshot, folded),
     [folded, snapshot],
+  );
+  const draftLayout = useMemo(
+    () =>
+      branchDraft && snapshot.branches[branchDraft.parentBranchId]
+        ? arrangeFocusedChildOnCanvas(
+            snapshot,
+            branchDraft.parentBranchId,
+            DRAFT_NODE_ID,
+          )
+        : null,
+    [branchDraft, snapshot],
   );
 
   const summaries = useMemo(() => {
@@ -514,7 +530,9 @@ function CanvasFlow({
             last.content.trim().length === 0,
         ),
         folded: folded[branch.id] === true,
-        expanded: snapshot.canvas.nodes[branch.id]?.expanded === true,
+        expanded:
+          draftLayout?.[branch.id]?.expanded ??
+          (snapshot.canvas.nodes[branch.id]?.expanded === true),
         tone: branchToneForBranch(snapshot, branch.id),
         parentTitle: branch.parentId
           ? snapshot.branches[branch.parentId]?.title || "Untitled branch"
@@ -523,7 +541,7 @@ function CanvasFlow({
       });
     }
     return result;
-  }, [childMap, folded, snapshot]);
+  }, [childMap, draftLayout, folded, snapshot]);
 
   const toggleCard = useCallback(
     (branchId: BranchId) => {
@@ -596,7 +614,8 @@ function CanvasFlow({
       .filter((branch) => visibleIds.has(branch.id))
       .map((branch) => {
         const saved = snapshot.canvas.nodes[branch.id];
-        const expanded = saved?.expanded === true;
+        const draftUpdate = draftLayout?.[branch.id];
+        const expanded = draftUpdate?.expanded ?? (saved?.expanded === true);
         const isEmptyRoot =
           branch.id === snapshot.conversation.rootBranchId &&
           summaries.get(branch.id)?.messageCount === 0;
@@ -609,7 +628,10 @@ function CanvasFlow({
         return {
           id: branch.id,
           type: "branch",
-          position: { x: saved?.x ?? 0, y: saved?.y ?? 0 },
+          position: {
+            x: draftUpdate?.x ?? saved?.x ?? 0,
+            y: draftUpdate?.y ?? saved?.y ?? 0,
+          },
           initialWidth: width,
           initialHeight: height,
           style: { width, height },
@@ -633,16 +655,13 @@ function CanvasFlow({
     if (!branchDraft || !snapshot.branches[branchDraft.parentBranchId]) {
       return branchNodes;
     }
-    const parentNode = snapshot.canvas.nodes[branchDraft.parentBranchId];
-    const parentWidth = parentNode?.expanded
-      ? parentNode.width ?? EXPANDED_CARD_WIDTH
-      : CARD_WIDTH;
+    const draftPosition = draftLayout?.[DRAFT_NODE_ID];
     const draftNode: BranchDraftFlowNode = {
       id: DRAFT_NODE_ID,
       type: "branchDraft",
       position: {
-        x: (parentNode?.x ?? 0) + parentWidth + DRAFT_NODE_GAP,
-        y: parentNode?.y ?? 0,
+        x: draftPosition?.x ?? 0,
+        y: draftPosition?.y ?? 0,
       },
       initialWidth: DRAFT_CARD_WIDTH,
       initialHeight: DRAFT_CARD_HEIGHT,
@@ -660,6 +679,7 @@ function CanvasFlow({
     onDeleteBranch,
     onRenameBranch,
     branchDraft,
+    draftLayout,
     isCreatingBranch,
     onCancelBranchDraft,
     renderBranchDraft,
@@ -678,18 +698,65 @@ function CanvasFlow({
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasFlowNode>(desiredNodes);
   useEffect(() => {
     setNodes((current) => {
+      const hasDraft = desiredNodes.some((node) => node.id === DRAFT_NODE_ID);
+      const hadDraft = current.some((node) => node.id === DRAFT_NODE_ID);
       const currentPositions = new Map(
         current.map((node) => [node.id, node.position] as const),
       );
       return desiredNodes.map((node) => ({
         ...node,
-        position: currentPositions.get(node.id) ?? node.position,
+        position:
+          hasDraft || hadDraft
+            ? node.position
+            : currentPositions.get(node.id) ?? node.position,
       }));
     });
   }, [desiredNodes, setNodes]);
 
   useEffect(() => {
-    if (!branchDraft) return;
+    if (!branchDraft) {
+      const draftSession = draftViewportRef.current;
+      if (!draftSession) return;
+      const focusedBranchId = snapshot.canvas.focusedBranchId;
+      const createdChildId =
+        focusedBranchId && focusedBranchId !== draftSession.focusedBranchId
+          ? focusedBranchId
+          : null;
+      if (!createdChildId) {
+        draftViewportRef.current = null;
+        const frame = window.requestAnimationFrame(() => {
+          void flow.setViewport(draftSession.viewport, { duration: 220 });
+        });
+        return () => window.cancelAnimationFrame(frame);
+      }
+      const createdChildState = snapshot.canvas.nodes[createdChildId];
+      if (!createdChildState) return;
+      draftViewportRef.current = null;
+      const frame = window.requestAnimationFrame(() => {
+        setSelectedId(createdChildId);
+        void flow.fitBounds(
+          {
+            x: createdChildState.x,
+            y: createdChildState.y,
+            width: createdChildState.width ?? EXPANDED_CARD_WIDTH,
+            height: createdChildState.height ?? EXPANDED_CARD_HEIGHT,
+          },
+          {
+            padding: 0.14,
+            duration: 300,
+          },
+        );
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+    const draftKey = `${branchDraft.parentBranchId}:${branchDraft.messageId}`;
+    if (draftViewportRef.current?.key !== draftKey) {
+      draftViewportRef.current = {
+        key: draftKey,
+        focusedBranchId: snapshot.canvas.focusedBranchId,
+        viewport: flow.getViewport(),
+      };
+    }
     const frame = window.requestAnimationFrame(() => {
       const parent = flow.getNode(branchDraft.parentBranchId);
       const draft = flow.getNode(DRAFT_NODE_ID);
@@ -702,7 +769,7 @@ function CanvasFlow({
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [branchDraft, flow, nodes.length]);
+  }, [branchDraft, flow, nodes.length, snapshot.canvas.focusedBranchId]);
 
 
   const expansionSignature = useMemo(

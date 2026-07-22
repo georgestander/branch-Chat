@@ -612,3 +612,7 @@
 - Decisions: the empty-root search, speed, and model controls now share the card header instead of consuming a second row; child headers display the longer source quote with its complete text in the hover title; draft shortcut hints gain deliberate space below the divider.
 - Files: src/app/components/conversation/{ConversationCanvas.tsx,ConversationComposer.tsx}, progress.txt.
 - Notes: browser QA covered the empty starter, quoted Go child header, full hover-title value, and transient draft footer; no model call or persistent draft write was made. `pnpm types`, 28 tests, and lint passed.
+2026-07-22 — Added focused parent-to-child canvas transitions. Ref: branch draft spatial-focus UX.
+- Decisions: opening a draft transiently keeps its parent expanded, compacts competing cards, aligns the draft with the parent, and stacks existing direct children 32px below it; cancel restores the prior viewport and expansion state; successful note/model branch creation persists the same layout and reframes to the new child.
+- Files: src/app/components/conversation/ConversationCanvas.tsx, src/app/pages/conversation/functions.ts, src/lib/conversation/{model.ts,model.test.ts}, progress.txt.
+- Notes: browser QA verified multi-child compaction, restrained sibling displacement, parent-plus-draft framing, cancel restoration, persisted note creation, and child-only focus; all temporary QA branches were deleted. `pnpm types`, 28 tests, and lint passed.

@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   applyCanvasPatch,
+  arrangeFocusedChildOnCanvas,
   createConversationSnapshot,
   deleteBranchSubtree,
   normalizeConversationCanvasState,
@@ -220,7 +221,7 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
   });
 });
 
-test("placeNewBranchOnCanvas offsets a new expanded child beside its siblings", () => {
+test("focused child layout aligns the new child and compacts existing siblings", () => {
   const snapshot = createConversationSnapshot({
     id: "conversation",
     createdAt,
@@ -239,11 +240,19 @@ test("placeNewBranchOnCanvas offsets a new expanded child beside its siblings", 
   snapshot.branches.existing = branch("existing", "root");
   snapshot.branches.created = branch("created", "root");
   snapshot.canvas = applyCanvasPatch(snapshot, {
-    nodes: { root: { x: 200, y: 100, width: 820 } },
+    nodes: {
+      root: { x: 200, y: 100, width: 820 },
+      existing: { x: 1120, y: 460, expanded: true },
+    },
   });
 
   assert.deepEqual(placeNewBranchOnCanvas(snapshot, "root", "created"), {
-    x: 1120,
-    y: 460,
+    x: 1130,
+    y: 100,
+  });
+  assert.deepEqual(arrangeFocusedChildOnCanvas(snapshot, "root", "created"), {
+    existing: { expanded: false, y: 492 },
+    root: { expanded: true },
+    created: { x: 1130, y: 100, expanded: true },
   });
 });
