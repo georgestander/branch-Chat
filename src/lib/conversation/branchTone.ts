@@ -10,13 +10,17 @@ export const BRANCH_TONES = [
 export type BranchTone = (typeof BRANCH_TONES)[number];
 export type BranchToneKey = BranchTone["key"];
 
-export function branchToneForId(branchId: string): BranchTone {
+function branchToneIndexForId(branchId: string): number {
   let hash = 2166136261;
   for (let index = 0; index < branchId.length; index += 1) {
     hash ^= branchId.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return BRANCH_TONES[(hash >>> 0) % BRANCH_TONES.length]!;
+  return (hash >>> 0) % BRANCH_TONES.length;
+}
+
+export function branchToneForId(branchId: string): BranchTone {
+  return BRANCH_TONES[branchToneIndexForId(branchId)]!;
 }
 
 export function branchToneByKey(key: BranchToneKey): BranchTone {
@@ -44,8 +48,27 @@ export function branchToneForBranch(
   snapshot: Pick<ConversationGraphSnapshot, "conversation" | "branches">,
   branchId: BranchId,
 ): BranchTone | null {
-  const lineageId = branchLineageId(snapshot, branchId);
-  return lineageId ? branchToneForId(lineageId) : null;
+  const rootBranchId = snapshot.conversation.rootBranchId;
+  if (branchId === rootBranchId) return null;
+
+  const visited = new Set<BranchId>();
+  const resolveTone = (currentBranchId: BranchId): BranchTone | null => {
+    if (currentBranchId === rootBranchId || visited.has(currentBranchId)) {
+      return null;
+    }
+    visited.add(currentBranchId);
+    const branch = snapshot.branches[currentBranchId];
+    if (!branch?.parentId) return null;
+
+    const preferredIndex = branchToneIndexForId(currentBranchId);
+    const parentTone = resolveTone(branch.parentId);
+    if (!parentTone || BRANCH_TONES[preferredIndex]?.key !== parentTone.key) {
+      return BRANCH_TONES[preferredIndex]!;
+    }
+    return BRANCH_TONES[(preferredIndex + 1) % BRANCH_TONES.length]!;
+  };
+
+  return resolveTone(branchId);
 }
 import type {
   BranchId,
