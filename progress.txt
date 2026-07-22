@@ -616,3 +616,7 @@
 - Decisions: opening a draft transiently keeps its parent expanded, compacts competing cards, aligns the draft with the parent, and stacks existing direct children 32px below it; cancel restores the prior viewport and expansion state; successful note/model branch creation persists the same layout and reframes to the new child.
 - Files: src/app/components/conversation/ConversationCanvas.tsx, src/app/pages/conversation/functions.ts, src/lib/conversation/{model.ts,model.test.ts}, progress.txt.
 - Notes: browser QA verified multi-child compaction, restrained sibling displacement, parent-plus-draft framing, cancel restoration, persisted note creation, and child-only focus; all temporary QA branches were deleted. `pnpm types`, 28 tests, and lint passed.
+2026-07-22 — Moved canvas model pickers outside clipped card boundaries. Ref: blocked starter and temporary-card model picker screenshot.
+- Decisions: compact and standard model menus render through a viewport-level portal, remain anchored to their model button during canvas movement, prefer a fully external card side, flip when needed, and clamp within the viewport; outside-click and Escape dismissal remain intact.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: browser QA confirmed every model and reasoning option is visible beside both the new-canvas starter and temporary branch card; no setting selection or branch write was made. `pnpm types`, 28 tests, lint, and diff validation passed.

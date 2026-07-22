@@ -111,6 +111,13 @@ type SessionByokCredential = {
   apiKey: string;
 };
 
+type FloatingModelMenuPosition = {
+  left: number;
+  top: number;
+  width: number;
+  maxHeight: number;
+};
+
 const TOOL_OPTIONS: ToolOption[] = [
   {
     id: "study-and-learn",
@@ -407,6 +414,8 @@ export function ConversationComposer({
   );
   const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [modelMenuPosition, setModelMenuPosition] =
+    useState<FloatingModelMenuPosition | null>(null);
   const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
   const [isBrowser, setIsBrowser] = useState(false);
   const [accountState, setAccountState] =
@@ -443,6 +452,48 @@ export function ConversationComposer({
   const isBranchDraft = variant === "branch-draft" && branchDraft !== null;
   const isCanvasStart = variant === "canvas-start";
   const isCompactCanvasComposer = isBranchDraft || isCanvasStart;
+  const updateModelMenuPosition = useCallback(() => {
+    const button = modelButtonRef.current;
+    if (!button || typeof window === "undefined") return;
+    const buttonBounds = button.getBoundingClientRect();
+    const cardBounds = button.closest("article")?.getBoundingClientRect();
+    const viewportPadding = 12;
+    const gap = 8;
+    const width = isCompactCanvasComposer ? 176 : 288;
+    const maxHeight = Math.max(
+      160,
+      Math.min(384, window.innerHeight - viewportPadding * 2),
+    );
+    const rightOfCard = (cardBounds?.right ?? buttonBounds.right) + gap;
+    const leftOfCard = (cardBounds?.left ?? buttonBounds.left) - width - gap;
+    const rightOfButton = buttonBounds.right + gap;
+    const leftOfButton = buttonBounds.left - width - gap;
+    const fits = (left: number) =>
+      left >= viewportPadding && left + width <= window.innerWidth - viewportPadding;
+    const left = fits(rightOfCard)
+      ? rightOfCard
+      : fits(leftOfCard)
+        ? leftOfCard
+        : fits(rightOfButton)
+          ? rightOfButton
+          : Math.min(
+              Math.max(leftOfButton, viewportPadding),
+              window.innerWidth - width - viewportPadding,
+            );
+    const top = Math.min(
+      Math.max(buttonBounds.top, viewportPadding),
+      window.innerHeight - maxHeight - viewportPadding,
+    );
+    setModelMenuPosition((current) =>
+      current &&
+      Math.abs(current.left - left) < 0.5 &&
+      Math.abs(current.top - top) < 0.5 &&
+      current.width === width &&
+      current.maxHeight === maxHeight
+        ? current
+        : { left, top, width, maxHeight },
+    );
+  }, [isCompactCanvasComposer]);
   useEffect(() => {
     onPendingChange?.(isPending);
   }, [isPending, onPendingChange]);
@@ -798,6 +849,20 @@ export function ConversationComposer({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isToolMenuOpen]);
+
+  useEffect(() => {
+    if (!isModelMenuOpen) {
+      setModelMenuPosition(null);
+      return;
+    }
+    let frame = 0;
+    const followAnchor = () => {
+      updateModelMenuPosition();
+      frame = window.requestAnimationFrame(followAnchor);
+    };
+    followAnchor();
+    return () => window.cancelAnimationFrame(frame);
+  }, [isModelMenuOpen, updateModelMenuPosition]);
 
   useEffect(() => {
     if (!isModelMenuOpen) {
@@ -1797,7 +1862,7 @@ export function ConversationComposer({
               <Zap className="h-3 w-3" aria-hidden="true" />
             </button>
 
-            <div className="relative" ref={modelMenuRef}>
+            <div className="relative">
               <button
                 ref={modelButtonRef}
                 type="button"
@@ -1816,12 +1881,15 @@ export function ConversationComposer({
                 M
               </button>
 
-              {isModelMenuOpen ? (
+              {isModelMenuOpen && modelMenuPosition && isBrowser
+                ? createPortal(
                 <aside
+                  ref={modelMenuRef}
                   id={modelMenuId}
                   role="dialog"
                   aria-label="Model and reasoning picker"
-                  className="absolute left-[calc(100%+0.5rem)] top-8 z-50 flex max-h-[24rem] w-44 flex-col overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
+                  className="fixed z-[100] flex flex-col overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
+                  style={modelMenuPosition}
                 >
                   <div className="flex items-center justify-between px-1 pb-2">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -1931,8 +1999,10 @@ export function ConversationComposer({
                       })}
                     </>
                   ) : null}
-                </aside>
-              ) : null}
+                </aside>,
+                document.body,
+              )
+                : null}
             </div>
 
             {isBranchDraft ? (
@@ -2408,15 +2478,14 @@ export function ConversationComposer({
                   </span>
                 ) : null}
               </div>
-              {isModelMenuOpen ? (
+              {isModelMenuOpen && modelMenuPosition && isBrowser
+                ? createPortal(
                 <div
                   ref={modelMenuRef}
                   id={modelMenuId}
                   role="menu"
-                  className={cn(
-                    "absolute right-0 z-30 max-h-[calc(100vh-7rem)] w-72 overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl",
-                    isBranchDraft ? "top-full mt-2" : "bottom-full mb-2",
-                  )}
+                  className="fixed z-[100] overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
+                  style={modelMenuPosition}
                 >
                 <button
                   type="button"
@@ -2552,8 +2621,10 @@ export function ConversationComposer({
                     })}
                   </>
                 ) : null}
-                </div>
-              ) : null}
+                </div>,
+                document.body,
+              )
+                : null}
             </div>
           ) : null}
 
