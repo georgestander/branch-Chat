@@ -720,3 +720,7 @@
 - Decisions: every composer records with MediaRecorder, limits capture to two minutes, decodes and downmixes locally, resamples to mono 24 kHz PCM16 WAV, blocks send while capture/transcription is active, inserts returned text into the editable draft without submitting, and retains the WAV in memory for one-click retry after an upstream failure.
 - Files: src/app/components/conversation/{ConversationComposer.tsx,dictation.ts,dictation.test.ts}, progress.txt.
 - Notes: live Playwright QA fed a synthetic spoken WAV through the real browser recorder, Worker proxy, signed-in Codex app-server, and ChatGPT-backed transcription; the exact transcript appeared in the textarea while Send remained untouched.
+2026-07-22 — Documented the native voice runtime and privacy boundary. Ref: native voice implementation checkpoint 4.
+- Decisions: setup guidance makes `pnpm dev` mandatory for voice, explains the two-minute review-before-send workflow and in-memory retry, names the required browser media APIs, and states that Branch Chat does not persist raw dictation audio.
+- Files: README.md, Docs/setup.md, progress.txt.
+- Notes: the documented flow matches the live browser and Worker smoke; a forced first-request timeout exposed the retry control and the same saved WAV then succeeded through the real Worker/Codex path without re-recording. `pnpm dev:web` intentionally cannot transcribe because it does not run the loopback Codex bridge.

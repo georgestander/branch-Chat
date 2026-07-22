@@ -31,9 +31,11 @@ Click the preview image to watch the YouTube demo.
 ## Local-first runtime
 
 - `pnpm dev` starts the Cloudflare Vite runtime and a loopback-only Codex app-server bridge.
-- Codex supplies ChatGPT authentication and model access; no OpenAI API key is required for chat.
+- Codex supplies ChatGPT authentication, model access, and voice transcription; no OpenAI API key is required for chat or dictation.
 - Local Durable Objects and R2 persist beneath `.wrangler/state` across normal restarts.
 - Fast defaults to GPT-5.6 Terra with medium reasoning, the Fast service tier, and web search enabled.
+
+Voice dictation records up to two minutes in the browser, converts the recording to mono 24 kHz PCM16 WAV locally, and sends it through the authenticated Worker to the loopback Codex bridge. The returned transcript is added to the composer for review and is never sent automatically. Failed transcription audio remains only in memory so it can be retried without recording again.
 
 ## Quick Start
 

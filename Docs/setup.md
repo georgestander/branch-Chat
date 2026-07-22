@@ -36,9 +36,19 @@ See `Docs/env-vars.md` for full details.
 ## Local persistence
 
 - Chat requests go through a loopback-only Codex app-server bridge. ChatGPT credentials are never sent to the browser or stored in Durable Objects.
+- Voice dictation uses that same signed-in Codex account. The browser records at most two minutes, prepares a WAV locally, and posts it through the authenticated application route; raw audio is not persisted by Branch Chat.
 - Conversations, branches, messages, and composer preferences persist under `.wrangler/state` through local Durable Objects.
 - Uploads use the local R2 binding. Do not delete `.wrangler/state` if you want to keep local chats.
 - Web search defaults on. Fast defaults to GPT-5.6 Terra, medium reasoning, and the Fast service tier.
+
+## Voice dictation
+
+1. Start Branch Chat with `pnpm dev`, not `pnpm dev:web`, because transcription requires the local Codex bridge.
+2. Click the microphone beside Send and allow microphone access for `localhost` when prompted.
+3. Speak, then click the microphone again to stop. Branch Chat transcribes after recording stops and places the text in the composer for editing.
+4. If transcription fails, the microphone becomes a retry control and keeps that WAV only in the current page's memory.
+
+Dictation requires a browser with `MediaRecorder`, `AudioContext`, and `getUserMedia`. It has no browser speech-recognition fallback and does not submit the resulting message automatically.
 
 ## Validation Loops
 
