@@ -1888,6 +1888,8 @@ export function ConversationComposer({
                   id={modelMenuId}
                   role="dialog"
                   aria-label="Model and reasoning picker"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
                   className="fixed z-[100] flex flex-col overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
                   style={modelMenuPosition}
                 >
@@ -2484,6 +2486,8 @@ export function ConversationComposer({
                   ref={modelMenuRef}
                   id={modelMenuId}
                   role="menu"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
                   className="fixed z-[100] overflow-y-auto rounded border border-border bg-popover p-2 shadow-xl"
                   style={modelMenuPosition}
                 >

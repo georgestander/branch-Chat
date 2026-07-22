@@ -620,3 +620,7 @@
 - Decisions: compact and standard model menus render through a viewport-level portal, remain anchored to their model button during canvas movement, prefer a fully external card side, flip when needed, and clamp within the viewport; outside-click and Escape dismissal remain intact.
 - Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
 - Notes: browser QA confirmed every model and reasoning option is visible beside both the new-canvas starter and temporary branch card; no setting selection or branch write was made. `pnpm types`, 28 tests, lint, and diff validation passed.
+2026-07-22 — Prevented floating model-picker choices from dismissing canvas composers. Ref: regression report after externalizing the picker.
+- Decisions: pointer and click events stop at each portalled picker boundary so React Flow cannot reinterpret a model or reasoning choice as a card or pane click; normal outside-click and Escape dismissal remain unchanged.
+- Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
+- Notes: browser QA selected Luna then Max on a temporary branch and Terra then Medium on a disposable new canvas, confirming both composers and menus remained open after every choice; the disposable canvas was deleted and the source conversation's original Sol/High settings were restored. `pnpm types`, 28 tests, lint, and diff validation passed.
