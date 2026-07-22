@@ -668,3 +668,7 @@
 - Decisions: thread start/resume/fork no longer send experimental-only params; stable tests now assert those params stay absent; Codex send failures persist a canonical assistant error and return the reconciled snapshot for normal cards too, so optimistic streaming state clears without requiring reload.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, src/app/pages/conversation/functions.ts, progress.txt.
 - Notes: this hardens both root sends and temporary branch cards against bridge-level failures while keeping the persisted error message as the source of truth.
+2026-07-22 — Settled failed assistant messages as terminal UI state. Ref: live bridge error recovery.
+- Decisions: failed model turns now persist zero token usage as an explicit terminal state; legacy non-empty failures without token usage no longer render a permanent streaming indicator.
+- Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/BranchColumn.tsx, progress.txt.
+- Notes: this preserves the canonical error response while ensuring the composer and card state recover without a reload.

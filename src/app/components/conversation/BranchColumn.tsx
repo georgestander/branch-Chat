@@ -748,7 +748,8 @@ function MessageBubble({
   }
 
   if (message.role === "assistant") {
-    const isStreaming = isActive && !message.tokenUsage;
+    const isStreaming =
+      isActive && !message.tokenUsage && message.content.trim().length === 0;
     return (
       <div
         className={cn(

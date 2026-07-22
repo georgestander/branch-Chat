@@ -1378,6 +1378,7 @@ async function sendMessageWithCodex(options: {
     const failedAssistant: Message = {
       ...assistantMessage,
       content: `Unable to complete the response: ${message}`,
+      tokenUsage: { prompt: 0, completion: 0, cost: 0 },
       toolInvocations: Array.from(toolInvocationMap.values()),
     };
     const failedApplied = await applyConversationUpdates(ctx, conversationId, [
