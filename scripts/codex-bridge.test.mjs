@@ -347,6 +347,28 @@ test("dictation timeout still stops realtime and deletes its temporary thread", 
   assert.equal(client.activeTranscription, false);
 });
 
+test("dictation reserves its single-flight lock before asynchronous setup", async () => {
+  let rejectWorkspace;
+  const client = createProtocolClient(async () => ({}));
+  client.start = async () => {};
+  client.workspace = () => new Promise((_, reject) => {
+    rejectWorkspace = reject;
+  });
+
+  const first = client.transcribeWav(createPcm16Wav());
+  await new Promise((resolve) => setImmediate(resolve));
+  await assert.rejects(
+    () => client.transcribeWav(createPcm16Wav()),
+    (error) => error instanceof DictationRequestError && error.status === 409,
+  );
+  rejectWorkspace(new Error("test setup stopped"));
+  await assert.rejects(
+    first,
+    (error) => error instanceof DictationRequestError && error.status === 502,
+  );
+  assert.equal(client.activeTranscription, false);
+});
+
 test("turn/start sends folded plain-text context without experimental fields", async () => {
   const calls = [];
   const client = createProtocolClient(async (method, params) => {

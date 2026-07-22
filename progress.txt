@@ -724,3 +724,7 @@
 - Decisions: setup guidance makes `pnpm dev` mandatory for voice, explains the two-minute review-before-send workflow and in-memory retry, names the required browser media APIs, and states that Branch Chat does not persist raw dictation audio.
 - Files: README.md, Docs/setup.md, progress.txt.
 - Notes: the documented flow matches the live browser and Worker smoke; a forced first-request timeout exposed the retry control and the same saved WAV then succeeded through the real Worker/Codex path without re-recording. `pnpm dev:web` intentionally cannot transcribe because it does not run the loopback Codex bridge.
+2026-07-22 — Made the bridge dictation lock race-safe. Ref: native voice final concurrency audit.
+- Decisions: a dictation now reserves the bridge's single-flight slot before any asynchronous workspace setup, so overlapping requests deterministically receive 409 instead of entering two temporary realtime sessions.
+- Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
+- Notes: the regression test holds the first request during setup, proves the second is rejected, and verifies the lock releases after setup failure.

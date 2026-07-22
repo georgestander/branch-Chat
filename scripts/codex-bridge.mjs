@@ -475,9 +475,6 @@ export class CodexAppServerClient {
     if (this.activeTranscription) {
       throw new DictationRequestError("Another dictation is already being transcribed", 409);
     }
-    const { pcm, durationSeconds } = parsePcm16Wav(input);
-    const frames = buildDictationFrames(pcm);
-    const workspace = await this.workspace();
     this.activeTranscription = true;
     let threadId = null;
     let unsubscribe = () => {};
@@ -498,6 +495,9 @@ export class CodexAppServerClient {
     };
 
     try {
+      const { pcm, durationSeconds } = parsePcm16Wav(input);
+      const frames = buildDictationFrames(pcm);
+      const workspace = await this.workspace();
       const started = await this.request("thread/start", {
         model: "gpt-5.6-terra",
         cwd: workspace,
