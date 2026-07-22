@@ -10,6 +10,10 @@ import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import type { ToolInvocation } from "@/lib/conversation";
 import type { RenderedBranchAnchor } from "@/lib/conversation/rendered";
 import { ToolInvocationSummary } from "@/app/components/conversation/ToolInvocationSummary";
+import {
+  ImageGenerationStatus,
+} from "@/app/components/conversation/ImageGenerationStatus";
+import { hasPendingImageGeneration } from "@/lib/conversation/imageGeneration";
 import { GitBranch } from "lucide-react";
 import {
   branchToneByKey,
@@ -64,6 +68,7 @@ export function BranchableMessage({
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const isGeneratingImage = hasPendingImageGeneration(toolInvocations);
 
   const clearSelection = useCallback(() => {
     setSelection(null);
@@ -177,6 +182,8 @@ export function BranchableMessage({
         fallbackHtml={renderedHtml}
         messageId={messageId}
       />
+
+      {isGeneratingImage ? <ImageGenerationStatus phase="generating" /> : null}
 
       {branchAnchors.length > 0 ? (
         <nav

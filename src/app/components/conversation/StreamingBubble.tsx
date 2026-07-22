@@ -6,6 +6,10 @@ import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import { clearStreamPrompt, emitCompleteStreaming, readStreamPrompt } from "@/app/components/conversation/streamingEvents";
 import { cancelMessage } from "@/app/pages/conversation/functions";
 import { Pencil, Square, Trash2 } from "lucide-react";
+import {
+  ImageGenerationStatus,
+  type ImageGenerationPhase,
+} from "@/app/components/conversation/ImageGenerationStatus";
 
 interface StreamingBubbleProps {
   streamId: string;
@@ -40,12 +44,14 @@ export function StreamingBubble({
 }: StreamingBubbleProps) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<
-    "connecting" | "streaming" | "complete" | "error"
+    "connecting" | "reconnecting" | "streaming" | "complete" | "error"
   >("connecting");
   const sourceRef = useRef<EventSource | null>(null);
   const [html, setHtml] = useState("");
   const [reasoningSummary, setReasoningSummary] = useState("");
   const [toolProgressLabel, setToolProgressLabel] = useState<string | null>(null);
+  const [imageGenerationPhase, setImageGenerationPhase] =
+    useState<ImageGenerationPhase | null>(null);
   const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const cancellationModeRef = useRef<"edit" | "discard" | null>(null);
@@ -130,6 +136,7 @@ export function StreamingBubble({
     setStatus("connecting");
     setReasoningSummary("");
     setToolProgressLabel(null);
+    setImageGenerationPhase(null);
 
     const onOpen = () => onConnectedRef.current?.(streamId);
     const onStart = () => setStatus("streaming");
@@ -184,9 +191,35 @@ export function StreamingBubble({
             ? data.status.replaceAll("_", " ")
             : "running";
         setToolProgressLabel(`${toolLabel}: ${nextStatus}`);
+        if (data?.tool === "image_generation") {
+          if (data?.status === "running") {
+            setImageGenerationPhase(
+              data?.phase === "saving" ? "saving" : "generating",
+            );
+          } else {
+            setImageGenerationPhase(null);
+          }
+        }
       } catch {
         // ignore
       }
+    };
+    const onImageReady = (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (typeof data?.content === "string") {
+          setContent(data.content);
+          setHtml(
+            typeof data?.renderedHtml === "string" && data.renderedHtml.length > 0
+              ? data.renderedHtml
+              : renderMarkdownClient(data.content),
+          );
+        }
+      } catch {
+        // The final completion event remains the canonical fallback.
+      }
+      setImageGenerationPhase(null);
+      setToolProgressLabel("Image generation: succeeded");
     };
     const onComplete = (event: MessageEvent) => {
       try {
@@ -213,11 +246,17 @@ export function StreamingBubble({
         } catch {}
       }
     };
-    const onError = () => {
-      setStatus((s) => (s === "complete" ? s : "error"));
-      try {
-        es.close();
-      } catch {}
+    const onError = (event: Event) => {
+      if (event instanceof MessageEvent && typeof event.data === "string") {
+        setStatus((current) => (current === "complete" ? current : "error"));
+        try {
+          es.close();
+        } catch {}
+        return;
+      }
+      setStatus((current) =>
+        current === "complete" || current === "error" ? current : "reconnecting",
+      );
     };
     const onCancelled = () => {
       setContent("");
@@ -249,6 +288,7 @@ export function StreamingBubble({
     es.addEventListener("delta", onDelta as EventListener);
     es.addEventListener("reasoning_summary", onReasoningSummary as EventListener);
     es.addEventListener("tool_progress", onToolProgress as EventListener);
+    es.addEventListener("image_ready", onImageReady as EventListener);
     es.addEventListener("complete", onComplete as EventListener);
     es.addEventListener("cancelled", onCancelled as EventListener);
     es.addEventListener("error", onError as EventListener);
@@ -290,6 +330,7 @@ export function StreamingBubble({
 
   const statusLabel = useMemo(() => {
     if (status === "connecting") return "Connecting…";
+    if (status === "reconnecting") return "Reconnecting to generation…";
     if (status === "streaming") return "Streaming response…";
     if (status === "complete") return "Response complete";
     return "Stream error";
@@ -339,6 +380,12 @@ export function StreamingBubble({
       </div>
       {toolProgressLabel ? (
         <p className="mb-2 text-xs text-muted-foreground">{toolProgressLabel}</p>
+      ) : null}
+      {imageGenerationPhase ? (
+        <ImageGenerationStatus
+          phase={imageGenerationPhase}
+          className="mb-3 mt-2"
+        />
       ) : null}
       {reasoningSummary ? (
         <details className="mb-3 rounded-md border border-foreground/15 bg-background/50 px-3 py-2 text-xs text-muted-foreground">

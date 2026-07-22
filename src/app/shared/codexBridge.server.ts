@@ -52,7 +52,7 @@ export type CodexBridgeStreamEvent =
   | { type: "reasoning_summary"; delta: string; content?: string }
   | {
       type: "tool_progress";
-      tool: "web_search";
+      tool: "web_search" | "image_generation";
       callId: string;
       status: "running" | "succeeded" | "failed";
       query?: string;

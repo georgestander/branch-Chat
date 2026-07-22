@@ -1243,6 +1243,7 @@ async function sendMessageWithCodex(options: {
   let codexTurnId: string | null = null;
   const generatedImageUrls: string[] = [];
   const generatedImageStorageKeys: string[] = [];
+  let generatedImagePreviewContent = "";
   const startedAt = Date.now();
   ctx.trace("codex:stream:start", {
     conversationId,
@@ -1340,6 +1341,47 @@ async function sendMessageWithCodex(options: {
         continue;
       }
       if (event.type === "tool_progress") {
+        if (event.tool === "image_generation") {
+          const existing = toolInvocationMap.get(event.callId);
+          const next: ToolInvocation = {
+            id: event.callId,
+            toolType: "image_generation",
+            toolName: "image_generation",
+            callId: event.callId,
+            input: existing?.input ?? { prompt: input.content.trim() },
+            output: existing?.output ?? null,
+            status: event.status,
+            startedAt: existing?.startedAt ?? new Date().toISOString(),
+            completedAt:
+              event.status === "succeeded" || event.status === "failed"
+                ? new Date().toISOString()
+                : null,
+            error:
+              event.status === "failed"
+                ? { message: "Image generation did not complete." }
+                : null,
+          };
+          toolInvocationMap.set(event.callId, next);
+          appended = await applyConversationUpdates(ctx, conversationId, [
+            {
+              type: "message:update",
+              conversationId,
+              message: {
+                ...assistantMessage,
+                content: generatedImagePreviewContent,
+                toolInvocations: Array.from(toolInvocationMap.values()),
+              },
+            },
+          ]);
+          if (input.streamId) {
+            sendSSE(input.streamId, "tool_progress", {
+              tool: "image_generation",
+              callId: event.callId,
+              status: event.status,
+            });
+          }
+          continue;
+        }
         const existing = toolInvocationMap.get(event.callId);
         const next: ToolInvocation = {
           id: event.callId,
@@ -1379,6 +1421,14 @@ async function sendMessageWithCodex(options: {
         throw new Error(event.message || "Codex response failed");
       }
       if (event.type === "image_generation") {
+        if (input.streamId) {
+          sendSSE(input.streamId, "tool_progress", {
+            tool: "image_generation",
+            callId: event.id,
+            status: "running",
+            phase: "saving",
+          });
+        }
         const image = await fetchCodexGeneratedImage(event.id, ctx.env);
         const storageKey = `generated/${conversationId}/${assistantMessage.id}/${crypto.randomUUID()}`;
         await ctx.getUploadsBucket().put(storageKey, image.bytes, {
@@ -1387,12 +1437,13 @@ async function sendMessageWithCodex(options: {
         generatedImageStorageKeys.push(storageKey);
         const imageUrl = `/_generated-image?conversationId=${encodeURIComponent(conversationId)}&messageId=${encodeURIComponent(assistantMessage.id)}&imageId=${encodeURIComponent(event.id)}`;
         generatedImageUrls.push(imageUrl);
+        const existing = toolInvocationMap.get(event.id);
         toolInvocationMap.set(event.id, {
           id: event.id,
           toolType: "image_generation",
           toolName: "image_generation",
           status: "succeeded",
-          startedAt: new Date().toISOString(),
+          startedAt: existing?.startedAt ?? new Date().toISOString(),
           completedAt: new Date().toISOString(),
           input: event.revisedPrompt ? { prompt: event.revisedPrompt } : null,
           output: { storageKey, contentType: image.contentType, imageUrl },
@@ -1403,6 +1454,32 @@ async function sendMessageWithCodex(options: {
             tool: "image_generation",
             callId: event.id,
             status: "succeeded",
+          });
+        }
+        generatedImagePreviewContent = generatedImageUrls
+          .map((url) => `![Generated image](${url})`)
+          .join("\n\n");
+        let previewHtml: string | null = null;
+        try {
+          previewHtml = await renderMarkdownToHtml(generatedImagePreviewContent);
+        } catch {
+          // The persisted Markdown remains renderable on the next server pass.
+        }
+        appended = await applyConversationUpdates(ctx, conversationId, [
+          {
+            type: "message:update",
+            conversationId,
+            message: {
+              ...assistantMessage,
+              content: generatedImagePreviewContent,
+              toolInvocations: Array.from(toolInvocationMap.values()),
+            },
+          },
+        ]);
+        if (input.streamId) {
+          sendSSE(input.streamId, "image_ready", {
+            content: generatedImagePreviewContent,
+            renderedHtml: previewHtml,
           });
         }
         continue;

@@ -807,6 +807,18 @@ export class CodexAppServerClient {
         emit({ type: "tool_progress", tool: "web_search", callId: params.item.id, status: "running", query: params.item.query ?? "" });
         return;
       }
+      if (message.method === "item/started" && params.item?.type === "imageGeneration") {
+        const item = params.item;
+        if (typeof item.id === "string") {
+          emit({
+            type: "tool_progress",
+            tool: "image_generation",
+            callId: item.id,
+            status: "running",
+          });
+        }
+        return;
+      }
       if (message.method === "item/completed" && params.item?.type === "webSearch") {
         emit({ type: "tool_progress", tool: "web_search", callId: params.item.id, status: "succeeded", query: params.item.query ?? "" });
         return;
@@ -822,6 +834,13 @@ export class CodexAppServerClient {
             type: "image_generation",
             id: item.id,
             revisedPrompt: item.revisedPrompt ?? null,
+          });
+        } else if (typeof item.id === "string") {
+          emit({
+            type: "tool_progress",
+            tool: "image_generation",
+            callId: item.id,
+            status: "failed",
           });
         }
         return;

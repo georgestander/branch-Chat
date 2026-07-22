@@ -681,7 +681,7 @@ export function BranchColumn({
               />
             </li>
           ))}
-          {awaitingAssistant ? (
+          {awaitingAssistant && !isStreamingAssistant ? (
             <li className="flex w-full justify-start">
               {effectiveActiveStreamId ? (
                 <StreamingBubble

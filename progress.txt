@@ -728,3 +728,7 @@
 - Decisions: a dictation now reserves the bridge's single-flight slot before any asynchronous workspace setup, so overlapping requests deterministically receive 409 instead of entering two temporary realtime sessions.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
 - Notes: the regression test holds the first request during setup, proves the second is rejected, and verifies the lock releases after setup failure.
+2026-07-22 — Made native image-generation progress persistent and reconnect-safe. Ref: ChatGPT-style image rendering feedback.
+- Decisions: the Codex bridge announces image work when it starts, the server persists that running tool state before the long generation completes, the UI renders the same animated image card live and after reload, completed image markup is pushed immediately, and one branch now owns only one EventSource per stream while transient transport errors are allowed to reconnect.
+- Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, src/app/pages/conversation/functions.ts, src/app/shared/codexBridge.server.ts, src/app/components/conversation/{BranchColumn.tsx,BranchableMessage.tsx,ImageGenerationStatus.tsx,StreamingBubble.tsx}, src/lib/conversation/{imageGeneration.ts,imageGeneration.test.ts}, progress.txt.
+- Notes: focused coverage verifies the provider start event and reload-visible running state; completed image artifacts are persisted before the rest of the model turn settles so the card no longer needs a manual refresh.
