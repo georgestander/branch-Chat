@@ -100,6 +100,7 @@ interface BranchColumnProps {
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
   showComposer?: boolean;
   showWholeReplyAction?: boolean;
+  composerVariant?: "default" | "canvas-start";
 }
 
 function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
@@ -229,6 +230,7 @@ export function BranchColumn({
   onStartBranchDraft,
   showComposer = true,
   showWholeReplyAction = true,
+  composerVariant = "default",
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -625,6 +627,10 @@ export function BranchColumn({
     () => normalizeBranchContextExcerpt(branch.createdFrom?.excerpt ?? null),
     [branch.createdFrom?.excerpt],
   );
+  const showCanvasStartComposer =
+    showComposer &&
+    composerVariant === "canvas-start" &&
+    visibleMessages.every((message) => message.role === "system");
 
   return (
     <section
@@ -635,11 +641,12 @@ export function BranchColumn({
         className,
       )}
     >
-      <div
-        ref={scrollContainerRef}
-        className="nowheel nodrag nopan min-h-0 flex-1 overflow-y-auto px-4 py-4"
-        data-card-interactive="true"
-      >
+      {showCanvasStartComposer ? null : (
+        <div
+          ref={scrollContainerRef}
+          className="nowheel nodrag nopan min-h-0 flex-1 overflow-y-auto px-4 py-4"
+          data-card-interactive="true"
+        >
         <ol className="flex w-full flex-col gap-4">
           {visibleMessages.map((message) => (
             <li
@@ -674,18 +681,24 @@ export function BranchColumn({
           ) : null}
         </ol>
         <div ref={sentinelRef} aria-hidden className="h-px w-px" />
-      </div>
+        </div>
+      )}
 
-      {isActive && showComposer ? (
+      {isActive && (showCanvasStartComposer || (showComposer && composerVariant === "default")) ? (
         <div
-          className="nowheel nodrag nopan shrink-0 border-t border-border bg-background p-3"
+          className={cn(
+            "nowheel nodrag nopan bg-background",
+            showCanvasStartComposer
+              ? "min-h-0 flex-1"
+              : "shrink-0 border-t border-border p-3",
+          )}
           data-card-interactive="true"
         >
           <ConversationComposer
             branchId={branch.id}
             conversationId={conversationId}
             autoFocus
-            className=""
+            className={showCanvasStartComposer ? "h-full min-h-0" : ""}
             conversationModel={conversationModel}
             reasoningEffort={reasoningEffort}
             composerPreset={composerPreset}
@@ -699,6 +712,7 @@ export function BranchColumn({
             bootstrapMessage={composerBootstrapMessage}
             onBootstrapConsumed={onComposerBootstrapConsumed}
             onStreamStart={(streamId) => setActiveStreamId(streamId)}
+            variant={showCanvasStartComposer ? "canvas-start" : "default"}
           />
         </div>
       ) : !isActive ? (

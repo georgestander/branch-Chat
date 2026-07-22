@@ -604,3 +604,7 @@
 - Decisions: one flat node boundary contains a quoted-source header, web-search and speed toggles, model button, close control, blank writing surface, attachment button, and compact Save note/Send actions; the model button opens a narrow adjacent model/reasoning panel; `⌘N` saves a note and `⌘↵` sends to the model.
 - Files: src/app/components/conversation/{CanvasConversationLayout.tsx,ConversationCanvas.tsx,ConversationComposer.tsx}, progress.txt.
 - Notes: visual browser QA confirmed the requested control order, unobscured close control, side picker, empty-draft shortcut routing without writes, and clean draft dismissal. `pnpm types`, 28 tests, and lint passed.
+2026-07-22 — Restored first-message entry for newly created canvases. Ref: New canvas starter regression.
+- Decisions: only an empty root branch receives the compact canvas-start composer; existing conversation cards remain composer-free; the starter reuses model, search, speed, attachment, and Send controls while omitting parent-only quote, note, and close actions.
+- Files: src/app/components/conversation/{BranchColumn.tsx,CanvasConversationLayout.tsx,ConversationCanvas.tsx,ConversationComposer.tsx}, progress.txt.
+- Notes: browser QA confirmed New canvas opens a compact focused starter, accepts typing, and routes `⌘↵` to empty-message validation without invoking a model. `pnpm types`, 28 tests, and lint passed.

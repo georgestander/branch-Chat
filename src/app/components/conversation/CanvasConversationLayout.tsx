@@ -595,24 +595,32 @@ export function CanvasConversationLayout({
   };
 
   const renderBranchThread = useCallback(
-    (branch: Branch, active: boolean) => (
-      <BranchColumn
-        {...branchColumnCommon}
-        branch={branch}
-        messages={messagesByBranch[branch.id] ?? []}
-        isActive={active}
-        className="h-full min-h-0"
-        composerBootstrapMessage={active ? bootstrapMessage : null}
-        onComposerBootstrapConsumed={() => setBootstrapMessage(null)}
-        onOpenBranch={(branchId) => openBranch(branchId)}
-        onStartBranchDraft={startBranchDraft}
-        showComposer={false}
-        showWholeReplyAction={false}
-      />
-    ),
+    (branch: Branch, active: boolean) => {
+      const branchMessages = messagesByBranch[branch.id] ?? [];
+      const isEmptyRoot =
+        branch.id === canvasSnapshot.conversation.rootBranchId &&
+        branchMessages.every((message) => message.role === "system");
+      return (
+        <BranchColumn
+          {...branchColumnCommon}
+          branch={branch}
+          messages={branchMessages}
+          isActive={active}
+          className="h-full min-h-0"
+          composerBootstrapMessage={active ? bootstrapMessage : null}
+          onComposerBootstrapConsumed={() => setBootstrapMessage(null)}
+          onOpenBranch={(branchId) => openBranch(branchId)}
+          onStartBranchDraft={startBranchDraft}
+          showComposer={isEmptyRoot}
+          composerVariant={isEmptyRoot ? "canvas-start" : "default"}
+          showWholeReplyAction={false}
+        />
+      );
+    },
     [
       bootstrapMessage,
       branchColumnCommon,
+      canvasSnapshot.conversation.rootBranchId,
       messagesByBranch,
       openBranch,
       startBranchDraft,

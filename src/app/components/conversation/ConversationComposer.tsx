@@ -369,7 +369,7 @@ interface ConversationComposerProps {
   onDraftCreated?: (
     response: SendMessageResponse | SaveBranchNoteResponse,
   ) => Promise<void> | void;
-  variant?: "default" | "branch-draft";
+  variant?: "default" | "branch-draft" | "canvas-start";
   onPendingChange?: (pending: boolean) => void;
   onCancelDraft?: () => void;
 }
@@ -441,6 +441,8 @@ export function ConversationComposer({
   const webSearchSelectable = isWebSearchSelectableModel(conversationModel);
   const { notify } = useToast();
   const isBranchDraft = variant === "branch-draft" && branchDraft !== null;
+  const isCanvasStart = variant === "canvas-start";
+  const isCompactCanvasComposer = isBranchDraft || isCanvasStart;
   useEffect(() => {
     onPendingChange?.(isPending);
   }, [isPending, onPendingChange]);
@@ -1671,8 +1673,10 @@ export function ConversationComposer({
     submitMessage();
   };
 
-  if (isBranchDraft) {
-    const excerpt = (branchDraft.excerpt ?? "Branch from this reply")
+  if (isCompactCanvasComposer) {
+    const excerpt = (isBranchDraft
+      ? branchDraft.excerpt ?? "Branch from this reply"
+      : "Start the conversation")
       .replace(/\s+/g, " ")
       .trim();
     const excerptPreview =
@@ -1735,7 +1739,7 @@ export function ConversationComposer({
               submitMessage();
               return;
             }
-            if (event.key.toLowerCase() === "n") {
+            if (isBranchDraft && event.key.toLowerCase() === "n") {
               event.preventDefault();
               saveNote();
             }
@@ -1743,12 +1747,18 @@ export function ConversationComposer({
           className="flex h-full min-h-0 flex-col"
         >
           <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
-            <blockquote
-              className="mr-auto min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
-              title={`“${excerpt}”`}
-            >
-              “{excerptPreview}”
-            </blockquote>
+            {isBranchDraft ? (
+              <blockquote
+                className="mr-auto min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+                title={`“${excerpt}”`}
+              >
+                “{excerptPreview}”
+              </blockquote>
+            ) : (
+              <span className="mr-auto text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {excerptPreview}
+              </span>
+            )}
 
             <button
               type="button"
@@ -1922,27 +1932,33 @@ export function ConversationComposer({
               ) : null}
             </div>
 
-            <button
-              type="button"
-              onClick={onCancelDraft}
-              disabled={isPending}
-              aria-label="Close branch draft"
-              title="Close draft"
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
-            >
-              <X className="h-3 w-3" aria-hidden="true" />
-            </button>
+            {isBranchDraft ? (
+              <button
+                type="button"
+                onClick={onCancelDraft}
+                disabled={isPending}
+                aria-label="Close branch draft"
+                title="Close draft"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            ) : null}
           </header>
 
           <label htmlFor="branch-draft-composer" className="sr-only">
-            Branch draft
+            {isBranchDraft ? "Branch draft" : "Start message"}
           </label>
           <textarea
             id="branch-draft-composer"
             ref={textareaRef}
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            placeholder="Write a note or ask the model…"
+            placeholder={
+              isBranchDraft
+                ? "Write a note or ask the model…"
+                : "Ask anything to start this canvas…"
+            }
             className="min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-3 text-sm leading-5 text-foreground placeholder:text-muted-foreground/55 focus:outline-none disabled:opacity-60"
             disabled={isPending}
             aria-invalid={error ? true : undefined}
@@ -2001,19 +2017,21 @@ export function ConversationComposer({
             </button>
 
             <div className="flex items-end gap-1.5">
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                  ⌘ N
-                </span>
-                <button
-                  type="button"
-                  onClick={saveNote}
-                  disabled={isPending || hasPendingAttachments || hasErroredAttachments}
-                  className="inline-flex h-7 items-center justify-center rounded border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
-                >
-                  Save note
-                </button>
-              </div>
+              {isBranchDraft ? (
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    ⌘ N
+                  </span>
+                  <button
+                    type="button"
+                    onClick={saveNote}
+                    disabled={isPending || hasPendingAttachments || hasErroredAttachments}
+                    className="inline-flex h-7 items-center justify-center rounded border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+                  >
+                    Save note
+                  </button>
+                </div>
+              ) : null}
               <div className="flex flex-col items-center gap-0.5">
                 <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   ⌘ ↵

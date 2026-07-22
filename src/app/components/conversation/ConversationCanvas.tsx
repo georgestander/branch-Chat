@@ -581,11 +581,14 @@ function CanvasFlow({
       .map((branch) => {
         const saved = snapshot.canvas.nodes[branch.id];
         const expanded = saved?.expanded === true;
+        const isEmptyRoot =
+          branch.id === snapshot.conversation.rootBranchId &&
+          summaries.get(branch.id)?.messageCount === 0;
         const width = expanded
-          ? saved?.width ?? EXPANDED_CARD_WIDTH
+          ? saved?.width ?? (isEmptyRoot ? DRAFT_CARD_WIDTH : EXPANDED_CARD_WIDTH)
           : CARD_WIDTH;
         const height = expanded
-          ? saved?.height ?? EXPANDED_CARD_HEIGHT
+          ? saved?.height ?? (isEmptyRoot ? DRAFT_CARD_HEIGHT : EXPANDED_CARD_HEIGHT)
           : CARD_HEIGHT;
         return {
           id: branch.id,
@@ -769,9 +772,16 @@ function CanvasFlow({
     for (const node of branchNodes) {
       const expanded = node.data.summary.expanded;
       const saved = snapshot.canvas.nodes[node.id];
+      const isEmptyRoot =
+        node.id === snapshot.conversation.rootBranchId &&
+        node.data.summary.messageCount === 0;
       graph.setNode(node.id, {
-        width: expanded ? saved?.width ?? EXPANDED_CARD_WIDTH : CARD_WIDTH,
-        height: expanded ? saved?.height ?? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
+        width: expanded
+          ? saved?.width ?? (isEmptyRoot ? DRAFT_CARD_WIDTH : EXPANDED_CARD_WIDTH)
+          : CARD_WIDTH,
+        height: expanded
+          ? saved?.height ?? (isEmptyRoot ? DRAFT_CARD_HEIGHT : EXPANDED_CARD_HEIGHT)
+          : CARD_HEIGHT,
       });
     }
     for (const edge of edges) {
@@ -784,9 +794,14 @@ function CanvasFlow({
       const positioned = graph.node(node.id) as { x: number; y: number };
       const expanded = node.data.summary.expanded;
       const saved = snapshot.canvas.nodes[node.id];
-      const width = expanded ? saved?.width ?? EXPANDED_CARD_WIDTH : CARD_WIDTH;
+      const isEmptyRoot =
+        node.id === snapshot.conversation.rootBranchId &&
+        node.data.summary.messageCount === 0;
+      const width = expanded
+        ? saved?.width ?? (isEmptyRoot ? DRAFT_CARD_WIDTH : EXPANDED_CARD_WIDTH)
+        : CARD_WIDTH;
       const height = expanded
-        ? saved?.height ?? EXPANDED_CARD_HEIGHT
+        ? saved?.height ?? (isEmptyRoot ? DRAFT_CARD_HEIGHT : EXPANDED_CARD_HEIGHT)
         : CARD_HEIGHT;
       const position = {
         x: positioned.x - width / 2,
@@ -801,7 +816,7 @@ function CanvasFlow({
     ]);
     onPatchCanvas({ nodes: patchNodes });
     window.setTimeout(() => void flow.fitView({ padding: 0.18, duration: 280 }), 0);
-  }, [edges, flow, nodes, onPatchCanvas, setNodes, snapshot.canvas.nodes]);
+  }, [edges, flow, nodes, onPatchCanvas, setNodes, snapshot.canvas.nodes, snapshot.conversation.rootBranchId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
