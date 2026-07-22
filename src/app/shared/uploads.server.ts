@@ -188,11 +188,14 @@ export async function finalizeAttachmentUpload(
       finalized = refreshed;
     }
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Attachment ingestion failed";
     ctx.trace("attachment:ingest:dispatch-error", {
       conversationId,
       attachmentId: finalized.id,
-      error: error instanceof Error ? error.message : "unknown",
+      error: message,
     });
+    throw new Error(`Attachment could not be read: ${message}`);
   }
 
   return finalized;

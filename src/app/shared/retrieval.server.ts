@@ -10,40 +10,14 @@ import {
   type WebSearchSnippetMatch,
 } from "@/lib/conversation";
 import type { WebSearchResultSummary } from "@/lib/conversation/tools";
+import { createLexicalEmbedding } from "@/app/shared/retrieval.lexical";
+import { formatGroundedPromptBlocks } from "@/app/shared/retrieval.prompt";
 
-const EMBEDDING_MODEL = "text-embedding-3-small";
-const DEFAULT_MIN_SIMILARITY = 0.15;
+const DEFAULT_MIN_SIMILARITY = 0.04;
 const MAX_CONTEXT_CHARS = 1_200;
 
-async function embedQuery(
-  ctx: AppContext,
-  text: string,
-): Promise<number[]> {
-  const openai = ctx.getOpenAIClient() as any;
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: [text],
-  });
-  const embedding = response.data[0]?.embedding as number[] | undefined;
-  if (!embedding) {
-    throw new Error("Embedding response missing data");
-  }
-  return embedding;
-}
-
-async function embedSnippets(
-  ctx: AppContext,
-  texts: string[],
-): Promise<number[][]> {
-  if (texts.length === 0) {
-    return [];
-  }
-  const openai = ctx.getOpenAIClient() as any;
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: texts,
-  });
-  return response.data.map((item: any) => item.embedding as number[]);
+function embedSnippets(texts: string[]): number[][] {
+  return texts.map((text) => createLexicalEmbedding(text));
 }
 
 function truncateContent(content: string): string {
@@ -63,6 +37,11 @@ function attachmentChunkToContext(
       ? metadata.fileName
       : ingestion?.attachmentId ?? "Attachment";
   const title = fileName;
+  const pageNumber =
+    typeof metadata.pageNumber === "number" &&
+    Number.isFinite(metadata.pageNumber)
+      ? metadata.pageNumber
+      : null;
 
   return {
     id: chunk.id,
@@ -73,6 +52,12 @@ function attachmentChunkToContext(
     relevance: Number.isFinite(similarity) ? similarity : 0,
     metadata: {
       fileName,
+      contentType:
+        typeof metadata.contentType === "string"
+          ? metadata.contentType
+          : null,
+      pageNumber,
+      sourceId: chunk.id,
     },
   };
 }
@@ -90,6 +75,7 @@ function webSnippetToContext(match: WebSearchSnippetMatch): RetrievedContextChun
       url: snippet.url,
       provider: snippet.provider ?? null,
       createdAt: snippet.createdAt,
+      sourceId: snippet.id,
     },
   };
 }
@@ -116,7 +102,7 @@ export async function buildRetrievalContext(
     return { blocks: [], attachments: [], webSnippets: [] };
   }
 
-  const embedding = await embedQuery(ctx, normalizedQuery);
+  const embedding = createLexicalEmbedding(normalizedQuery);
   const store = ctx.getConversationStore(options.conversationId);
   const result = await store.queryRetrieval({
     embedding,
@@ -157,16 +143,7 @@ export async function buildRetrievalContext(
 export function formatRetrievedContextForPrompt(
   blocks: RetrievedContextChunk[],
 ): string | null {
-  if (blocks.length === 0) {
-    return null;
-  }
-
-  const lines = blocks.map((block, index) => {
-    const label = block.type === "attachment" ? "Attachment" : "Web";
-    return `Context ${index + 1} (${label} – ${block.title}):\n${block.content}`;
-  });
-
-  return lines.join("\n\n");
+  return formatGroundedPromptBlocks(blocks);
 }
 
 export async function persistWebSearchSnippets(
@@ -184,7 +161,7 @@ export async function persistWebSearchSnippets(
   const texts = options.snippets.map((snippet) =>
     [snippet.title, snippet.snippet, snippet.url].filter(Boolean).join("\n"),
   );
-  const embeddings = await embedSnippets(ctx, texts);
+  const embeddings = embedSnippets(texts);
 
   const records: WebSearchSnippet[] = options.snippets.map((snippet, index) => ({
     id: snippet.id,
