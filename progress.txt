@@ -672,3 +672,7 @@
 - Decisions: failed model turns now persist zero token usage as an explicit terminal state; legacy non-empty failures without token usage no longer render a permanent streaming indicator.
 - Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/BranchColumn.tsx, progress.txt.
 - Notes: this preserves the canonical error response while ensuring the composer and card state recover without a reload.
+2026-07-22 — Remounted the canvas client island when navigation changes conversations. Ref: New canvas end-to-end smoke.
+- Decisions: the server-rendered layout is now keyed by conversation ID so a newly created canvas cannot briefly reuse the previous conversation's client state or render an empty graph until reload.
+- Files: src/app/pages/conversation/ConversationPage.tsx, progress.txt.
+- Notes: this keeps RedwoodSDK client navigation while giving each canonical conversation a fresh, correctly scoped client island.

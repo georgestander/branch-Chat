@@ -101,6 +101,7 @@ export async function ConversationPage({
 
   return (
     <CanvasConversationLayout
+      key={result.conversationId}
       snapshot={snapshot}
       conversation={snapshot.conversation}
       initialActiveBranchId={activeBranch.id}
