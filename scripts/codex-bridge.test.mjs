@@ -100,6 +100,7 @@ test("existing branches resume their persistent Codex thread without replay", as
     recovered: false,
   });
   assert.deepEqual(calls.map((call) => call.method), ["thread/resume"]);
+  assert.equal("excludeTurns" in calls[0].params, false);
 });
 
 test("new child branches fork through the exact source turn", async () => {
@@ -120,6 +121,7 @@ test("new child branches fork through the exact source turn", async () => {
   assert.equal(calls[0].params.threadId, "thread-parent");
   assert.equal(calls[0].params.lastTurnId, "turn-source");
   assert.equal(calls[0].params.ephemeral, false);
+  assert.equal("excludeTurns" in calls[0].params, false);
 });
 
 test("missing native context rebuilds one persistent thread from bounded history", async () => {
@@ -152,6 +154,7 @@ test("missing native context rebuilds one persistent thread from bounded history
     "thread/inject_items",
   ]);
   assert.equal(calls[1].params.ephemeral, false);
+  assert.equal("historyMode" in calls[1].params, false);
 });
 
 test("transient or configuration errors never silently replace context", async () => {

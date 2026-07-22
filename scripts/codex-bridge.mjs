@@ -349,7 +349,6 @@ export class CodexAppServerClient {
     const started = await this.request("thread/start", {
       ...configuration,
       ephemeral: false,
-      historyMode: "paginated",
       threadSource: "branch-chat",
     });
     const threadId = started?.thread?.id;
@@ -411,7 +410,6 @@ export class CodexAppServerClient {
           ...forkConfiguration,
           ephemeral: false,
           threadSource: "branch-chat",
-          excludeTurns: true,
         });
         const threadId = forked?.thread?.id;
         if (typeof threadId !== "string" || !threadId) {
@@ -433,7 +431,6 @@ export class CodexAppServerClient {
         const resumed = await this.request("thread/resume", {
           threadId: input.threadId,
           ...resumeConfiguration,
-          excludeTurns: true,
         });
         const threadId = resumed?.thread?.id;
         if (typeof threadId !== "string" || !threadId) {
