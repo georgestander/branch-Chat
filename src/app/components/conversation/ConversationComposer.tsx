@@ -57,6 +57,7 @@ import {
   emitPersistedMessages,
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
+import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import {
   BYOK_STATUS_CHANGED_EVENT,
   emitByokStatusChanged,
@@ -407,6 +408,7 @@ export function ConversationComposer({
 }: ConversationComposerProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
@@ -447,6 +449,10 @@ export function ConversationComposer({
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
+  const draftStreamWaiterRef = useRef<{
+    streamId: string;
+    settle: () => void;
+  } | null>(null);
   const webSearchSelectable = isWebSearchSelectableModel(conversationModel);
   const { notify } = useToast();
   const isBranchDraft = variant === "branch-draft" && branchDraft !== null;
@@ -497,6 +503,28 @@ export function ConversationComposer({
   useEffect(() => {
     onPendingChange?.(isPending);
   }, [isPending, onPendingChange]);
+
+  const settleDraftStreamWaiter = useCallback((streamId?: string) => {
+    const waiter = draftStreamWaiterRef.current;
+    if (!waiter || (streamId && waiter.streamId !== streamId)) {
+      return;
+    }
+    draftStreamWaiterRef.current = null;
+    waiter.settle();
+  }, []);
+
+  useEffect(() => {
+    return () => settleDraftStreamWaiter();
+  }, [settleDraftStreamWaiter]);
+
+  useEffect(() => {
+    setDraftStreamId(null);
+    settleDraftStreamWaiter();
+  }, [
+    branchDraft?.messageId,
+    branchDraft?.parentBranchId,
+    settleDraftStreamWaiter,
+  ]);
   const selectedChatGPTModel = getChatGPTModelOption(conversationModel);
   const reasoningOptions: readonly ReasoningEffort[] =
     selectedChatGPTModel?.supportedReasoningEfforts ?? ["low", "medium", "high"];
@@ -1530,13 +1558,37 @@ export function ConversationComposer({
       });
     }
 
+    const streamId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let draftSubscriberReady: Promise<void> | null = null;
+    if (isBranchDraft) {
+      settleDraftStreamWaiter();
+      draftSubscriberReady = new Promise<void>((resolve) => {
+        let settled = false;
+        let timeoutId: number | null = null;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          if (timeoutId !== null && typeof window !== "undefined") {
+            window.clearTimeout(timeoutId);
+          }
+          resolve();
+        };
+        if (typeof window !== "undefined") {
+          timeoutId = window.setTimeout(settle, 500);
+        }
+        draftStreamWaiterRef.current = { streamId, settle };
+      });
+      setDraftStreamId(streamId);
+    }
+
     startTransition(async () => {
       try {
-        const streamId =
-          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        if (!isBranchDraft) {
+        if (draftSubscriberReady) {
+          await draftSubscriberReady;
+        } else {
           onStreamStart?.(streamId);
           emitStartStreaming({ conversationId, branchId, streamId });
         }
@@ -1545,7 +1597,7 @@ export function ConversationComposer({
           branchId: isBranchDraft ? undefined : branchId,
           branchDraft: isBranchDraft ? branchDraft : undefined,
           content,
-          streamId: isBranchDraft ? undefined : streamId,
+          streamId,
           byok: true,
           sessionByok:
             !byokEnabled && sessionByokCredential
@@ -1656,6 +1708,9 @@ export function ConversationComposer({
             messageId: optimisticId,
             reason: "failed",
           });
+        } else {
+          settleDraftStreamWaiter(streamId);
+          setDraftStreamId(null);
         }
         console.error("[Composer] sendMessage failed", cause);
         const errorMessage = extractErrorMessage(cause);
@@ -2034,10 +2089,29 @@ export function ConversationComposer({
                 ? "Write a note or ask the model…"
                 : "Ask anything to start this canvas…"
             }
-            className="min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-3 text-sm leading-5 text-foreground placeholder:text-muted-foreground/55 focus:outline-none disabled:opacity-60"
+            className={cn(
+              "min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-3 text-sm leading-5 text-foreground placeholder:text-muted-foreground/55 focus:outline-none disabled:opacity-60",
+              isBranchDraft && draftStreamId ? "hidden" : null,
+            )}
             disabled={isPending}
             aria-invalid={error ? true : undefined}
           />
+
+          {isBranchDraft && draftStreamId ? (
+            <div className="nowheel nodrag nopan min-h-0 flex-1 overflow-y-auto px-3 py-2">
+              <p className="mb-2 rounded bg-muted/55 px-2 py-1.5 text-xs leading-4 text-foreground">
+                {value}
+              </p>
+              <StreamingBubble
+                streamId={draftStreamId}
+                conversationId={conversationId}
+                branchId={branchDraft.parentBranchId}
+                compact
+                emitCompletionEvent={false}
+                onConnected={settleDraftStreamWaiter}
+              />
+            </div>
+          ) : null}
 
           {attachments.length > 0 ? (
             <div className="flex shrink-0 flex-wrap gap-1 border-t border-border px-2 py-1.5">

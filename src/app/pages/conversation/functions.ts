@@ -1326,9 +1326,27 @@ async function sendMessageWithCodex(options: {
       content: `Unable to complete the response: ${message}`,
       toolInvocations: Array.from(toolInvocationMap.values()),
     };
-    await applyConversationUpdates(ctx, conversationId, [
+    const failedApplied = await applyConversationUpdates(ctx, conversationId, [
       { type: "message:update", conversationId, message: failedAssistant },
     ]);
+    if (createdBranch) {
+      let failedRenderedHtml: string | null = null;
+      try {
+        failedRenderedHtml = await renderMarkdownToHtml(failedAssistant.content);
+      } catch {
+        // The persisted plain-text error remains the source of truth.
+      }
+      return {
+        conversationId,
+        snapshot: failedApplied.snapshot,
+        version: failedApplied.version,
+        appendedMessages: [userMessage, failedAssistant],
+        assistantRenderedHtml: failedRenderedHtml,
+        createdBranch:
+          failedApplied.snapshot.branches[createdBranch.id] ?? createdBranch,
+        quota: { remainingDemoPasses: null },
+      };
+    }
     throw error;
   }
 

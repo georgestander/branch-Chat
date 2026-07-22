@@ -9,6 +9,9 @@ interface StreamingBubbleProps {
   conversationId: string;
   branchId: string;
   className?: string;
+  compact?: boolean;
+  emitCompletionEvent?: boolean;
+  onConnected?: (streamId: string) => void;
 }
 
 export function StreamingBubble({
@@ -16,6 +19,9 @@ export function StreamingBubble({
   conversationId,
   branchId,
   className,
+  compact = false,
+  emitCompletionEvent = true,
+  onConnected,
 }: StreamingBubbleProps) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<
@@ -25,6 +31,11 @@ export function StreamingBubble({
   const [html, setHtml] = useState("");
   const [reasoningSummary, setReasoningSummary] = useState("");
   const [toolProgressLabel, setToolProgressLabel] = useState<string | null>(null);
+  const onConnectedRef = useRef(onConnected);
+
+  useEffect(() => {
+    onConnectedRef.current = onConnected;
+  }, [onConnected]);
 
   function escapeHtml(value: string): string {
     return value
@@ -102,6 +113,7 @@ export function StreamingBubble({
     setReasoningSummary("");
     setToolProgressLabel(null);
 
+    const onOpen = () => onConnectedRef.current?.(streamId);
     const onStart = () => setStatus("streaming");
     const onDelta = (event: MessageEvent) => {
       try {
@@ -168,10 +180,12 @@ export function StreamingBubble({
       } catch {}
       setStatus("complete");
       es.close();
-      try {
-        const { emitCompleteStreaming } = require("@/app/components/conversation/streamingEvents");
-        emitCompleteStreaming({ conversationId, branchId, streamId });
-      } catch {}
+      if (emitCompletionEvent) {
+        try {
+          const { emitCompleteStreaming } = require("@/app/components/conversation/streamingEvents");
+          emitCompleteStreaming({ conversationId, branchId, streamId });
+        } catch {}
+      }
     };
     const onError = () => {
       setStatus((s) => (s === "complete" ? s : "error"));
@@ -180,6 +194,7 @@ export function StreamingBubble({
       } catch {}
     };
 
+    es.addEventListener("open", onOpen as EventListener);
     es.addEventListener("start", onStart as EventListener);
     es.addEventListener("delta", onDelta as EventListener);
     es.addEventListener("reasoning_summary", onReasoningSummary as EventListener);
@@ -194,7 +209,7 @@ export function StreamingBubble({
       } catch {}
       sourceRef.current = null;
     };
-  }, [branchId, conversationId, streamId]);
+  }, [branchId, conversationId, emitCompletionEvent, streamId]);
 
   const statusLabel = useMemo(() => {
     if (status === "connecting") return "Connecting…";
@@ -206,7 +221,9 @@ export function StreamingBubble({
   return (
     <div
       className={cn(
-        "panel-surface panel-edge w-full rounded-2xl px-5 py-5 text-sm shadow-sm transition",
+        compact
+          ? "w-full px-1 py-2 text-sm"
+          : "panel-surface panel-edge w-full rounded-2xl px-5 py-5 text-sm shadow-sm transition",
         className,
       )}
       aria-live="polite"
