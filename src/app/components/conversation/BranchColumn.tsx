@@ -673,7 +673,16 @@ export function BranchColumn({
           {awaitingAssistant ? (
             <li className="flex w-full justify-start">
               {effectiveActiveStreamId ? (
-                <StreamingBubble streamId={effectiveActiveStreamId} conversationId={conversationId} branchId={branch.id} />
+                <StreamingBubble
+                  streamId={effectiveActiveStreamId}
+                  conversationId={conversationId}
+                  branchId={branch.id}
+                  originalPrompt={
+                    [...visibleMessages]
+                      .reverse()
+                      .find((message) => message.role === "user")?.content ?? null
+                  }
+                />
               ) : (
                 <AssistantPendingBubble />
               )}

@@ -63,7 +63,7 @@ import {
   emitPersistedMessages,
 } from "@/app/components/conversation/messageEvents";
 import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
-import { StreamingBubble } from "@/app/components/conversation/StreamingBubble";
+import { cancelledPromptStorageKey, StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import {
   BYOK_STATUS_CHANGED_EVENT,
   emitByokStatusChanged,
@@ -874,8 +874,14 @@ export function ConversationComposer({
       setIsDictationAvailable(
         Boolean(speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition),
       );
+      const recoveredPromptKey = cancelledPromptStorageKey(conversationId, branchId);
+      const recoveredPrompt = window.sessionStorage.getItem(recoveredPromptKey);
+      if (recoveredPrompt) {
+        window.sessionStorage.removeItem(recoveredPromptKey);
+        setValue(recoveredPrompt);
+      }
     }
-  }, []);
+  }, [branchId, conversationId]);
 
   useEffect(() => () => speechRecognitionRef.current?.abort(), []);
 

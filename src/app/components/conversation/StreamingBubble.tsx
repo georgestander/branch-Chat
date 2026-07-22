@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
 import { emitCompleteStreaming } from "@/app/components/conversation/streamingEvents";
+import { cancelMessage } from "@/app/pages/conversation/functions";
+import { Pencil, Square, Trash2 } from "lucide-react";
 
 interface StreamingBubbleProps {
   streamId: string;
@@ -13,6 +15,11 @@ interface StreamingBubbleProps {
   compact?: boolean;
   emitCompletionEvent?: boolean;
   onConnected?: (streamId: string) => void;
+  originalPrompt?: string | null;
+}
+
+export function cancelledPromptStorageKey(conversationId: string, branchId: string) {
+  return `connexus:cancelled-prompt:${conversationId}:${branchId}`;
 }
 
 export function StreamingBubble({
@@ -23,6 +30,7 @@ export function StreamingBubble({
   compact = false,
   emitCompletionEvent = true,
   onConnected,
+  originalPrompt = null,
 }: StreamingBubbleProps) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<
@@ -32,6 +40,9 @@ export function StreamingBubble({
   const [html, setHtml] = useState("");
   const [reasoningSummary, setReasoningSummary] = useState("");
   const [toolProgressLabel, setToolProgressLabel] = useState<string | null>(null);
+  const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  const cancellationModeRef = useRef<"edit" | "discard" | null>(null);
   const onConnectedRef = useRef(onConnected);
 
   useEffect(() => {
@@ -209,6 +220,13 @@ export function StreamingBubble({
       if (emitCompletionEvent) {
         emitCompleteStreaming({ conversationId, branchId, streamId });
       }
+      if (cancellationModeRef.current === "edit" && originalPrompt) {
+        window.sessionStorage.setItem(
+          cancelledPromptStorageKey(conversationId, branchId),
+          originalPrompt,
+        );
+      }
+      window.location.reload();
     };
 
     es.addEventListener("open", onOpen as EventListener);
@@ -227,7 +245,19 @@ export function StreamingBubble({
       } catch {}
       sourceRef.current = null;
     };
-  }, [branchId, conversationId, emitCompletionEvent, streamId]);
+  }, [branchId, conversationId, emitCompletionEvent, originalPrompt, streamId]);
+
+  const stopGeneration = async (mode: "edit" | "discard") => {
+    cancellationModeRef.current = mode;
+    setIsStopMenuOpen(false);
+    setStopError(null);
+    try {
+      await cancelMessage({ conversationId, streamId });
+    } catch (error) {
+      cancellationModeRef.current = null;
+      setStopError(error instanceof Error ? error.message : "Unable to stop response");
+    }
+  };
 
   const statusLabel = useMemo(() => {
     if (status === "connecting") return "Connecting…";
@@ -246,6 +276,30 @@ export function StreamingBubble({
       )}
       aria-live="polite"
     >
+      {status !== "complete" ? (
+        <div className="relative mb-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setIsStopMenuOpen((open) => !open)}
+            className="inline-flex h-7 items-center gap-1 rounded border border-destructive/60 px-2 text-[11px] font-semibold text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-haspopup="menu"
+            aria-expanded={isStopMenuOpen}
+          >
+            <Square className="h-3 w-3 fill-current" aria-hidden="true" /> Stop
+          </button>
+          {isStopMenuOpen ? (
+            <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded border border-border bg-popover p-1 shadow-lg" role="menu">
+              <button type="button" role="menuitem" onClick={() => void stopGeneration("edit")} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted">
+                <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Stop & edit prompt
+              </button>
+              <button type="button" role="menuitem" onClick={() => void stopGeneration("discard")} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-destructive hover:bg-destructive/10">
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Stop & discard
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {stopError ? <p className="mb-2 text-xs text-destructive">{stopError}</p> : null}
       <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />

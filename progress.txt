@@ -688,3 +688,7 @@
 - Decisions: the bridge captures the native imageGeneration item, exposes only registered generated artifacts to the server, bounds the fetched bytes, stores them in the existing uploads bucket, and persists an authenticated message-scoped image URL plus tool provenance; cancellation deletes any provisional image objects.
 - Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, src/app/shared/{codexBridge.server.ts,generatedImages.server.ts,markdown.server.test.ts}, src/app/pages/conversation/functions.ts, src/app/components/conversation/StreamingBubble.tsx, src/worker.tsx, progress.txt.
 - Notes: live ChatGPT-account QA returned a 1254x1254 PNG (897005 bytes); browser QA also exposed and fixed an early-stop race by queuing interrupts received before bridge registration.
+2026-07-22 — Kept cancellation reachable after established-card sends. Ref: stop/edit/discard browser QA on root and existing branches.
+- Decisions: the streaming bubble now owns the stop menu once a composer swaps into response mode; edit recovery stores one branch-scoped prompt in session storage, reloads the canonical post-cancellation graph, then consumes the prompt into the restored composer exactly once.
+- Files: src/app/components/conversation/{StreamingBubble.tsx,ConversationComposer.tsx,BranchColumn.tsx}, progress.txt.
+- Notes: this closes the root-card gap found in live QA while temporary draft cards continue to cancel inline without a reload.
