@@ -84,7 +84,10 @@ import {
   supportsReasoningEffortModel,
 } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
-import { mergeDictationText } from "@/app/components/conversation/dictation";
+import {
+  mergeDictationText,
+  requestMicrophoneAccess,
+} from "@/app/components/conversation/dictation";
 import {
   OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES,
   OPENROUTER_DEFAULT_REASONING_MODEL_CANDIDATES,
@@ -439,6 +442,7 @@ export function ConversationComposer({
   const [isDictating, setIsDictating] = useState(false);
   const [isDictationAvailable, setIsDictationAvailable] = useState(false);
   const [isDictationPermissionOpen, setIsDictationPermissionOpen] = useState(false);
+  const [isRequestingMicrophone, setIsRequestingMicrophone] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
@@ -888,7 +892,7 @@ export function ConversationComposer({
 
   useEffect(() => () => speechRecognitionRef.current?.abort(), []);
 
-  const toggleDictation = useCallback(() => {
+  const toggleDictation = useCallback(async () => {
     if (isDictating) {
       speechRecognitionRef.current?.stop();
       return;
@@ -902,6 +906,24 @@ export function ConversationComposer({
     if (!SpeechRecognition) {
       setError("Voice dictation is not available in this browser.");
       return;
+    }
+    const getUserMedia = window.navigator.mediaDevices?.getUserMedia?.bind(
+      window.navigator.mediaDevices,
+    );
+    if (!getUserMedia) {
+      setError("This browser cannot request microphone access for voice dictation.");
+      return;
+    }
+    setError(null);
+    setIsDictationPermissionOpen(false);
+    setIsRequestingMicrophone(true);
+    try {
+      await requestMicrophoneAccess(getUserMedia);
+    } catch {
+      setIsDictationPermissionOpen(true);
+      return;
+    } finally {
+      setIsRequestingMicrophone(false);
     }
     const recognition = new SpeechRecognition();
     const startingText = value;
@@ -1992,10 +2014,16 @@ export function ConversationComposer({
   const dictationButton = (
     <button
       type="button"
-      onClick={toggleDictation}
-      disabled={!isDictationAvailable || isPending}
+      onClick={() => void toggleDictation()}
+      disabled={!isDictationAvailable || isPending || isRequestingMicrophone}
       aria-pressed={isDictating}
-      aria-label={isDictating ? "Stop voice dictation" : "Start voice dictation"}
+      aria-label={
+        isRequestingMicrophone
+          ? "Requesting microphone access"
+          : isDictating
+            ? "Stop voice dictation"
+            : "Start voice dictation"
+      }
       title={
         isDictationAvailable
           ? isDictating
@@ -2008,7 +2036,9 @@ export function ConversationComposer({
         isDictating ? "border-destructive/60 text-destructive" : null,
       )}
     >
-      {isDictating ? (
+      {isRequestingMicrophone ? (
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+      ) : isDictating ? (
         <MicOff className="h-3 w-3" aria-hidden="true" />
       ) : (
         <Mic className="h-3 w-3" aria-hidden="true" />
@@ -2047,7 +2077,7 @@ export function ConversationComposer({
           </div>
           <button
             type="button"
-            onClick={toggleDictation}
+            onClick={() => void toggleDictation()}
             className="mt-3 inline-flex h-7 w-full items-center justify-center rounded border border-border bg-foreground px-2 text-[11px] font-semibold text-background hover:bg-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Try again
