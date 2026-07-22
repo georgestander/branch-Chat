@@ -708,3 +708,7 @@
 - Decisions: the common Permissions-Policy now allows microphone capture only from the same origin while geolocation and camera remain disabled; the header value is a tested contract.
 - Files: src/app/{headers.ts,headers.test.ts}, progress.txt.
 - Notes: live Chrome previously failed before showing a prompt because the app sent microphone=(); after reload the live response sends microphone=(self), Chrome completed its native permission request, and live speech was transcribed into the editable draft.
+2026-07-22 — Added ChatGPT-authenticated native dictation to the Codex bridge. Ref: native voice implementation checkpoint 1.
+- Decisions: the loopback-only bridge validates bounded mono 24 kHz PCM16 WAV input, streams it through an ephemeral Codex realtime v2 session, collects only the user transcript, permits one transcription at a time, and always stops and deletes the temporary thread. The signed-in Codex account remains the sole credential boundary.
+- Files: scripts/{codex-bridge.mjs,codex-bridge.test.mjs}, progress.txt.
+- Notes: a live synthetic speech probe returned the exact expected transcript through the installed Codex app-server; the backend rejected its nominal transcription session type, so the bridge uses a temporary conversational session instructed to remain silent and stops it as soon as the input transcript settles.

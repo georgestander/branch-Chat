@@ -2,20 +2,68 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildDictationFrames,
   buildTurnInputText,
   CodexAppServerClient,
   CodexProtocolError,
+  DictationRequestError,
   isLoopback,
   isMissingCodexContextError,
   normalizeAdditionalContext,
+  parsePcm16Wav,
   toHistoryItems,
 } from "./codex-bridge.mjs";
+
+function createPcm16Wav({ sampleRate = 24_000, channels = 1, samples = 480 } = {}) {
+  const dataBytes = samples * channels * 2;
+  const wav = Buffer.alloc(44 + dataBytes);
+  wav.write("RIFF", 0, "ascii");
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write("WAVE", 8, "ascii");
+  wav.write("fmt ", 12, "ascii");
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * channels * 2, 28);
+  wav.writeUInt16LE(channels * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36, "ascii");
+  wav.writeUInt32LE(dataBytes, 40);
+  return wav;
+}
 
 test("bridge accepts only loopback addresses", () => {
   assert.equal(isLoopback("127.0.0.1"), true);
   assert.equal(isLoopback("::1"), true);
   assert.equal(isLoopback("::ffff:127.0.0.1"), true);
   assert.equal(isLoopback("192.168.1.20"), false);
+});
+
+test("dictation WAV validation accepts only bounded mono 24 kHz PCM16", () => {
+  const parsed = parsePcm16Wav(createPcm16Wav());
+  assert.equal(parsed.samples, 480);
+  assert.equal(parsed.durationSeconds, 0.02);
+  assert.equal(parsed.pcm.byteLength, 960);
+
+  assert.throws(
+    () => parsePcm16Wav(createPcm16Wav({ sampleRate: 16_000 })),
+    (error) => error instanceof DictationRequestError && error.status === 400,
+  );
+  assert.throws(
+    () => parsePcm16Wav(createPcm16Wav({ samples: 24_000 * 121 })),
+    (error) => error instanceof DictationRequestError && error.status === 413,
+  );
+});
+
+test("dictation frames preserve PCM and append enough silence to settle speech", () => {
+  const { pcm } = parsePcm16Wav(createPcm16Wav());
+  const frames = buildDictationFrames(pcm);
+  assert.equal(frames.length, 2);
+  assert.equal(Buffer.from(frames[0].data, "base64").byteLength, pcm.byteLength);
+  assert.equal(frames[0].sampleRate, 24_000);
+  assert.equal(frames[0].numChannels, 1);
+  assert.equal(frames[1].samplesPerChannel, 18_000);
 });
 
 test("history injection keeps only non-empty chat messages", () => {
@@ -240,6 +288,63 @@ test("thread cleanup is idempotent for already-missing contexts", async () => {
     "thread-live",
     "thread-missing",
   ]);
+});
+
+test("dictation uses a temporary realtime thread and always deletes it", async () => {
+  const calls = [];
+  const client = createProtocolClient(async (method, params) => {
+    calls.push({ method, params });
+    if (method === "thread/start") return { thread: { id: "dictation-thread" } };
+    if (method === "thread/realtime/appendAudio" && calls.filter((call) => call.method === method).length === 2) {
+      queueMicrotask(() => {
+        for (const listener of client.listeners) {
+          listener({
+            method: "thread/realtime/transcript/done",
+            params: { threadId: "dictation-thread", role: "user", text: "hello branch chat" },
+          });
+        }
+      });
+    }
+    return {};
+  });
+  client.start = async () => {};
+
+  const result = await client.transcribeWav(createPcm16Wav(), { timeoutMs: 2_000 });
+
+  assert.equal(result.transcript, "hello branch chat");
+  assert.deepEqual(calls.map((call) => call.method), [
+    "thread/start",
+    "thread/realtime/start",
+    "thread/realtime/appendAudio",
+    "thread/realtime/appendAudio",
+    "thread/realtime/stop",
+    "thread/delete",
+  ]);
+  assert.equal(calls[0].params.ephemeral, true);
+  assert.equal(calls[1].params.version, "v2");
+  assert.equal(calls[1].params.includeStartupContext, false);
+  assert.match(calls[1].params.prompt, /Remain silent/);
+  assert.equal(client.activeTranscription, false);
+});
+
+test("dictation timeout still stops realtime and deletes its temporary thread", async () => {
+  const calls = [];
+  const client = createProtocolClient(async (method, params) => {
+    calls.push({ method, params });
+    if (method === "thread/start") return { thread: { id: "dictation-timeout" } };
+    return {};
+  });
+  client.start = async () => {};
+
+  await assert.rejects(
+    () => client.transcribeWav(createPcm16Wav(), { timeoutMs: 5 }),
+    (error) => error instanceof DictationRequestError && error.status === 504,
+  );
+  assert.deepEqual(calls.slice(-2).map((call) => call.method), [
+    "thread/realtime/stop",
+    "thread/delete",
+  ]);
+  assert.equal(client.activeTranscription, false);
 });
 
 test("turn/start sends folded plain-text context without experimental fields", async () => {

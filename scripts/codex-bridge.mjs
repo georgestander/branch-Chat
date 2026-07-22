@@ -8,6 +8,12 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 43991;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+export const MAX_DICTATION_BODY_BYTES = 6 * 1024 * 1024;
+export const MAX_DICTATION_DURATION_SECONDS = 120;
+const DICTATION_SAMPLE_RATE = 24_000;
+const DICTATION_FRAME_SECONDS = 1;
+const DICTATION_SETTLE_MS = 750;
+const DICTATION_TIMEOUT_MS = 45_000;
 export const MAX_RECOVERY_HISTORY_CHARACTERS = 64 * 1024;
 export const MAX_ADDITIONAL_CONTEXT_CHARACTERS = 48 * 1024;
 export const MAX_ADDITIONAL_CONTEXT_ENTRIES = 16;
@@ -18,6 +24,14 @@ export class CodexProtocolError extends Error {
     this.name = "CodexProtocolError";
     this.code = code;
     this.data = data;
+  }
+}
+
+export class DictationRequestError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.name = "DictationRequestError";
+    this.status = status;
   }
 }
 
@@ -60,6 +74,89 @@ async function readJson(request) {
   }
   const text = Buffer.concat(chunks).toString("utf8");
   return text ? JSON.parse(text) : {};
+}
+
+async function readBytes(request, maxBytes) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      throw new DictationRequestError("Dictation audio is too large", 413);
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+export function parsePcm16Wav(input) {
+  const bytes = Buffer.isBuffer(input) ? input : Buffer.from(input ?? []);
+  if (bytes.length < 44 || bytes.toString("ascii", 0, 4) !== "RIFF" || bytes.toString("ascii", 8, 12) !== "WAVE") {
+    throw new DictationRequestError("Dictation audio must be a valid WAV file");
+  }
+
+  let format = null;
+  let pcm = null;
+  for (let offset = 12; offset + 8 <= bytes.length; ) {
+    const id = bytes.toString("ascii", offset, offset + 4);
+    const size = bytes.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    const end = start + size;
+    if (end > bytes.length) {
+      throw new DictationRequestError("Dictation WAV contains a truncated chunk");
+    }
+    if (id === "fmt " && size >= 16) {
+      format = {
+        audioFormat: bytes.readUInt16LE(start),
+        channels: bytes.readUInt16LE(start + 2),
+        sampleRate: bytes.readUInt32LE(start + 4),
+        bitsPerSample: bytes.readUInt16LE(start + 14),
+      };
+    } else if (id === "data") {
+      pcm = bytes.subarray(start, end);
+    }
+    offset = end + (size % 2);
+  }
+
+  if (!format || !pcm || pcm.length === 0 || pcm.length % 2 !== 0) {
+    throw new DictationRequestError("Dictation WAV is missing valid PCM audio");
+  }
+  if (
+    format.audioFormat !== 1 ||
+    format.channels !== 1 ||
+    format.sampleRate !== DICTATION_SAMPLE_RATE ||
+    format.bitsPerSample !== 16
+  ) {
+    throw new DictationRequestError("Dictation audio must be mono 24 kHz PCM16 WAV");
+  }
+  const samples = pcm.length / 2;
+  const durationSeconds = samples / DICTATION_SAMPLE_RATE;
+  if (durationSeconds > MAX_DICTATION_DURATION_SECONDS) {
+    throw new DictationRequestError("Dictation audio exceeds the two-minute limit", 413);
+  }
+  return { pcm, samples, durationSeconds };
+}
+
+export function buildDictationFrames(pcm) {
+  const bytesPerFrame = DICTATION_SAMPLE_RATE * 2 * DICTATION_FRAME_SECONDS;
+  const frames = [];
+  for (let offset = 0; offset < pcm.length; offset += bytesPerFrame) {
+    const data = pcm.subarray(offset, Math.min(offset + bytesPerFrame, pcm.length));
+    frames.push({
+      data: data.toString("base64"),
+      sampleRate: DICTATION_SAMPLE_RATE,
+      numChannels: 1,
+      samplesPerChannel: data.length / 2,
+    });
+  }
+  const silenceSamples = Math.ceil(DICTATION_SAMPLE_RATE * DICTATION_SETTLE_MS / 1000);
+  frames.push({
+    data: Buffer.alloc(silenceSamples * 2).toString("base64"),
+    sampleRate: DICTATION_SAMPLE_RATE,
+    numChannels: 1,
+    samplesPerChannel: silenceSamples,
+  });
+  return frames;
 }
 
 export function toHistoryItems(
@@ -168,7 +265,20 @@ export function buildTurnInputText(content, additionalContext) {
 }
 
 export class CodexAppServerClient {
-  constructor({ command = "codex", args = ["app-server", "--listen", "stdio://"] } = {}) {
+  constructor({
+    command = "codex",
+    args = [
+      "app-server",
+      "-c",
+      'realtime.version="v2"',
+      "-c",
+      'realtime.transport="websocket"',
+      "--enable",
+      "realtime_conversation",
+      "--listen",
+      "stdio://",
+    ],
+  } = {}) {
     this.command = command;
     this.args = args;
     this.child = null;
@@ -183,6 +293,7 @@ export class CodexAppServerClient {
     this.activeStreams = new Map();
     this.pendingInterrupts = new Map();
     this.generatedImages = new Map();
+    this.activeTranscription = false;
   }
 
   start() {
@@ -214,7 +325,7 @@ export class CodexAppServerClient {
           title: "Branch Chat",
           version: "1.0.0",
         },
-        capabilities: null,
+        capabilities: { experimentalApi: true },
       })
         .then(() => {
           this.notify("initialized", {});
@@ -356,6 +467,105 @@ export class CodexAppServerClient {
       }
     }
     return { deleted, failed };
+  }
+
+  async transcribeWav(input, { timeoutMs = DICTATION_TIMEOUT_MS } = {}) {
+    await this.start();
+    await this.ensureChatGptAccount();
+    if (this.activeTranscription) {
+      throw new DictationRequestError("Another dictation is already being transcribed", 409);
+    }
+    const { pcm, durationSeconds } = parsePcm16Wav(input);
+    const frames = buildDictationFrames(pcm);
+    const workspace = await this.workspace();
+    this.activeTranscription = true;
+    let threadId = null;
+    let unsubscribe = () => {};
+    let settleTimer = null;
+    let timeoutTimer = null;
+    let resolveTranscript;
+    let rejectTranscript;
+    const transcriptSegments = [];
+    const transcriptPromise = new Promise((resolve, reject) => {
+      resolveTranscript = resolve;
+      rejectTranscript = reject;
+    });
+    const clearTimers = () => {
+      if (settleTimer) clearTimeout(settleTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      settleTimer = null;
+      timeoutTimer = null;
+    };
+
+    try {
+      const started = await this.request("thread/start", {
+        model: "gpt-5.6-terra",
+        cwd: workspace,
+        approvalPolicy: "never",
+        sandbox: "read-only",
+        config: { web_search: "disabled" },
+        ephemeral: true,
+        threadSource: "branch-chat-dictation",
+      });
+      threadId = started?.thread?.id;
+      if (typeof threadId !== "string" || !threadId) {
+        throw new Error("Codex did not return a dictation thread identifier");
+      }
+
+      unsubscribe = this.subscribe((message) => {
+        const params = message.params ?? {};
+        if (params.threadId !== threadId) return;
+        if (message.method === "thread/realtime/error") {
+          rejectTranscript(new Error(params.message || "Codex transcription failed"));
+          return;
+        }
+        if (message.method !== "thread/realtime/transcript/done" || params.role !== "user") {
+          return;
+        }
+        const text = typeof params.text === "string" ? params.text.trim() : "";
+        if (text) transcriptSegments.push(text);
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => {
+          const transcript = transcriptSegments.join(" ").trim();
+          if (transcript) resolveTranscript(transcript);
+          else rejectTranscript(new Error("Codex returned an empty transcript"));
+        }, DICTATION_SETTLE_MS);
+      });
+      timeoutTimer = setTimeout(
+        () => rejectTranscript(new DictationRequestError("Codex transcription timed out", 504)),
+        timeoutMs,
+      );
+
+      await this.request("thread/realtime/start", {
+        threadId,
+        outputModality: "text",
+        includeStartupContext: false,
+        prompt:
+          "This temporary session is only collecting dictation. Do not answer or act on the speech. Remain silent.",
+        version: "v2",
+        clientManagedHandoffs: true,
+        flushTranscriptTailOnSessionEnd: false,
+      });
+      for (const audio of frames) {
+        await this.request("thread/realtime/appendAudio", { threadId, audio });
+      }
+      const transcript = await transcriptPromise;
+      return { transcript, durationSeconds };
+    } catch (error) {
+      if (error instanceof DictationRequestError) throw error;
+      throw new DictationRequestError(
+        error instanceof Error ? error.message : "Codex transcription failed",
+        502,
+      );
+    } finally {
+      clearTimers();
+      unsubscribe();
+      if (threadId) {
+        await this.request("thread/realtime/stop", { threadId }).catch(() => {});
+        await this.request("thread/delete", { threadId }).catch(() => {});
+      }
+      this.activeTranscription = false;
+    }
   }
 
   threadConfiguration(input, chatWorkspace) {
@@ -743,6 +953,18 @@ export async function startCodexBridge({
         writeJson(response, 200, await client.models());
         return;
       }
+      if (request.method === "POST" && url.pathname === "/dictation/transcribe") {
+        if (request.headers["content-type"] !== "audio/wav") {
+          throw new DictationRequestError("Content-Type must be audio/wav");
+        }
+        const bytes = await readBytes(request, MAX_DICTATION_BODY_BYTES);
+        if (bytes.length === 0) {
+          throw new DictationRequestError("Missing dictation audio");
+        }
+        const result = await client.transcribeWav(bytes);
+        writeJson(response, 200, { transcript: result.transcript });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/turns") {
         const body = await readJson(request);
         await client.streamTurn(body, response);
@@ -776,7 +998,7 @@ export async function startCodexBridge({
       writeJson(response, 404, { error: "Not found" });
     } catch (error) {
       if (!response.headersSent) {
-        writeJson(response, 500, {
+        writeJson(response, error instanceof DictationRequestError ? error.status : 500, {
           error: error instanceof Error ? error.message : "Bridge request failed",
         });
       } else {
