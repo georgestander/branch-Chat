@@ -507,6 +507,10 @@ export function BranchColumn({
       return;
     }
     if (!shouldHonorPersistedStreamId) {
+      if (hasPendingOptimisticSend) {
+        setActiveStreamId(persistedStreamId);
+        return;
+      }
       clearActiveStreamId({
         conversationId,
         branchId: branch.id,
@@ -518,6 +522,7 @@ export function BranchColumn({
     activeStreamId,
     branch.id,
     conversationId,
+    hasPendingOptimisticSend,
     shouldHonorPersistedStreamId,
   ]);
 
@@ -667,6 +672,12 @@ export function BranchColumn({
                 onBranchCreated={onBranchCreated ?? (() => undefined)}
                 onStartBranchDraft={onStartBranchDraft}
                 showWholeReplyAction={showWholeReplyAction}
+                activeStreamId={effectiveActiveStreamId}
+                originalPrompt={
+                  [...visibleMessages]
+                    .reverse()
+                    .find((candidate) => candidate.role === "user")?.content ?? null
+                }
               />
             </li>
           ))}
@@ -742,6 +753,8 @@ function MessageBubble({
   onBranchCreated,
   onStartBranchDraft,
   showWholeReplyAction,
+  activeStreamId,
+  originalPrompt,
 }: {
   message: RenderedMessage;
   isActive: boolean;
@@ -751,6 +764,8 @@ function MessageBubble({
   onBranchCreated: (response: SendMessageResponse) => void;
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
   showWholeReplyAction: boolean;
+  activeStreamId: string | null;
+  originalPrompt: string | null;
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
@@ -780,14 +795,24 @@ function MessageBubble({
           showWholeReplyAction={showWholeReplyAction}
         />
         {isStreaming ? (
-          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:120ms]" />
-              <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
-            </span>
-            <span>Streaming response…</span>
-          </div>
+          activeStreamId ? (
+            <StreamingBubble
+              streamId={activeStreamId}
+              conversationId={conversationId}
+              branchId={branch.id}
+              originalPrompt={originalPrompt}
+              compact
+            />
+          ) : (
+            <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/70" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:120ms]" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:240ms]" />
+              </span>
+              <span>Preparing response…</span>
+            </div>
+          )
         ) : null}
       </div>
     );

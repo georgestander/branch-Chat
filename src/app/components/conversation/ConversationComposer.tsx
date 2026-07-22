@@ -62,8 +62,8 @@ import {
   emitOptimisticMessageClear,
   emitPersistedMessages,
 } from "@/app/components/conversation/messageEvents";
-import { emitStartStreaming } from "@/app/components/conversation/streamingEvents";
-import { cancelledPromptStorageKey, StreamingBubble } from "@/app/components/conversation/StreamingBubble";
+import { clearStreamPrompt, emitStartStreaming, writeStreamPrompt } from "@/app/components/conversation/streamingEvents";
+import { cancelledConversationPromptStorageKey, cancelledPromptStorageKey, StreamingBubble } from "@/app/components/conversation/StreamingBubble";
 import {
   BYOK_STATUS_CHANGED_EVENT,
   emitByokStatusChanged,
@@ -875,9 +875,11 @@ export function ConversationComposer({
         Boolean(speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition),
       );
       const recoveredPromptKey = cancelledPromptStorageKey(conversationId, branchId);
-      const recoveredPrompt = window.sessionStorage.getItem(recoveredPromptKey);
+      const conversationRecoveryKey = cancelledConversationPromptStorageKey(conversationId);
+      const recoveredPrompt =
+        window.sessionStorage.getItem(recoveredPromptKey) ??
+        window.sessionStorage.getItem(conversationRecoveryKey);
       if (recoveredPrompt) {
-        window.sessionStorage.removeItem(recoveredPromptKey);
         setValue(recoveredPrompt);
       }
     }
@@ -1633,6 +1635,8 @@ export function ConversationComposer({
     }
 
     setError(null);
+    window.sessionStorage.removeItem(cancelledPromptStorageKey(conversationId, branchId));
+    window.sessionStorage.removeItem(cancelledConversationPromptStorageKey(conversationId));
     pendingContentRef.current = content;
     cancellationModeRef.current = null;
     const readyAttachmentIds = attachments
@@ -1658,6 +1662,7 @@ export function ConversationComposer({
         ? crypto.randomUUID()
         : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setActiveStreamId(streamId);
+    writeStreamPrompt(streamId, content);
     let draftSubscriberReady: Promise<void> | null = null;
     if (isBranchDraft) {
       settleDraftStreamWaiter();
@@ -1728,6 +1733,7 @@ export function ConversationComposer({
           cancellationModeRef.current = null;
           return;
         }
+        clearStreamPrompt(streamId);
         setValue("");
         setAttachments([]);
         attachmentsRef.current = [];
@@ -1823,6 +1829,7 @@ export function ConversationComposer({
           scheduleRefresh(4000);
         }
       } catch (cause) {
+        clearStreamPrompt(streamId);
         setActiveStreamId(null);
         setIsStopMenuOpen(false);
         if (!isBranchDraft) {
@@ -1935,6 +1942,12 @@ export function ConversationComposer({
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     submitMessage();
+  };
+
+  const handleComposerValueChange = (nextValue: string) => {
+    window.sessionStorage.removeItem(cancelledPromptStorageKey(conversationId, branchId));
+    window.sessionStorage.removeItem(cancelledConversationPromptStorageKey(conversationId));
+    setValue(nextValue);
   };
 
   const stopControls = isPending && activeStreamId ? (
@@ -2292,7 +2305,7 @@ export function ConversationComposer({
             id="branch-draft-composer"
             ref={textareaRef}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => handleComposerValueChange(event.target.value)}
             placeholder={
               isBranchDraft
                 ? "Write a note or ask the model…"
@@ -2317,6 +2330,7 @@ export function ConversationComposer({
                 branchId={branchDraft.parentBranchId}
                 compact
                 emitCompletionEvent={false}
+                showStopControls={false}
                 onConnected={settleDraftStreamWaiter}
               />
             </div>
@@ -2688,7 +2702,7 @@ export function ConversationComposer({
               id="conversation-composer"
               ref={textareaRef}
               value={value}
-              onChange={(event) => setValue(event.target.value)}
+              onChange={(event) => handleComposerValueChange(event.target.value)}
               placeholder={
                 isBranchDraft
                   ? "Write a note or ask the model…"
@@ -3067,7 +3081,7 @@ export function ConversationComposer({
                 </div>
                 <textarea
                   value={value}
-                  onChange={(event) => setValue(event.target.value)}
+                  onChange={(event) => handleComposerValueChange(event.target.value)}
                   autoFocus
                   placeholder="Ask Connexus to explore a new direction..."
                   className="h-64 w-full resize-none rounded border border-border bg-background px-4 py-3 text-base text-foreground shadow-inner focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"

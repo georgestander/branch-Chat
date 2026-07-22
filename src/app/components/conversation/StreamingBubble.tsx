@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
-import { emitCompleteStreaming } from "@/app/components/conversation/streamingEvents";
+import { clearStreamPrompt, emitCompleteStreaming, readStreamPrompt } from "@/app/components/conversation/streamingEvents";
 import { cancelMessage } from "@/app/pages/conversation/functions";
 import { Pencil, Square, Trash2 } from "lucide-react";
 
@@ -16,10 +16,15 @@ interface StreamingBubbleProps {
   emitCompletionEvent?: boolean;
   onConnected?: (streamId: string) => void;
   originalPrompt?: string | null;
+  showStopControls?: boolean;
 }
 
 export function cancelledPromptStorageKey(conversationId: string, branchId: string) {
   return `connexus:cancelled-prompt:${conversationId}:${branchId}`;
+}
+
+export function cancelledConversationPromptStorageKey(conversationId: string) {
+  return `connexus:cancelled-prompt:${conversationId}`;
 }
 
 export function StreamingBubble({
@@ -31,6 +36,7 @@ export function StreamingBubble({
   emitCompletionEvent = true,
   onConnected,
   originalPrompt = null,
+  showStopControls = true,
 }: StreamingBubbleProps) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<
@@ -198,6 +204,7 @@ export function StreamingBubble({
         }
       } catch {}
       setStatus("complete");
+      clearStreamPrompt(streamId);
       es.close();
       if (emitCompletionEvent) {
         try {
@@ -220,13 +227,21 @@ export function StreamingBubble({
       if (emitCompletionEvent) {
         emitCompleteStreaming({ conversationId, branchId, streamId });
       }
-      if (cancellationModeRef.current === "edit" && originalPrompt) {
+      const promptToRestore = originalPrompt || readStreamPrompt(streamId);
+      if (cancellationModeRef.current === "edit" && promptToRestore) {
         window.sessionStorage.setItem(
           cancelledPromptStorageKey(conversationId, branchId),
-          originalPrompt,
+          promptToRestore,
+        );
+        window.sessionStorage.setItem(
+          cancelledConversationPromptStorageKey(conversationId),
+          promptToRestore,
         );
       }
-      window.location.reload();
+      clearStreamPrompt(streamId);
+      if (showStopControls) {
+        window.location.reload();
+      }
     };
 
     es.addEventListener("open", onOpen as EventListener);
@@ -245,16 +260,30 @@ export function StreamingBubble({
       } catch {}
       sourceRef.current = null;
     };
-  }, [branchId, conversationId, emitCompletionEvent, originalPrompt, streamId]);
+  }, [branchId, conversationId, emitCompletionEvent, originalPrompt, showStopControls, streamId]);
 
   const stopGeneration = async (mode: "edit" | "discard") => {
     cancellationModeRef.current = mode;
     setIsStopMenuOpen(false);
     setStopError(null);
+    const recoveryKey = cancelledPromptStorageKey(conversationId, branchId);
+    const conversationRecoveryKey = cancelledConversationPromptStorageKey(conversationId);
+    if (mode === "edit") {
+      const promptToRestore = originalPrompt || readStreamPrompt(streamId);
+      if (promptToRestore) {
+        window.sessionStorage.setItem(recoveryKey, promptToRestore);
+        window.sessionStorage.setItem(conversationRecoveryKey, promptToRestore);
+      }
+    } else {
+      window.sessionStorage.removeItem(recoveryKey);
+      window.sessionStorage.removeItem(conversationRecoveryKey);
+    }
     try {
       await cancelMessage({ conversationId, streamId });
     } catch (error) {
       cancellationModeRef.current = null;
+      window.sessionStorage.removeItem(recoveryKey);
+      window.sessionStorage.removeItem(conversationRecoveryKey);
       setStopError(error instanceof Error ? error.message : "Unable to stop response");
     }
   };
@@ -276,7 +305,7 @@ export function StreamingBubble({
       )}
       aria-live="polite"
     >
-      {status !== "complete" ? (
+      {showStopControls && status !== "complete" ? (
         <div className="relative mb-2 flex justify-end">
           <button
             type="button"

@@ -692,3 +692,7 @@
 - Decisions: the streaming bubble now owns the stop menu once a composer swaps into response mode; edit recovery stores one branch-scoped prompt in session storage, reloads the canonical post-cancellation graph, then consumes the prompt into the restored composer exactly once.
 - Files: src/app/components/conversation/{StreamingBubble.tsx,ConversationComposer.tsx,BranchColumn.tsx}, progress.txt.
 - Notes: this closes the root-card gap found in live QA while temporary draft cards continue to cancel inline without a reload.
+2026-07-22 — Finished cancellation recovery across optimistic remounts and temporary drafts. Ref: root and provisional-child stop/edit/discard browser QA.
+- Decisions: the prompt is bound to its stream until canonical completion, pending optimistic streams survive the card remount, cancellation updates the branch before deleting provisional messages, and an embedded draft stream delegates recovery to its composer instead of reloading the page.
+- Files: src/app/pages/conversation/functions.ts, src/app/components/conversation/{BranchColumn.tsx,ConversationComposer.tsx,StreamingBubble.tsx,streamingEvents.ts}, progress.txt.
+- Notes: live QA confirmed exact prompt restoration after stop-and-edit, no lingering pending controls, one Stop control per temporary card, and complete draft removal after stop-and-discard.

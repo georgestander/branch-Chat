@@ -1417,11 +1417,6 @@ async function sendMessageWithCodex(options: {
           createdBranch
             ? [{ type: "branch:delete", conversationId, branchId }]
             : [
-                {
-                  type: "message:delete",
-                  conversationId,
-                  messageIds: [userMessage.id, assistantMessage.id],
-                },
                 ...(appended.snapshot.branches[branchId]
                   ? [
                       {
@@ -1434,6 +1429,11 @@ async function sendMessageWithCodex(options: {
                       },
                     ]
                   : []),
+                {
+                  type: "message:delete" as const,
+                  conversationId,
+                  messageIds: [userMessage.id, assistantMessage.id],
+                },
               ];
         const cancelledApplied = await applyConversationUpdates(
           ctx,

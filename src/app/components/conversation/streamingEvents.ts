@@ -3,6 +3,7 @@
 export const START_STREAMING_EVENT = "connexus:stream:start";
 export const COMPLETE_STREAMING_EVENT = "connexus:stream:complete";
 const STREAM_STORAGE_PREFIX = "connexus:stream:active:";
+const STREAM_PROMPT_PREFIX = "connexus:stream:prompt:";
 
 export type StartStreamingDetail = {
   conversationId: string;
@@ -65,6 +66,29 @@ export function clearActiveStreamId(options: {
   } catch {
     // Best effort only.
   }
+}
+
+export function writeStreamPrompt(streamId: string, prompt: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(`${STREAM_PROMPT_PREFIX}${streamId}`, prompt);
+  } catch {}
+}
+
+export function readStreamPrompt(streamId: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage.getItem(`${STREAM_PROMPT_PREFIX}${streamId}`);
+  } catch {
+    return null;
+  }
+}
+
+export function clearStreamPrompt(streamId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(`${STREAM_PROMPT_PREFIX}${streamId}`);
+  } catch {}
 }
 
 export function emitStartStreaming(detail: StartStreamingDetail) {
