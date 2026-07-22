@@ -85,8 +85,10 @@ import {
 } from "@/lib/openai/models";
 import { useToast } from "@/app/components/ui/Toast";
 import {
+  decodeRecordedAudio,
+  DICTATION_MAX_DURATION_MS,
   mergeDictationText,
-  requestMicrophoneAccess,
+  transcribeRecordedAudio,
 } from "@/app/components/conversation/dictation";
 import {
   OPENROUTER_DEFAULT_CHAT_MODEL_CANDIDATES,
@@ -129,23 +131,13 @@ type FloatingModelMenuPosition = {
   maxHeight: number;
 };
 
-type SpeechRecognitionEventLike = {
-  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
-};
-
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: { error?: string }) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-};
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type DictationPhase =
+  | "idle"
+  | "requesting"
+  | "recording"
+  | "processing"
+  | "transcribing"
+  | "failed";
 
 const TOOL_OPTIONS: ToolOption[] = [
   {
@@ -439,10 +431,9 @@ export function ConversationComposer({
   const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
   const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
-  const [isDictating, setIsDictating] = useState(false);
+  const [dictationPhase, setDictationPhase] = useState<DictationPhase>("idle");
   const [isDictationAvailable, setIsDictationAvailable] = useState(false);
   const [isDictationPermissionOpen, setIsDictationPermissionOpen] = useState(false);
-  const [isRequestingMicrophone, setIsRequestingMicrophone] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
@@ -484,7 +475,12 @@ export function ConversationComposer({
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
   const pendingContentRef = useRef("");
-  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const dictationChunksRef = useRef<Blob[]>([]);
+  const dictationWavRef = useRef<Uint8Array | null>(null);
+  const dictationLimitTimerRef = useRef<number | null>(null);
+  const dictationAbortRef = useRef<AbortController | null>(null);
   const cancellationModeRef = useRef<"edit" | "discard" | null>(null);
   const draftStreamWaiterRef = useRef<{
     streamId: string;
@@ -872,12 +868,10 @@ export function ConversationComposer({
   useEffect(() => {
     if (typeof window !== "undefined") {
       setIsBrowser(true);
-      const speechWindow = window as typeof window & {
-        SpeechRecognition?: SpeechRecognitionConstructor;
-        webkitSpeechRecognition?: SpeechRecognitionConstructor;
-      };
       setIsDictationAvailable(
-        Boolean(speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition),
+        typeof window.navigator.mediaDevices?.getUserMedia === "function" &&
+        typeof window.MediaRecorder === "function" &&
+        typeof window.AudioContext === "function",
       );
       const recoveredPromptKey = cancelledPromptStorageKey(conversationId, branchId);
       const conversationRecoveryKey = cancelledConversationPromptStorageKey(conversationId);
@@ -890,73 +884,171 @@ export function ConversationComposer({
     }
   }, [branchId, conversationId]);
 
-  useEffect(() => () => speechRecognitionRef.current?.abort(), []);
+  const releaseMicrophone = useCallback(() => {
+    for (const track of microphoneStreamRef.current?.getTracks() ?? []) {
+      track.stop();
+    }
+    microphoneStreamRef.current = null;
+    if (dictationLimitTimerRef.current !== null) {
+      window.clearTimeout(dictationLimitTimerRef.current);
+      dictationLimitTimerRef.current = null;
+    }
+  }, []);
+
+  const submitRecordedDictation = useCallback(async (wav: Uint8Array) => {
+    dictationAbortRef.current?.abort();
+    const controller = new AbortController();
+    dictationAbortRef.current = controller;
+    setDictationPhase("transcribing");
+    setError(null);
+    try {
+      const transcript = await transcribeRecordedAudio(wav, controller.signal);
+      setValue((current) => mergeDictationText(current, transcript));
+      dictationWavRef.current = null;
+      setDictationPhase("idle");
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
+    } catch (transcriptionError) {
+      if (
+        transcriptionError instanceof DOMException &&
+        transcriptionError.name === "AbortError"
+      ) {
+        return;
+      }
+      setDictationPhase("failed");
+      setError(
+        transcriptionError instanceof Error
+          ? `${transcriptionError.message} Your recording is kept for retry.`
+          : "Voice transcription failed. Your recording is kept for retry.",
+      );
+    } finally {
+      if (dictationAbortRef.current === controller) {
+        dictationAbortRef.current = null;
+      }
+    }
+  }, []);
+
+  const stopDictationRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.stop();
+    }
+    if (dictationLimitTimerRef.current !== null) {
+      window.clearTimeout(dictationLimitTimerRef.current);
+      dictationLimitTimerRef.current = null;
+    }
+  }, []);
 
   const toggleDictation = useCallback(async () => {
-    if (isDictating) {
-      speechRecognitionRef.current?.stop();
+    if (dictationPhase === "recording") {
+      stopDictationRecording();
       return;
     }
-    const speechWindow = window as typeof window & {
-      SpeechRecognition?: SpeechRecognitionConstructor;
-      webkitSpeechRecognition?: SpeechRecognitionConstructor;
-    };
-    const SpeechRecognition =
-      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError("Voice dictation is not available in this browser.");
+    if (dictationPhase === "failed" && dictationWavRef.current) {
+      await submitRecordedDictation(dictationWavRef.current);
       return;
     }
+    if (dictationPhase !== "idle") return;
     const getUserMedia = window.navigator.mediaDevices?.getUserMedia?.bind(
       window.navigator.mediaDevices,
     );
-    if (!getUserMedia) {
-      setError("This browser cannot request microphone access for voice dictation.");
+    if (
+      !getUserMedia ||
+      typeof window.MediaRecorder !== "function" ||
+      typeof window.AudioContext !== "function"
+    ) {
+      setError("Voice dictation is not available in this browser.");
       return;
     }
     setError(null);
     setIsDictationPermissionOpen(false);
-    setIsRequestingMicrophone(true);
+    setDictationPhase("requesting");
+    let stream: MediaStream;
     try {
-      await requestMicrophoneAccess(getUserMedia);
+      stream = await getUserMedia({
+        audio: {
+          autoGainControl: true,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
     } catch {
+      setDictationPhase("idle");
       setIsDictationPermissionOpen(true);
       return;
-    } finally {
-      setIsRequestingMicrophone(false);
     }
-    const recognition = new SpeechRecognition();
-    const startingText = value;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = navigator.language || "en-US";
-    recognition.onresult = (event) => {
-      let transcript = "";
-      for (let index = 0; index < event.results.length; index += 1) {
-        transcript += event.results[index]?.[0]?.transcript ?? "";
-      }
-      setValue(mergeDictationText(startingText, transcript));
-    };
-    recognition.onerror = (event) => {
-      setIsDictating(false);
-      if (event.error === "not-allowed") {
-        setError(null);
-        setIsDictationPermissionOpen(true);
-        return;
-      }
-      setError("Voice dictation stopped unexpectedly. Your transcript is still editable.");
-    };
-    recognition.onend = () => {
-      speechRecognitionRef.current = null;
-      setIsDictating(false);
-      window.setTimeout(() => textareaRef.current?.focus(), 0);
-    };
-    speechRecognitionRef.current = recognition;
-    setError(null);
-    setIsDictationPermissionOpen(false);
-    setIsDictating(true);
-    recognition.start();
-  }, [isDictating, value]);
+
+    try {
+      const recorder = new MediaRecorder(stream);
+      microphoneStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      dictationChunksRef.current = [];
+      dictationWavRef.current = null;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) dictationChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        recorder.onstop = null;
+        if (recorder.state === "recording") recorder.stop();
+        dictationChunksRef.current = [];
+        releaseMicrophone();
+        mediaRecorderRef.current = null;
+        setDictationPhase("idle");
+        setError("Voice recording stopped unexpectedly. Please try again.");
+      };
+      recorder.onstop = () => {
+        const chunks = dictationChunksRef.current;
+        dictationChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        releaseMicrophone();
+        setDictationPhase("processing");
+        void (async () => {
+          try {
+            const blob = new Blob(chunks, {
+              type: recorder.mimeType || chunks[0]?.type || "audio/webm",
+            });
+            const wav = await decodeRecordedAudio(blob, () => new window.AudioContext());
+            dictationWavRef.current = wav;
+            await submitRecordedDictation(wav);
+          } catch (processingError) {
+            setDictationPhase("idle");
+            setError(
+              processingError instanceof Error
+                ? processingError.message
+                : "The recorded audio could not be prepared for transcription.",
+            );
+          }
+        })();
+      };
+      recorder.start();
+      setDictationPhase("recording");
+      dictationLimitTimerRef.current = window.setTimeout(
+        stopDictationRecording,
+        DICTATION_MAX_DURATION_MS,
+      );
+    } catch {
+      for (const track of stream.getTracks()) track.stop();
+      setDictationPhase("idle");
+      setError("This browser could not start voice recording.");
+    }
+  }, [
+    dictationPhase,
+    releaseMicrophone,
+    stopDictationRecording,
+    submitRecordedDictation,
+  ]);
+
+  useEffect(() => () => {
+    dictationAbortRef.current?.abort();
+    const recorder = mediaRecorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state === "recording") recorder.stop();
+    }
+    releaseMicrophone();
+  }, [releaseMicrophone]);
 
   useEffect(() => {
     if (!isToolMenuOpen) {
@@ -1612,6 +1704,12 @@ export function ConversationComposer({
   ]);
   const sendDisabledReason = isPending
     ? "Sending..."
+    : dictationPhase === "requesting"
+      ? "Starting microphone..."
+      : dictationPhase === "recording"
+        ? "Finish dictation before sending"
+        : dictationPhase === "processing" || dictationPhase === "transcribing"
+          ? "Transcribing dictation..."
     : hasPendingAttachments
       ? "Attachments uploading"
       : hasErroredAttachments
@@ -1623,6 +1721,14 @@ export function ConversationComposer({
 
   const submitMessage = (): boolean => {
     if (isPending) {
+      return false;
+    }
+    if (
+      dictationPhase === "requesting" ||
+      dictationPhase === "recording" ||
+      dictationPhase === "processing" ||
+      dictationPhase === "transcribing"
+    ) {
       return false;
     }
 
@@ -2011,35 +2117,51 @@ export function ConversationComposer({
       ) : null}
     </div>
   ) : null;
+  const isDictating = dictationPhase === "recording";
+  const isDictationBusy =
+    dictationPhase === "requesting" ||
+    dictationPhase === "processing" ||
+    dictationPhase === "transcribing";
+  const canRetryDictation =
+    dictationPhase === "failed" && dictationWavRef.current !== null;
   const dictationButton = (
     <button
       type="button"
       onClick={() => void toggleDictation()}
-      disabled={!isDictationAvailable || isPending || isRequestingMicrophone}
+      disabled={!isDictationAvailable || isPending || isDictationBusy}
       aria-pressed={isDictating}
       aria-label={
-        isRequestingMicrophone
+        dictationPhase === "requesting"
           ? "Requesting microphone access"
+          : dictationPhase === "processing" || dictationPhase === "transcribing"
+            ? "Transcribing voice dictation"
           : isDictating
             ? "Stop voice dictation"
+            : canRetryDictation
+              ? "Retry voice transcription"
             : "Start voice dictation"
       }
       title={
         isDictationAvailable
           ? isDictating
             ? "Stop dictation and review text"
-            : "Dictate into the message"
+            : canRetryDictation
+              ? "Retry the saved recording"
+              : "Dictate into the message (up to 2 minutes)"
           : "Voice dictation is unavailable in this browser"
       }
       className={cn(
         "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-35",
         isDictating ? "border-destructive/60 text-destructive" : null,
+        canRetryDictation ? "border-amber-500/60 text-amber-600" : null,
       )}
     >
-      {isRequestingMicrophone ? (
+      {isDictationBusy ? (
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
       ) : isDictating ? (
         <MicOff className="h-3 w-3" aria-hidden="true" />
+      ) : canRetryDictation ? (
+        <RotateCcw className="h-3 w-3" aria-hidden="true" />
       ) : (
         <Mic className="h-3 w-3" aria-hidden="true" />
       )}

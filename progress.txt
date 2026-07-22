@@ -716,3 +716,7 @@
 - Decisions: the application accepts only POSTed WAV audio on a dedicated authenticated route, enforces the six-megabyte limit from both declared and received bytes, forwards binary audio to the loopback Codex bridge, returns no-store JSON, and records only size, timing, and status trace metadata.
 - Files: src/app/shared/{codexBridge.server.ts,dictationProxy.server.ts,dictationProxy.server.test.ts}, src/worker.tsx, progress.txt.
 - Notes: focused coverage verifies binary forwarding, media-type rejection, declared-size rejection, and actionable upstream status preservation; no user audio or transcript content is logged.
+2026-07-22 — Replaced browser speech recognition with reviewable native Codex dictation. Ref: native voice implementation checkpoint 3.
+- Decisions: every composer records with MediaRecorder, limits capture to two minutes, decodes and downmixes locally, resamples to mono 24 kHz PCM16 WAV, blocks send while capture/transcription is active, inserts returned text into the editable draft without submitting, and retains the WAV in memory for one-click retry after an upstream failure.
+- Files: src/app/components/conversation/{ConversationComposer.tsx,dictation.ts,dictation.test.ts}, progress.txt.
+- Notes: live Playwright QA fed a synthetic spoken WAV through the real browser recorder, Worker proxy, signed-in Codex app-server, and ChatGPT-backed transcription; the exact transcript appeared in the textarea while Send remained untouched.
