@@ -84,6 +84,7 @@ export interface RetrievalContextResult {
   blocks: RetrievedContextChunk[];
   attachments: Array<AttachmentChunkMatch & { ingestion: AttachmentIngestionRecord | null }>;
   webSnippets: WebSearchSnippetMatch[];
+  missingRequiredAttachmentIds: string[];
 }
 
 export async function buildRetrievalContext(
@@ -94,12 +95,18 @@ export async function buildRetrievalContext(
     maxAttachmentChunks?: number;
     maxWebSnippets?: number;
     allowedAttachmentIds?: string[] | null;
+    requiredAttachmentIds?: string[] | null;
     minScore?: number;
   },
 ): Promise<RetrievalContextResult> {
   const normalizedQuery = options.query.trim();
   if (!normalizedQuery) {
-    return { blocks: [], attachments: [], webSnippets: [] };
+    return {
+      blocks: [],
+      attachments: [],
+      webSnippets: [],
+      missingRequiredAttachmentIds: options.requiredAttachmentIds ?? [],
+    };
   }
 
   const embedding = createLexicalEmbedding(normalizedQuery);
@@ -109,6 +116,7 @@ export async function buildRetrievalContext(
     maxAttachmentChunks: options.maxAttachmentChunks ?? 6,
     maxWebSnippets: options.maxWebSnippets ?? 4,
     allowedAttachmentIds: options.allowedAttachmentIds ?? undefined,
+    requiredAttachmentIds: options.requiredAttachmentIds ?? undefined,
     minScore: options.minScore ?? DEFAULT_MIN_SIMILARITY,
   });
 
@@ -137,6 +145,7 @@ export async function buildRetrievalContext(
       ingestion: match.ingestion ?? null,
     })),
     webSnippets: webMatches,
+    missingRequiredAttachmentIds: result.missingRequiredAttachmentIds ?? [],
   };
 }
 

@@ -50,7 +50,9 @@ function buildTextChunks(options: {
     kind: "text",
     content: chunk.text,
     tokenCount: approximateTokenCount(chunk.text),
-    embedding: createLexicalEmbedding(chunk.text),
+    embedding: createLexicalEmbedding(
+      `${attachment.name}\n${attachment.contentType}\n${chunk.text}`,
+    ),
     createdAt,
     metadata: {
       fileName: attachment.name,

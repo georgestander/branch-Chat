@@ -153,7 +153,12 @@ export function StreamingBubble({
     const onToolProgress = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        const toolLabel = data?.tool === "web_search" ? "Web search" : "Tool";
+        const toolLabel =
+          data?.tool === "web_search"
+            ? "Web search"
+            : data?.tool === "attachment_retrieval"
+              ? "Attachments"
+              : "Tool";
         const nextStatus =
           typeof data?.status === "string"
             ? data.status.replaceAll("_", " ")

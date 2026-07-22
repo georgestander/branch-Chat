@@ -13,6 +13,7 @@ import {
   type WebSearchSnippet,
 } from "@/lib/conversation";
 import { validateConversationGraphSnapshot } from "@/lib/conversation";
+import { selectAttachmentMatchesWithRequiredCoverage } from "@/lib/conversation/retrievalSelection";
 
 type StoredState = {
   snapshot: ConversationGraphSnapshot | null;
@@ -716,6 +717,14 @@ export class ConversationStoreDO implements DurableObject {
           if (existing.status !== "ready") {
             throw new Error("attachment-not-ready");
           }
+          const ingestion = current.attachmentIngestions[id];
+          if (
+            !ingestion ||
+            ingestion.status !== "ready" ||
+            ingestion.chunkIds.length === 0
+          ) {
+            throw new Error("attachment-context-not-ready");
+          }
           consumed.push(existing);
           delete pendingEntries[id];
         }
@@ -734,6 +743,9 @@ export class ConversationStoreDO implements DurableObject {
           return jsonResponse({ error: error.message }, { status: 404 });
         }
         if (error.message === "attachment-not-ready") {
+          return jsonResponse({ error: error.message }, { status: 409 });
+        }
+        if (error.message === "attachment-context-not-ready") {
           return jsonResponse({ error: error.message }, { status: 409 });
         }
       }
@@ -913,6 +925,7 @@ export class ConversationStoreDO implements DurableObject {
         maxAttachmentChunks,
         maxWebSnippets,
         allowedAttachmentIds,
+        requiredAttachmentIds,
         minScore,
       } = payload as Record<string, unknown>;
 
@@ -920,17 +933,29 @@ export class ConversationStoreDO implements DurableObject {
       const attachmentLimitValue = Number(maxAttachmentChunks);
       const webLimitValue = Number(maxWebSnippets);
       const attachmentLimit =
-        Number.isFinite(attachmentLimitValue) && attachmentLimitValue > 0
+        Number.isFinite(attachmentLimitValue) && attachmentLimitValue >= 0
           ? Math.floor(attachmentLimitValue)
           : 6;
       const webLimit =
-        Number.isFinite(webLimitValue) && webLimitValue > 0
+        Number.isFinite(webLimitValue) && webLimitValue >= 0
           ? Math.floor(webLimitValue)
           : 6;
       const allowedIds =
         Array.isArray(allowedAttachmentIds) && allowedAttachmentIds.length > 0
-          ? allowedAttachmentIds.map((id) => sanitizeAttachmentId(id))
+          ? Array.from(
+              new Set(
+                allowedAttachmentIds.map((id) => sanitizeAttachmentId(id)),
+              ),
+            )
           : null;
+      const requiredIds =
+        Array.isArray(requiredAttachmentIds) && requiredAttachmentIds.length > 0
+          ? Array.from(
+              new Set(
+                requiredAttachmentIds.map((id) => sanitizeAttachmentId(id)),
+              ),
+            ).slice(0, DEFAULT_ATTACHMENT_LIMIT)
+          : [];
       const minSimilarity =
         typeof minScore === "number" && Number.isFinite(minScore)
           ? minScore
@@ -965,7 +990,14 @@ export class ConversationStoreDO implements DurableObject {
       }
 
       attachmentMatches.sort((a, b) => b.similarity - a.similarity);
-      const topAttachmentMatches = attachmentMatches.slice(0, attachmentLimit);
+      const {
+        matches: topAttachmentMatches,
+        missingRequiredAttachmentIds,
+      } = selectAttachmentMatchesWithRequiredCoverage({
+        rankedMatches: attachmentMatches,
+        limit: attachmentLimit,
+        requiredAttachmentIds: requiredIds,
+      });
 
       const webMatches: Array<{ snippet: WebSearchSnippet; similarity: number }> = [];
       for (const snippet of Object.values(state.webSearchSnippets)) {
@@ -989,6 +1021,7 @@ export class ConversationStoreDO implements DurableObject {
         {
           attachments: topAttachmentMatches,
           webSnippets: topWebMatches,
+          missingRequiredAttachmentIds,
         },
         { status: 200 },
       );
@@ -1331,6 +1364,14 @@ export class ConversationStoreClient {
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      if (
+        response.status === 409 &&
+        text.includes("attachment-context-not-ready")
+      ) {
+        throw new Error(
+          "Attachment context is not ready. Remove the file, upload it again, and retry.",
+        );
+      }
       throw new Error(
         `Failed to consume attachments: ${response.status} ${text}`,
       );
@@ -1494,6 +1535,7 @@ export class ConversationStoreClient {
     maxAttachmentChunks?: number;
     maxWebSnippets?: number;
     allowedAttachmentIds?: string[];
+    requiredAttachmentIds?: string[];
     minScore?: number;
   }): Promise<{
     attachments: Array<{
@@ -1505,6 +1547,7 @@ export class ConversationStoreClient {
       snippet: WebSearchSnippet;
       similarity: number;
     }>;
+    missingRequiredAttachmentIds: string[];
   }> {
     const response = await this.stub.fetch(
       "https://conversation/retrieval/query",
@@ -1532,8 +1575,12 @@ export class ConversationStoreClient {
         snippet: WebSearchSnippet;
         similarity: number;
       }>;
+      missingRequiredAttachmentIds?: string[];
     };
-    return data;
+    return {
+      ...data,
+      missingRequiredAttachmentIds: data.missingRequiredAttachmentIds ?? [],
+    };
   }
 
   async reset(): Promise<void> {

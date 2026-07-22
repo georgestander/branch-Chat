@@ -6,32 +6,11 @@ import {
 } from "@/app/shared/conversation.server";
 import type { AppContext } from "@/app/context";
 import { UPLOAD_MAX_SIZE_BYTES } from "@/app/shared/uploads.config";
+import {
+  readBoundedUploadBytes,
+  UploadLimitExceededError,
+} from "@/app/shared/uploadBytes";
 import type { AppRequestInfo } from "@/worker";
-
-class UploadLimitExceededError extends Error {
-  constructor() {
-    super("upload-limit-exceeded");
-    this.name = "UploadLimitExceededError";
-  }
-}
-
-function createSizeLimitedBodyStream(
-  body: ReadableStream<Uint8Array>,
-  maxBytes: number,
-): ReadableStream<Uint8Array> {
-  let totalBytes = 0;
-  return body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        totalBytes += chunk.byteLength;
-        if (totalBytes > maxBytes) {
-          throw new UploadLimitExceededError();
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-}
 
 export async function handleDirectUploadRequest(
   requestInfo: AppRequestInfo,
@@ -90,10 +69,13 @@ export async function handleDirectUploadRequest(
   if (!body) {
     return new Response("Missing upload body", { status: 400 });
   }
-  const limitedBody = createSizeLimitedBodyStream(body, UPLOAD_MAX_SIZE_BYTES);
 
   try {
-    await uploadsBucket.put(staged.storageKey, limitedBody, {
+    const bytes = await readBoundedUploadBytes(body, UPLOAD_MAX_SIZE_BYTES);
+    if (bytes.byteLength === 0) {
+      return new Response("Missing upload body", { status: 400 });
+    }
+    await uploadsBucket.put(staged.storageKey, bytes, {
       httpMetadata: {
         contentType,
       },
@@ -101,9 +83,7 @@ export async function handleDirectUploadRequest(
     appCtx.trace("uploads:fallback:put", {
       conversationId,
       attachmentId,
-      size: declaredLengthHeader
-        ? Number(declaredLengthHeader)
-        : staged.size,
+      size: bytes.byteLength,
     });
   } catch (error) {
     if (error instanceof UploadLimitExceededError) {

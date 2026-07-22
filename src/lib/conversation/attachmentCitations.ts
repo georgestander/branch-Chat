@@ -5,6 +5,7 @@ export const ATTACHMENT_RETRIEVAL_TOOL_NAME = "attachment_retrieval";
 export interface AttachmentCitationSource {
   id: string;
   attachmentId: string;
+  sourceId?: string | null;
   name: string;
   pageNumber?: number | null;
   excerpt: string;
@@ -103,10 +104,12 @@ function parseAttachmentCitationSource(
       ? source.pageNumber
       : null;
   const contentType = readTrimmedString(source.contentType);
+  const sourceId = readTrimmedString(source.sourceId);
 
   return {
     id,
     attachmentId,
+    ...(sourceId ? { sourceId } : {}),
     name,
     pageNumber,
     excerpt,

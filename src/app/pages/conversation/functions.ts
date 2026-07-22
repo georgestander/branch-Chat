@@ -11,12 +11,18 @@ import {
   draftBranchFromSelection,
   generateConversationId,
   getBranchMessages,
+  getBoundedBranchRecoveryMessages,
+  getEffectiveBranchAttachmentIds,
   maybeApplyRootBranchFallbackTitle,
   maybeAutoSummarizeRootBranchTitle,
   sanitizeBranchTitle,
   invalidateConversationCache,
   resolveConversationId,
 } from "@/app/shared/conversation.server";
+import {
+  prepareAttachmentGrounding,
+  type PreparedAttachmentGrounding,
+} from "@/app/shared/attachmentGrounding";
 import {
   touchConversationDirectoryEntry,
   archiveConversationDirectoryEntry,
@@ -45,6 +51,7 @@ import {
   renderMarkdownToHtml,
   type MessageBranchHighlight,
 } from "@/app/shared/markdown.server";
+import { buildAttachmentCitationManifest } from "@/lib/conversation/attachmentCitations";
 import { runStudyAndLearnAgent } from "@/app/shared/openai/studyAndLearnAgent.server";
 import {
   buildRetrievalContext,
@@ -1030,6 +1037,8 @@ async function sendMessageWithCodex(options: {
   input: SendMessageInput;
   snapshot: ConversationGraphSnapshot;
   consumedAttachments: PendingAttachment[];
+  attachmentGrounding?: PreparedAttachmentGrounding | null;
+  eligibleAttachmentCount?: number;
   createdBranch?: Branch | null;
 }): Promise<SendMessageResponse> {
   const {
@@ -1038,6 +1047,8 @@ async function sendMessageWithCodex(options: {
     branchId,
     input,
     consumedAttachments,
+    attachmentGrounding = null,
+    eligibleAttachmentCount = 0,
     createdBranch = null,
   } = options;
   const settings = options.snapshot.conversation.settings;
@@ -1052,32 +1063,59 @@ async function sendMessageWithCodex(options: {
     allowWebSearch: webSearch,
     allowFileTools: false,
   });
-  const developerInstructions = context
-    .filter((message) => message.role === "system")
-    .map((message) => message.content)
-    .join("\n\n");
-  const messages = context
+  const developerInstructions = [
+    ...context
+      .filter((message) => message.role === "system")
+      .map((message) => message.content),
+    [
+      "Source provenance rules:",
+      "- Conversation messages and highlighted branch text are internal context, not independently verified evidence.",
+      "- Use attachment facts only when they appear in the current attachment-grounding context. Cite those claims inline with the exact [A1], [A2], and similar markers provided there.",
+      "- Cite web-backed claims inline with Markdown links to the real source URL.",
+      "- Never invent attachment contents or citations. If the necessary grounded source is unavailable, say so explicitly.",
+    ].join("\n"),
+  ].join("\n\n");
+  const messages = getBoundedBranchRecoveryMessages({
+    snapshot: options.snapshot,
+    branchId,
+    maxMessages: 40,
+    maxCharacters: 64 * 1024,
+  })
     .filter(
-      (message): message is { role: "user" | "assistant"; content: string } =>
+      (message): message is Message & { role: "user" | "assistant" } =>
         message.role === "user" || message.role === "assistant",
     )
-    .slice(0, -1);
+    .map((message) => ({ role: message.role, content: message.content }));
   const inferenceTarget = resolveCodexInferenceTarget(
     options.snapshot,
     branchId,
   );
   const serviceTier = selectCodexServiceTier(settings);
   const branchSelection = createdBranch?.createdFrom.excerpt?.trim();
-  const additionalContext = branchSelection
-    ? {
-        "branch-source-selection": {
-          kind: "application" as const,
-          value:
-            "The user created this child from the following exact span of the parent assistant response. Treat it as the focus of the new question:\n\n" +
-            branchSelection,
-        },
-      }
-    : null;
+  const additionalContext: Record<
+    string,
+    { kind: "application" | "untrusted"; value: string }
+  > = {};
+  if (branchSelection) {
+    additionalContext["branch-source-selection"] = {
+      kind: "application",
+      value:
+        "The user created this child from the following exact span of the parent assistant response. Treat it as the focus of the new question:\n\n" +
+        branchSelection,
+    };
+  }
+  if (attachmentGrounding) {
+    additionalContext["attachment-grounding"] = {
+      kind: "untrusted",
+      value: attachmentGrounding.prompt,
+    };
+  } else if (eligibleAttachmentCount > 0) {
+    additionalContext["attachment-grounding-status"] = {
+      kind: "application",
+      value:
+        "Attachments exist in the canonical branch context, but no readable attachment source was retrieved for this turn. Do not infer or cite their contents.",
+    };
+  }
 
   if (consumedAttachments.length > 0) {
     const attachmentSummary = consumedAttachments
@@ -1176,6 +1214,19 @@ async function sendMessageWithCodex(options: {
 
   const { sendSSE, closeSSE } = await import("@/app/shared/streaming.server");
   const toolInvocationMap = new Map<string, ToolInvocation>();
+  if (attachmentGrounding) {
+    toolInvocationMap.set(
+      attachmentGrounding.invocation.id,
+      attachmentGrounding.invocation,
+    );
+    if (input.streamId) {
+      sendSSE(input.streamId, "tool_progress", {
+        tool: "attachment_retrieval",
+        callId: attachmentGrounding.invocation.id,
+        status: "succeeded",
+      });
+    }
+  }
   let finalContent = "";
   let reasoningSummary = "";
   let promptTokens = 0;
@@ -1191,6 +1242,8 @@ async function sendMessageWithCodex(options: {
     serviceTier,
     webSearch,
     inferenceMode: inferenceTarget.mode,
+    eligibleAttachmentCount,
+    groundedAttachmentSourceCount: attachmentGrounding?.sources.length ?? 0,
   });
 
   try {
@@ -1213,7 +1266,8 @@ async function sendMessageWithCodex(options: {
             }
           : null,
       clientUserMessageId: userMessage.id,
-      additionalContext,
+      additionalContext:
+        Object.keys(additionalContext).length > 0 ? additionalContext : null,
     })) {
       if (event.type === "context") {
         codexThreadId = event.threadId;
@@ -1329,31 +1383,40 @@ async function sendMessageWithCodex(options: {
     const failedApplied = await applyConversationUpdates(ctx, conversationId, [
       { type: "message:update", conversationId, message: failedAssistant },
     ]);
-    if (createdBranch) {
-      let failedRenderedHtml: string | null = null;
-      try {
-        failedRenderedHtml = await renderMarkdownToHtml(failedAssistant.content);
-      } catch {
-        // The persisted plain-text error remains the source of truth.
-      }
-      return {
-        conversationId,
-        snapshot: failedApplied.snapshot,
-        version: failedApplied.version,
-        appendedMessages: [userMessage, failedAssistant],
-        assistantRenderedHtml: failedRenderedHtml,
-        createdBranch:
-          failedApplied.snapshot.branches[createdBranch.id] ?? createdBranch,
-        quota: { remainingDemoPasses: null },
-      };
+    let failedRenderedHtml: string | null = null;
+    try {
+      failedRenderedHtml = await renderMarkdownToHtml(failedAssistant.content, {
+        citationManifest: buildAttachmentCitationManifest(
+          failedAssistant.id,
+          failedAssistant.toolInvocations,
+        ),
+      });
+    } catch {
+      // The persisted plain-text error remains the source of truth.
     }
-    throw error;
+    return {
+      conversationId,
+      snapshot: failedApplied.snapshot,
+      version: failedApplied.version,
+      appendedMessages: [userMessage, failedAssistant],
+      assistantRenderedHtml: failedRenderedHtml,
+      createdBranch: createdBranch
+        ? failedApplied.snapshot.branches[createdBranch.id] ?? createdBranch
+        : undefined,
+      quota: { remainingDemoPasses: null },
+    };
   }
 
   if (!finalContent) finalContent = "Assistant response interrupted. Please try again.";
+  const finalToolInvocations = Array.from(toolInvocationMap.values());
   let renderedHtml: string | null = null;
   try {
-    renderedHtml = await renderMarkdownToHtml(finalContent);
+    renderedHtml = await renderMarkdownToHtml(finalContent, {
+      citationManifest: buildAttachmentCitationManifest(
+        assistantMessage.id,
+        finalToolInvocations,
+      ),
+    });
   } catch (error) {
     ctx.trace("markdown:render:error", {
       conversationId,
@@ -1370,7 +1433,7 @@ async function sendMessageWithCodex(options: {
       completion: completionTokens,
       cost: 0,
     },
-    toolInvocations: Array.from(toolInvocationMap.values()),
+    toolInvocations: finalToolInvocations,
     inferenceContext:
       codexThreadId && codexTurnId
         ? {
@@ -1499,6 +1562,67 @@ export async function sendMessage(
     );
   }
 
+  const eligibleAttachmentIds = Array.from(
+    new Set([
+      ...getEffectiveBranchAttachmentIds(activeSnapshot, branchId),
+      ...attachmentIds,
+    ]),
+  );
+  let attachmentGrounding: PreparedAttachmentGrounding | null = null;
+  if (eligibleAttachmentIds.length > 0) {
+    const retrievalStartedAt = Date.now();
+    try {
+      const retrieval = await buildRetrievalContext(ctx, {
+        conversationId,
+        query: input.content,
+        maxAttachmentChunks: Math.max(6, attachmentIds.length),
+        maxWebSnippets: 0,
+        allowedAttachmentIds: eligibleAttachmentIds,
+        requiredAttachmentIds: attachmentIds,
+        minScore: -1,
+      });
+      if (retrieval.missingRequiredAttachmentIds.length > 0) {
+        throw new Error(
+          "One or more newly attached files have no readable context. Remove them, upload them again, and retry.",
+        );
+      }
+      attachmentGrounding = prepareAttachmentGrounding({
+        blocks: retrieval.blocks,
+        invocationId: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      });
+      if (attachmentIds.length > 0 && !attachmentGrounding) {
+        throw new Error(
+          "The newly attached files produced no grounded source text. Remove them, upload them again, and retry.",
+        );
+      }
+      ctx.trace("attachment:grounding", {
+        conversationId,
+        branchId,
+        eligibleAttachmentCount: eligibleAttachmentIds.length,
+        requiredAttachmentCount: attachmentIds.length,
+        sourceCount: attachmentGrounding?.sources.length ?? 0,
+        ms: Date.now() - retrievalStartedAt,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Attachment grounding failed";
+      ctx.trace("attachment:grounding:error", {
+        conversationId,
+        branchId,
+        eligibleAttachmentCount: eligibleAttachmentIds.length,
+        requiredAttachmentCount: attachmentIds.length,
+        error: message,
+        ms: Date.now() - retrievalStartedAt,
+      });
+      if (attachmentIds.length > 0) {
+        throw new Error(message);
+      }
+    }
+  }
+
   let consumedAttachments: PendingAttachment[] = [];
   if (attachmentIds.length > 0) {
     consumedAttachments = await storeClient.consumeAttachments(attachmentIds);
@@ -1526,6 +1650,8 @@ export async function sendMessage(
     input,
     snapshot: activeSnapshot,
     consumedAttachments,
+    attachmentGrounding,
+    eligibleAttachmentCount: eligibleAttachmentIds.length,
     createdBranch,
   });
 
