@@ -624,3 +624,7 @@
 - Decisions: pointer and click events stop at each portalled picker boundary so React Flow cannot reinterpret a model or reasoning choice as a card or pane click; normal outside-click and Escape dismissal remain unchanged.
 - Files: src/app/components/conversation/ConversationComposer.tsx, progress.txt.
 - Notes: browser QA selected Luna then Max on a temporary branch and Terra then Medium on a disposable new canvas, confirming both composers and menus remained open after every choice; the disposable canvas was deleted and the source conversation's original Sol/High settings were restored. `pnpm types`, 28 tests, lint, and diff validation passed.
+2026-07-22 — Added recoverable Codex inference pointers to the canonical conversation graph. Ref: persistent continuation and exact source-turn branching.
+- Decisions: Durable Object messages and branches remain canonical; optional Codex pointers are acceleration metadata only; branches store a resumable thread/head while assistant messages store the exact native source turn; legacy snapshots remain valid and user messages cannot carry provider pointers.
+- Files: src/lib/conversation/{model.ts,model.test.ts,validation.ts}, progress.txt.
+- Notes: `pnpm types`, 36 tests, and lint passed; validation and clone coverage includes legacy-safe optional fields and assistant-only source pointers.

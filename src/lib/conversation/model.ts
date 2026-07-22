@@ -53,6 +53,24 @@ export interface BranchCreationSource {
   excerpt?: string | null;
 }
 
+/**
+ * Recoverable pointer into Codex's local conversation history.
+ *
+ * The Durable Object graph remains canonical. These identifiers only let the
+ * bridge continue or fork a provider thread without replaying that graph.
+ */
+export interface CodexBranchInferenceContext {
+  provider: "codex";
+  threadId: string;
+  lastTurnId?: string | null;
+}
+
+export interface CodexMessageInferenceContext {
+  provider: "codex";
+  threadId: string;
+  turnId: string;
+}
+
 export interface Branch {
   id: BranchId;
   parentId?: BranchId | null;
@@ -61,6 +79,7 @@ export interface Branch {
   messageIds: MessageId[];
   createdAt: ISODateTimeString;
   archivedAt?: ISODateTimeString | null;
+  inferenceContext?: CodexBranchInferenceContext | null;
 }
 
 export interface TokenUsage {
@@ -193,6 +212,7 @@ export interface Message {
   tokenUsage?: TokenUsage | null;
   attachments?: MessageAttachment[] | null;
   toolInvocations?: ToolInvocation[] | null;
+  inferenceContext?: CodexMessageInferenceContext | null;
 }
 
 export interface ConversationCanvasViewport {
@@ -563,6 +583,7 @@ export function createConversationSnapshot(input: {
     createdAt: input.rootBranch.createdAt,
     messageIds: [],
     archivedAt: undefined,
+    inferenceContext: undefined,
   };
 
   const snapshot: ConversationGraphSnapshot = {
@@ -623,7 +644,13 @@ export function cloneConversationSnapshot(
     branches: Object.fromEntries(
       Object.entries(snapshot.branches).map(([id, branch]) => [
         id,
-        { ...branch, messageIds: [...branch.messageIds] },
+        {
+          ...branch,
+          messageIds: [...branch.messageIds],
+          inferenceContext: branch.inferenceContext
+            ? { ...branch.inferenceContext }
+            : branch.inferenceContext,
+        },
       ]),
     ),
     messages: Object.fromEntries(
@@ -658,6 +685,9 @@ export function cloneConversationSnapshot(
                 : toolInvocations === null
                   ? null
                   : undefined,
+            inferenceContext: message.inferenceContext
+              ? { ...message.inferenceContext }
+              : message.inferenceContext,
           },
         ];
       }),

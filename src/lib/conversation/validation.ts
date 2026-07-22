@@ -2,6 +2,8 @@ import type {
   Branch,
   BranchId,
   BranchSpan,
+  CodexBranchInferenceContext,
+  CodexMessageInferenceContext,
   CanvasBranchNodeState,
   ConversationCanvasState,
   Conversation,
@@ -15,8 +17,8 @@ import type {
   TokenUsage,
   ToolInvocation,
   ToolInvocationStatus,
-} from "./model";
-import { normalizeConversationCanvasState } from "./model";
+} from "./model.ts";
+import { normalizeConversationCanvasState } from "./model.ts";
 
 type RecordLike = Record<string, unknown>;
 
@@ -241,6 +243,61 @@ function validateBranchSpan(value: unknown): BranchSpan | undefined {
   return { start: start as number, end: end as number };
 }
 
+function validateCodexBranchInferenceContext(
+  value: unknown,
+): CodexBranchInferenceContext | undefined | null {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+
+  assert(isObject(value), "inferenceContext must be an object");
+  const { provider, threadId, lastTurnId } = value;
+  assert(provider === "codex", "inferenceContext.provider must be codex");
+  assert(
+    typeof threadId === "string" && threadId.length > 0,
+    "inferenceContext.threadId invalid",
+  );
+  assert(
+    lastTurnId === undefined ||
+      lastTurnId === null ||
+      (typeof lastTurnId === "string" && lastTurnId.length > 0),
+    "inferenceContext.lastTurnId invalid",
+  );
+
+  return {
+    provider: "codex",
+    threadId,
+    lastTurnId: lastTurnId ?? undefined,
+  };
+}
+
+function validateCodexMessageInferenceContext(
+  value: unknown,
+): CodexMessageInferenceContext | undefined | null {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+
+  assert(isObject(value), "inferenceContext must be an object");
+  const { provider, threadId, turnId } = value;
+  assert(provider === "codex", "inferenceContext.provider must be codex");
+  assert(
+    typeof threadId === "string" && threadId.length > 0,
+    "inferenceContext.threadId invalid",
+  );
+  assert(
+    typeof turnId === "string" && turnId.length > 0,
+    "inferenceContext.turnId invalid",
+  );
+  return { provider: "codex", threadId, turnId };
+}
+
 function validateConversationSettings(
   value: unknown,
 ): ConversationSettings {
@@ -374,6 +431,7 @@ function validateBranch(value: unknown): Branch {
     messageIds,
     createdAt,
     archivedAt,
+    inferenceContext,
   } = value;
 
   assert(typeof id === "string" && id.length > 0, "branch.id invalid");
@@ -423,6 +481,7 @@ function validateBranch(value: unknown): Branch {
     messageIds: validatedMessageIds,
     createdAt,
     archivedAt: archivedAt ?? undefined,
+    inferenceContext: validateCodexBranchInferenceContext(inferenceContext),
   };
 }
 
@@ -437,6 +496,7 @@ function validateMessage(value: unknown): Message {
     tokenUsage,
     attachments,
     toolInvocations,
+    inferenceContext,
   } = value;
   assert(typeof id === "string" && id.length > 0, "message.id invalid");
   assert(
@@ -449,6 +509,10 @@ function validateMessage(value: unknown): Message {
   );
   assert(typeof content === "string", "message.content invalid");
   assert(isIsoDate(createdAt), "message.createdAt invalid");
+  assert(
+    inferenceContext === undefined || inferenceContext === null || role === "assistant",
+    "only assistant messages may have inferenceContext",
+  );
 
   return {
     id: id as MessageId,
@@ -459,6 +523,7 @@ function validateMessage(value: unknown): Message {
     tokenUsage: validateTokenUsage(tokenUsage),
     attachments: validateMessageAttachments(attachments),
     toolInvocations: validateToolInvocations(toolInvocations),
+    inferenceContext: validateCodexMessageInferenceContext(inferenceContext),
   };
 }
 

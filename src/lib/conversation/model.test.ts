@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   applyCanvasPatch,
   arrangeFocusedChildOnCanvas,
+  cloneConversationSnapshot,
   createConversationSnapshot,
   deleteBranchSubtree,
   normalizeConversationCanvasState,
@@ -11,6 +12,7 @@ import {
   type Branch,
   type Message,
 } from "./model.ts";
+import { validateConversationGraphSnapshot } from "./validation.ts";
 
 const createdAt = "2026-07-21T00:00:00.000Z";
 
@@ -254,5 +256,94 @@ test("focused child layout aligns the new child and compacts existing siblings",
     existing: { expanded: false, y: 492 },
     root: { expanded: true },
     created: { x: 1130, y: 100, expanded: true },
+  });
+});
+
+test("Codex inference pointers survive validation and cloning without becoming canonical state", () => {
+  const snapshot = createConversationSnapshot({
+    id: "conversation",
+    createdAt,
+    settings: {
+      model: "gpt-5.6-terra",
+      temperature: 0,
+      composerDefaults: { preset: "fast", tools: [] },
+    },
+    rootBranch: {
+      id: "root",
+      title: "Root",
+      createdFrom: { messageId: "root-message" },
+      createdAt,
+    },
+    initialMessages: [
+      {
+        id: "assistant-message",
+        branchId: "root",
+        role: "assistant",
+        content: "Answer",
+        createdAt,
+        inferenceContext: {
+          provider: "codex",
+          threadId: "thread-source",
+          turnId: "turn-source",
+        },
+      },
+    ],
+  });
+  snapshot.branches.root.inferenceContext = {
+    provider: "codex",
+    threadId: "thread-source",
+    lastTurnId: "turn-source",
+  };
+
+  const validated = validateConversationGraphSnapshot(snapshot);
+  const cloned = cloneConversationSnapshot(validated);
+
+  assert.deepEqual(cloned.branches.root.inferenceContext, {
+    provider: "codex",
+    threadId: "thread-source",
+    lastTurnId: "turn-source",
+  });
+  assert.deepEqual(cloned.messages["assistant-message"].inferenceContext, {
+    provider: "codex",
+    threadId: "thread-source",
+    turnId: "turn-source",
+  });
+  assert.notEqual(
+    cloned.branches.root.inferenceContext,
+    validated.branches.root.inferenceContext,
+  );
+  assert.notEqual(
+    cloned.messages["assistant-message"].inferenceContext,
+    validated.messages["assistant-message"].inferenceContext,
+  );
+});
+
+test("snapshot validation rejects inference pointers on user messages", () => {
+  const snapshot = createConversationSnapshot({
+    id: "conversation",
+    createdAt,
+    settings: {
+      model: "gpt-5.6-terra",
+      temperature: 0,
+      composerDefaults: { preset: "fast", tools: [] },
+    },
+    rootBranch: {
+      id: "root",
+      title: "Root",
+      createdFrom: { messageId: "root-message" },
+      createdAt,
+    },
+    initialMessages: [message("user-message", "root")],
+  });
+  (
+    snapshot.messages["user-message"] as unknown as Record<string, unknown>
+  ).inferenceContext = {
+    provider: "codex",
+    threadId: "thread-source",
+    turnId: "turn-source",
+  };
+
+  assert.throws(() => validateConversationGraphSnapshot(snapshot), {
+    message: "only assistant messages may have inferenceContext",
   });
 });
