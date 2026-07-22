@@ -269,6 +269,11 @@ export type ConversationGraphUpdate =
       message: Message;
     }
   | {
+      type: "message:delete";
+      conversationId: ConversationModelId;
+      messageIds: MessageId[];
+    }
+  | {
       type: "branch:create";
       conversationId: ConversationModelId;
       branch: Branch;

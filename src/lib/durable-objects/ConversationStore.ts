@@ -1176,6 +1176,16 @@ export class ConversationStoreDO implements DurableObject {
           this.updateMessage(next, update.message);
           break;
         }
+        case "message:delete": {
+          const messageIds = new Set(update.messageIds);
+          for (const messageId of messageIds) delete next.messages[messageId];
+          for (const branch of Object.values(next.branches)) {
+            branch.messageIds = branch.messageIds.filter(
+              (messageId) => !messageIds.has(messageId),
+            );
+          }
+          break;
+        }
         default: {
           const exhaustiveCheck: never = update;
           throw new Error(`Unsupported update type ${(exhaustiveCheck as any).type}`);

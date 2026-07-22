@@ -88,6 +88,28 @@ test("turn input folds application and untrusted context into plain text", () =>
   assert.match(text, /User request:\nAnswer the question\./);
 });
 
+test("interrupting a stream delegates to its active cancellation handle", async () => {
+  const client = new CodexAppServerClient();
+  client.start = async () => {};
+  let cancelled = 0;
+  client.activeStreams.set("stream-1", {
+    cancel: async () => {
+      cancelled += 1;
+      return true;
+    },
+  });
+
+  assert.deepEqual(await client.interruptStream("stream-1"), {
+    interrupted: true,
+    settled: false,
+  });
+  assert.equal(cancelled, 1);
+  assert.deepEqual(await client.interruptStream("missing"), {
+    interrupted: false,
+    settled: true,
+  });
+});
+
 function createProtocolClient(handler) {
   const client = new CodexAppServerClient();
   client.ensureChatGptAccount = async () => ({ account: { type: "chatgpt" } });

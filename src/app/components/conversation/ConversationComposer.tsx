@@ -18,10 +18,13 @@ import {
   Globe,
   GraduationCap,
   Loader2,
+  Pencil,
   Paperclip,
   Plus,
   RotateCcw,
   SendHorizontal,
+  Square,
+  Trash2,
   Maximize,
   SlidersHorizontal,
   Upload,
@@ -31,6 +34,7 @@ import {
 
 import {
   createAttachmentUploadAction,
+  cancelMessage,
   deleteComposerByokKey,
   finalizeAttachmentUploadAction,
   getComposerAccountState,
@@ -409,6 +413,8 @@ export function ConversationComposer({
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
+  const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
+  const [isStopMenuOpen, setIsStopMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedTools, setSelectedTools] = useState<ConversationComposerTool[]>(
@@ -449,6 +455,8 @@ export function ConversationComposer({
   const modelButtonRef = useRef<HTMLButtonElement | null>(null);
   const autoSendRef = useRef(false);
   const autoSendPendingRef = useRef<string | null>(null);
+  const pendingContentRef = useRef("");
+  const cancellationModeRef = useRef<"edit" | "discard" | null>(null);
   const draftStreamWaiterRef = useRef<{
     streamId: string;
     settle: () => void;
@@ -1540,6 +1548,8 @@ export function ConversationComposer({
     }
 
     setError(null);
+    pendingContentRef.current = content;
+    cancellationModeRef.current = null;
     const readyAttachmentIds = attachments
       .filter((attachment) => attachment.status === "ready" && attachment.id)
       .map((attachment) => attachment.id as string);
@@ -1562,6 +1572,7 @@ export function ConversationComposer({
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setActiveStreamId(streamId);
     let draftSubscriberReady: Promise<void> | null = null;
     if (isBranchDraft) {
       settleDraftStreamWaiter();
@@ -1606,6 +1617,32 @@ export function ConversationComposer({
           tools: selectedTools,
           attachmentIds: readyAttachmentIds,
         });
+        setActiveStreamId(null);
+        setIsStopMenuOpen(false);
+        if (result.cancelled) {
+          setError(null);
+          if (!isBranchDraft) {
+            emitOptimisticMessageClear({
+              conversationId,
+              branchId,
+              messageId: optimisticId,
+              reason: "failed",
+            });
+          } else {
+            settleDraftStreamWaiter(streamId);
+            setDraftStreamId(null);
+          }
+          if (cancellationModeRef.current === "edit") {
+            setValue(pendingContentRef.current);
+            window.setTimeout(() => textareaRef.current?.focus(), 0);
+          } else if (isBranchDraft) {
+            onCancelDraft?.();
+          } else {
+            setValue("");
+          }
+          cancellationModeRef.current = null;
+          return;
+        }
         setValue("");
         setAttachments([]);
         attachmentsRef.current = [];
@@ -1701,6 +1738,8 @@ export function ConversationComposer({
           scheduleRefresh(4000);
         }
       } catch (cause) {
+        setActiveStreamId(null);
+        setIsStopMenuOpen(false);
         if (!isBranchDraft) {
           emitOptimisticMessageClear({
             conversationId,
@@ -1725,6 +1764,26 @@ export function ConversationComposer({
     });
     return true;
   };
+
+  const stopGeneration = useCallback(
+    async (mode: "edit" | "discard") => {
+      if (!activeStreamId) return;
+      cancellationModeRef.current = mode;
+      setIsStopMenuOpen(false);
+      setError(mode === "edit" ? "Stopping… your prompt will be restored." : "Stopping and discarding…");
+      try {
+        const result = await cancelMessage({ conversationId, streamId: activeStreamId });
+        if (!result.interrupted && result.settled) {
+          cancellationModeRef.current = null;
+          setError("The response had already finished.");
+        }
+      } catch (cause) {
+        cancellationModeRef.current = null;
+        setError(extractErrorMessage(cause) || "We couldn't stop that response.");
+      }
+    },
+    [activeStreamId, conversationId],
+  );
 
   const saveNote = (): void => {
     if (!isBranchDraft || !branchDraft || isPending) return;
@@ -1792,6 +1851,43 @@ export function ConversationComposer({
     event.preventDefault();
     submitMessage();
   };
+
+  const stopControls = isPending && activeStreamId ? (
+    <div className="relative flex items-end">
+      <button
+        type="button"
+        onClick={() => setIsStopMenuOpen((open) => !open)}
+        className="inline-flex h-7 items-center justify-center gap-1 rounded border border-destructive/60 bg-background px-2 text-[11px] font-semibold text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-haspopup="menu"
+        aria-expanded={isStopMenuOpen}
+      >
+        <Square className="h-3 w-3 fill-current" aria-hidden="true" />
+        Stop
+      </button>
+      {isStopMenuOpen ? (
+        <div className="absolute bottom-full right-0 z-20 mb-2 w-40 rounded border border-border bg-popover p-1 shadow-lg" role="menu">
+          <button
+            type="button"
+            onClick={() => void stopGeneration("edit")}
+            className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            role="menuitem"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+            Stop & edit prompt
+          </button>
+          <button
+            type="button"
+            onClick={() => void stopGeneration("discard")}
+            className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            role="menuitem"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Stop & discard
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   if (isCompactCanvasComposer) {
     const excerpt = (isBranchDraft
@@ -2185,18 +2281,16 @@ export function ConversationComposer({
                 <span className="text-[8px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   ⌘ ↵
                 </span>
-                <button
-                  type="submit"
-                  disabled={isSendDisabled}
-                  className="inline-flex h-7 items-center justify-center gap-1 rounded border border-foreground bg-foreground px-2.5 text-[11px] font-semibold text-background hover:bg-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
-                >
-                  {isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                  ) : (
+                {stopControls ?? (
+                  <button
+                    type="submit"
+                    disabled={isSendDisabled}
+                    className="inline-flex h-7 items-center justify-center gap-1 rounded border border-foreground bg-foreground px-2.5 text-[11px] font-semibold text-background hover:bg-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+                  >
                     <SendHorizontal className="h-3 w-3" aria-hidden="true" />
-                  )}
-                  Send
-                </button>
+                    Send
+                  </button>
+                )}
               </div>
             </div>
           </footer>
@@ -2740,22 +2834,19 @@ export function ConversationComposer({
             </button>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={isSendDisabled}
-            className={cn(
-              "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-foreground text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55",
-              isPending ? "animate-pulse" : "",
-              isBranchDraft ? "order-7" : null,
-            )}
-            aria-label={isBranchDraft ? "Send to model and create branch" : "Send message"}
-          >
-            {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
+          {stopControls ?? (
+            <button
+              type="submit"
+              disabled={isSendDisabled}
+              className={cn(
+                "interactive-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-border bg-foreground text-background hover:bg-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55",
+                isBranchDraft ? "order-7" : null,
+              )}
+              aria-label={isBranchDraft ? "Send to model and create branch" : "Send message"}
+            >
               <SendHorizontal className="h-4 w-4" aria-hidden="true" />
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
         {(attachments.length > 0 || (fileUploadSelected && canAddMoreAttachments)) ? (

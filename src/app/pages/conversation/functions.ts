@@ -100,6 +100,7 @@ import { createOpenAIClient } from "@/lib/openai/client";
 import {
   deleteCodexThreads,
   getCodexAccountStatus,
+  interruptCodexTurn,
   streamCodexTurn,
 } from "@/app/shared/codexBridge.server";
 import type { AppRequestInfo } from "@/worker";
@@ -483,6 +484,11 @@ export interface SendMessageResponse extends LoadConversationResponse {
   quota: {
     remainingDemoPasses: number | null;
   };
+  cancelled?: boolean;
+}
+
+export interface CancelMessageInput extends ConversationPayload {
+  streamId: string;
 }
 
 export interface CreateBranchInput extends ConversationPayload {
@@ -1041,6 +1047,7 @@ async function sendMessageWithCodex(options: {
   eligibleAttachmentCount?: number;
   createdBranch?: Branch | null;
 }): Promise<SendMessageResponse> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
   const {
     ctx,
     conversationId,
@@ -1268,6 +1275,7 @@ async function sendMessageWithCodex(options: {
       clientUserMessageId: userMessage.id,
       additionalContext:
         Object.keys(additionalContext).length > 0 ? additionalContext : null,
+      streamId: input.streamId ?? null,
     })) {
       if (event.type === "context") {
         codexThreadId = event.threadId;
@@ -1366,6 +1374,56 @@ async function sendMessageWithCodex(options: {
       }
       if (event.type === "error") {
         throw new Error(event.message || "Codex response failed");
+      }
+      if (event.type === "cancelled") {
+        const cancellationUpdates: Parameters<typeof applyConversationUpdates>[2] =
+          createdBranch
+            ? [{ type: "branch:delete", conversationId, branchId }]
+            : [
+                {
+                  type: "message:delete",
+                  conversationId,
+                  messageIds: [userMessage.id, assistantMessage.id],
+                },
+                ...(appended.snapshot.branches[branchId]
+                  ? [
+                      {
+                        type: "branch:update" as const,
+                        conversationId,
+                        branch: {
+                          ...appended.snapshot.branches[branchId],
+                          inferenceContext: null,
+                        },
+                      },
+                    ]
+                  : []),
+              ];
+        const cancelledApplied = await applyConversationUpdates(
+          ctx,
+          conversationId,
+          cancellationUpdates,
+        );
+        if (input.streamId) {
+          sendSSE(input.streamId, "cancelled", {});
+          closeSSE(input.streamId);
+        }
+        if (codexThreadId) {
+          requestInfo.cf.waitUntil(
+            deleteCodexThreads([codexThreadId], ctx.env).catch(() => ({
+              deleted: [],
+              failed: [],
+            })),
+          );
+        }
+        return {
+          conversationId,
+          snapshot: cancelledApplied.snapshot,
+          version: cancelledApplied.version,
+          appendedMessages: [],
+          createdBranch: null,
+          quota: { remainingDemoPasses: null },
+          cancelled: true,
+        };
       }
     }
   } catch (error) {
@@ -2741,6 +2799,18 @@ export async function sendMessage(
     throw error;
   }
   */
+}
+
+export async function cancelMessage(
+  input: CancelMessageInput,
+): Promise<{ interrupted: boolean; settled: boolean }> {
+  const requestInfo = getRequestInfo() as AppRequestInfo;
+  const ctx = requestInfo.ctx as AppContext;
+  const conversationId = resolveConversationId(ctx, input.conversationId);
+  await ensureConversationSnapshot(ctx, conversationId);
+  const streamId = typeof input.streamId === "string" ? input.streamId.trim() : "";
+  if (!streamId || streamId.length > 128) throw new Error("Invalid stream identifier");
+  return interruptCodexTurn(streamId, ctx.env);
 }
 
 export async function createBranchFromSelection(

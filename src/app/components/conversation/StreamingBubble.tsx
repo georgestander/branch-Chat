@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/app/components/markdown/MarkdownContent";
+import { emitCompleteStreaming } from "@/app/components/conversation/streamingEvents";
 
 interface StreamingBubbleProps {
   streamId: string;
@@ -198,6 +199,15 @@ export function StreamingBubble({
         es.close();
       } catch {}
     };
+    const onCancelled = () => {
+      setContent("");
+      setHtml("");
+      setStatus("complete");
+      es.close();
+      if (emitCompletionEvent) {
+        emitCompleteStreaming({ conversationId, branchId, streamId });
+      }
+    };
 
     es.addEventListener("open", onOpen as EventListener);
     es.addEventListener("start", onStart as EventListener);
@@ -205,6 +215,7 @@ export function StreamingBubble({
     es.addEventListener("reasoning_summary", onReasoningSummary as EventListener);
     es.addEventListener("tool_progress", onToolProgress as EventListener);
     es.addEventListener("complete", onComplete as EventListener);
+    es.addEventListener("cancelled", onCancelled as EventListener);
     es.addEventListener("error", onError as EventListener);
     es.onerror = onError as any;
 

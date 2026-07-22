@@ -180,6 +180,7 @@ export class CodexAppServerClient {
     this.accountReady = null;
     this.workspaceReady = null;
     this.activeThreadIds = new Set();
+    this.activeStreams = new Map();
   }
 
   start() {
@@ -202,6 +203,7 @@ export class CodexAppServerClient {
         this.ready = null;
         this.accountReady = null;
         this.activeThreadIds.clear();
+        this.activeStreams.clear();
       });
       this.request("initialize", {
         clientInfo: {
@@ -511,12 +513,31 @@ export class CodexAppServerClient {
     let completed = false;
     let released = false;
     let unsubscribe = () => {};
+    const streamId = typeof input.streamId === "string" ? input.streamId.trim() : "";
     const release = () => {
       if (released) return;
       released = true;
       unsubscribe();
       this.activeThreadIds.delete(threadId);
+      if (streamId) this.activeStreams.delete(streamId);
     };
+
+    const activeStream = {
+      threadId,
+      get turnId() { return turnId; },
+      cancel: async () => {
+        if (completed) return false;
+        completed = true;
+        emit({ type: "cancelled" });
+        if (turnId) {
+          await this.request("turn/interrupt", { threadId, turnId }).catch(() => {});
+        }
+        release();
+        response.end();
+        return true;
+      },
+    };
+    if (streamId) this.activeStreams.set(streamId, activeStream);
 
     emit({
       type: "context",
@@ -533,6 +554,10 @@ export class CodexAppServerClient {
         const startedTurnId = params.turn?.id ?? null;
         if (turnId && startedTurnId && startedTurnId !== turnId) return;
         turnId = startedTurnId;
+        if (completed && turnId) {
+          void this.request("turn/interrupt", { threadId, turnId }).catch(() => {});
+          return;
+        }
         emit({
           type: "start",
           threadId,
@@ -605,7 +630,7 @@ export class CodexAppServerClient {
         input.content,
         input.additionalContext,
       );
-      await this.request("turn/start", {
+      const started = await this.request("turn/start", {
         threadId,
         clientUserMessageId:
           typeof input.clientUserMessageId === "string"
@@ -619,11 +644,29 @@ export class CodexAppServerClient {
         approvalPolicy: "never",
         sandboxPolicy: { type: "readOnly", networkAccess: webSearch },
       });
+      if (completed) {
+        const pendingTurnId = started?.turn?.id ?? turnId;
+        if (pendingTurnId) {
+          await this.request("turn/interrupt", {
+            threadId,
+            turnId: pendingTurnId,
+          }).catch(() => {});
+        }
+      }
     } catch (error) {
       release();
       emit({ type: "error", message: error instanceof Error ? error.message : "Unable to start Codex turn" });
       response.end();
     }
+  }
+
+  async interruptStream(streamId) {
+    await this.start();
+    const normalized = typeof streamId === "string" ? streamId.trim() : "";
+    if (!normalized) throw new Error("streamId is required");
+    const active = this.activeStreams.get(normalized);
+    if (!active) return { interrupted: false, settled: true };
+    return { interrupted: await active.cancel(), settled: false };
   }
 
   stop() {
@@ -660,6 +703,11 @@ export async function startCodexBridge({
       if (request.method === "POST" && url.pathname === "/turns") {
         const body = await readJson(request);
         await client.streamTurn(body, response);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/turns/interrupt") {
+        const body = await readJson(request);
+        writeJson(response, 200, await client.interruptStream(body.streamId));
         return;
       }
       if (request.method === "POST" && url.pathname === "/threads/delete") {

@@ -65,7 +65,8 @@ export type CodexBridgeStreamEvent =
       recovered?: boolean;
       historyTruncated?: boolean;
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "cancelled" };
 
 function getBridgeUrl(env?: Env): string {
   const configured = env?.CODEX_BRIDGE_URL?.trim();
@@ -134,6 +135,7 @@ export async function* streamCodexTurn(options: {
   forkFrom?: { threadId: string; turnId: string } | null;
   clientUserMessageId?: string | null;
   additionalContext?: CodexBridgeAdditionalContext | null;
+  streamId?: string | null;
 }): AsyncGenerator<CodexBridgeStreamEvent> {
   const response = await fetch(`${getBridgeUrl(options.env)}/turns`, {
     method: "POST",
@@ -154,6 +156,7 @@ export async function* streamCodexTurn(options: {
       forkFrom: options.forkFrom ?? null,
       clientUserMessageId: options.clientUserMessageId ?? null,
       additionalContext: options.additionalContext ?? null,
+      streamId: options.streamId ?? null,
     }),
   });
   if (!response.ok) throw new Error(await readError(response));
@@ -179,6 +182,19 @@ export async function* streamCodexTurn(options: {
   } finally {
     reader.releaseLock();
   }
+}
+
+export async function interruptCodexTurn(
+  streamId: string,
+  env?: Env,
+): Promise<{ interrupted: boolean; settled: boolean }> {
+  const response = await fetch(`${getBridgeUrl(env)}/turns/interrupt`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ streamId }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as { interrupted: boolean; settled: boolean };
 }
 
 export async function deleteCodexThreads(
