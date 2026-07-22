@@ -99,6 +99,7 @@ interface BranchColumnProps {
   onBranchCreated?: (response: SendMessageResponse) => void;
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
   showComposer?: boolean;
+  showWholeReplyAction?: boolean;
 }
 
 function compareRenderedMessages(left: RenderedMessage, right: RenderedMessage): number {
@@ -227,6 +228,7 @@ export function BranchColumn({
   onBranchCreated,
   onStartBranchDraft,
   showComposer = true,
+  showWholeReplyAction = true,
 }: BranchColumnProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -657,6 +659,7 @@ export function BranchColumn({
                 onOpenBranch={onOpenBranch ?? (() => undefined)}
                 onBranchCreated={onBranchCreated ?? (() => undefined)}
                 onStartBranchDraft={onStartBranchDraft}
+                showWholeReplyAction={showWholeReplyAction}
               />
             </li>
           ))}
@@ -715,6 +718,7 @@ function MessageBubble({
   onOpenBranch,
   onBranchCreated,
   onStartBranchDraft,
+  showWholeReplyAction,
 }: {
   message: RenderedMessage;
   isActive: boolean;
@@ -723,6 +727,7 @@ function MessageBubble({
   onOpenBranch: (branchId: string) => void;
   onBranchCreated: (response: SendMessageResponse) => void;
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
+  showWholeReplyAction: boolean;
 }) {
   if (message.role === "user") {
     return <UserMessageBubble message={message} />;
@@ -748,6 +753,7 @@ function MessageBubble({
           onOpenBranch={onOpenBranch}
           onBranchCreated={onBranchCreated}
           onStartBranchDraft={onStartBranchDraft}
+          showWholeReplyAction={showWholeReplyAction}
         />
         {isStreaming ? (
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">

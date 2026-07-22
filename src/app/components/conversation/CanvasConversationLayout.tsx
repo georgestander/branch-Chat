@@ -607,6 +607,7 @@ export function CanvasConversationLayout({
         onOpenBranch={(branchId) => openBranch(branchId)}
         onStartBranchDraft={startBranchDraft}
         showComposer={false}
+        showWholeReplyAction={false}
       />
     ),
     [

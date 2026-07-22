@@ -592,3 +592,7 @@
 - Decisions: root remains neutral; every non-root branch keeps a deterministic palette tone, but a hash collision with its immediate parent shifts to the next tone; card rail, connector, source highlight, and child chip continue resolving through the same branch-aware helper.
 - Files: src/lib/conversation/{branchTone.ts,branchTone.test.ts}, progress.txt.
 - Notes: targeted tests cover stable tones and forced parent-child collision avoidance; live Tidy view confirmed green → blue → amber → blue depth changes across the existing five-branch identity canvas. Full feedback loops passed.
+2026-07-22 — Removed the redundant whole-reply action from canvas cards. Ref: Browser UX review — graph-native branch drafting.
+- Decisions: canvas cards expose branching through text selection and the header arrow only; the legacy split-view retains its whole-reply fallback.
+- Files: src/app/components/conversation/{BranchableMessage.tsx,BranchColumn.tsx,CanvasConversationLayout.tsx}, progress.txt.
+- Notes: `pnpm types`, 28 tests, and lint passed.

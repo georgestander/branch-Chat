@@ -27,6 +27,7 @@ interface BranchableMessageProps {
   onOpenBranch?: (branchId: string) => void;
   onBranchCreated?: (response: SendMessageResponse) => void;
   onStartBranchDraft?: (draft: BranchSelectionDraft) => void;
+  showWholeReplyAction?: boolean;
 }
 
 export type BranchSelectionDraft = {
@@ -57,6 +58,7 @@ export function BranchableMessage({
   onOpenBranch,
   onBranchCreated,
   onStartBranchDraft,
+  showWholeReplyAction = true,
 }: BranchableMessageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -224,34 +226,36 @@ export function BranchableMessage({
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={(event) => {
-            const excerpt =
-              content.length > 280 ? `${content.slice(0, 277)}…` : content;
-            const nextSelection = {
-              text: excerpt,
-              rect: event.currentTarget.getBoundingClientRect(),
-              characterCount: excerpt.length,
-              blockCount: 1,
-            };
-            if (onStartBranchDraft) {
-              onStartBranchDraft({
-                parentBranchId: branchId,
-                messageId,
-                excerpt,
+        {showWholeReplyAction ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              const excerpt =
+                content.length > 280 ? `${content.slice(0, 277)}…` : content;
+              const nextSelection = {
+                text: excerpt,
+                rect: event.currentTarget.getBoundingClientRect(),
                 characterCount: excerpt.length,
                 blockCount: 1,
-              });
-              return;
-            }
-            setSelection(nextSelection);
-          }}
-          disabled={isPending}
-          className="interactive-target inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
-        >
-          {isPending ? "Creating…" : "Branch whole reply"}
-        </button>
+              };
+              if (onStartBranchDraft) {
+                onStartBranchDraft({
+                  parentBranchId: branchId,
+                  messageId,
+                  excerpt,
+                  characterCount: excerpt.length,
+                  blockCount: 1,
+                });
+                return;
+              }
+              setSelection(nextSelection);
+            }}
+            disabled={isPending}
+            className="interactive-target inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            {isPending ? "Creating…" : "Branch whole reply"}
+          </button>
+        ) : null}
       </div>
 
       {selection ? (
