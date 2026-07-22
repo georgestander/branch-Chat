@@ -154,6 +154,7 @@ test("normalizeConversationCanvasState lays out missing branch nodes determinist
     folded: false,
     expanded: false,
   });
+
 });
 
 test("applyCanvasPatch updates viewport and node state while preserving normalization", () => {
@@ -187,6 +188,8 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
       child: {
         x: 640,
         y: 180,
+        width: 820,
+        height: 560,
         folded: true,
         expanded: true,
       },
@@ -203,6 +206,8 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
     branchId: "child",
     x: 640,
     y: 180,
+    width: 820,
+    height: 560,
     folded: true,
     expanded: true,
   });
@@ -234,11 +239,11 @@ test("placeNewBranchOnCanvas offsets a new expanded child beside its siblings", 
   snapshot.branches.existing = branch("existing", "root");
   snapshot.branches.created = branch("created", "root");
   snapshot.canvas = applyCanvasPatch(snapshot, {
-    nodes: { root: { x: 200, y: 100 } },
+    nodes: { root: { x: 200, y: 100, width: 820 } },
   });
 
   assert.deepEqual(placeNewBranchOnCanvas(snapshot, "root", "created"), {
-    x: 980,
+    x: 1120,
     y: 460,
   });
 });

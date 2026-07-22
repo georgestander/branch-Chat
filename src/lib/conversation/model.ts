@@ -205,6 +205,8 @@ export interface CanvasBranchNodeState {
   branchId: BranchId;
   x: number;
   y: number;
+  width?: number;
+  height?: number;
   folded: boolean;
   expanded: boolean;
 }
@@ -351,6 +353,16 @@ export function normalizeConversationCanvasState(
         typeof candidate?.y === "number" && Number.isFinite(candidate.y)
           ? candidate.y
           : fallback?.y ?? 0,
+      ...(typeof candidate?.width === "number" &&
+      Number.isFinite(candidate.width) &&
+      candidate.width > 0
+        ? { width: candidate.width }
+        : {}),
+      ...(typeof candidate?.height === "number" &&
+      Number.isFinite(candidate.height) &&
+      candidate.height > 0
+        ? { height: candidate.height }
+        : {}),
       folded: candidate?.folded === true,
       expanded:
         typeof candidate?.expanded === "boolean"
@@ -422,6 +434,20 @@ export function applyCanvasPatch(
         typeof update.y === "number" && Number.isFinite(update.y)
           ? update.y
           : existing.y,
+      ...(typeof update.width === "number" &&
+      Number.isFinite(update.width) &&
+      update.width > 0
+        ? { width: update.width }
+        : existing.width === undefined
+          ? {}
+          : { width: existing.width }),
+      ...(typeof update.height === "number" &&
+      Number.isFinite(update.height) &&
+      update.height > 0
+        ? { height: update.height }
+        : existing.height === undefined
+          ? {}
+          : { height: existing.height }),
       folded:
         typeof update.folded === "boolean" ? update.folded : existing.folded,
       expanded:
@@ -456,8 +482,9 @@ export function placeNewBranchOnCanvas(
   const siblingIndex = Object.values(snapshot.branches).filter(
     (branch) => branch.parentId === parentBranchId && branch.id !== branchId,
   ).length;
+  const parentWidth = parentNode?.expanded ? parentNode.width ?? 680 : 310;
   return {
-    x: (parentNode?.x ?? 0) + 780,
+    x: (parentNode?.x ?? 0) + parentWidth + 100,
     y: (parentNode?.y ?? 0) + siblingIndex * 360,
   };
 }

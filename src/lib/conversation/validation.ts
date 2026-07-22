@@ -472,6 +472,8 @@ function validateCanvasNodeState(
   const nodeBranchId = record.branchId;
   const x = record.x;
   const y = record.y;
+  const width = record.width;
+  const height = record.height;
   const folded = record.folded;
   const expanded = record.expanded;
   assert(
@@ -480,6 +482,16 @@ function validateCanvasNodeState(
   );
   assert(typeof x === "number" && Number.isFinite(x), `canvas.nodes.${branchId}.x invalid`);
   assert(typeof y === "number" && Number.isFinite(y), `canvas.nodes.${branchId}.y invalid`);
+  assert(
+    width === undefined ||
+      (typeof width === "number" && Number.isFinite(width) && width > 0),
+    `canvas.nodes.${branchId}.width invalid`,
+  );
+  assert(
+    height === undefined ||
+      (typeof height === "number" && Number.isFinite(height) && height > 0),
+    `canvas.nodes.${branchId}.height invalid`,
+  );
   assert(typeof folded === "boolean", `canvas.nodes.${branchId}.folded invalid`);
   assert(
     expanded === undefined || typeof expanded === "boolean",
@@ -489,6 +501,8 @@ function validateCanvasNodeState(
     branchId,
     x,
     y,
+    ...(typeof width === "number" ? { width } : {}),
+    ...(typeof height === "number" ? { height } : {}),
     folded,
     expanded:
       typeof expanded === "boolean"

@@ -15,6 +15,7 @@ import {
   Controls,
   Handle,
   MiniMap,
+  NodeResizer,
   Panel,
   Position,
   ReactFlow,
@@ -60,6 +61,10 @@ const CARD_WIDTH = 310;
 const CARD_HEIGHT = 190;
 const EXPANDED_CARD_WIDTH = 680;
 const EXPANDED_CARD_HEIGHT = 700;
+const MIN_EXPANDED_CARD_WIDTH = 420;
+const MIN_EXPANDED_CARD_HEIGHT = 320;
+const MAX_EXPANDED_CARD_WIDTH = 1_200;
+const MAX_EXPANDED_CARD_HEIGHT = 1_000;
 const DRAFT_NODE_ID = "__branch-draft__";
 const DRAFT_CARD_WIDTH = 430;
 const DRAFT_CARD_HEIGHT = 460;
@@ -88,6 +93,10 @@ type BranchNodeData = {
   onRename: (branchId: BranchId) => void;
   onDelete: (branchId: BranchId) => void;
   onStartBranchDraft: (branchId: BranchId, source: Message) => void;
+  onResizeCard: (
+    branchId: BranchId,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => void;
 };
 
 type BranchFlowNode = Node<BranchNodeData, "branch">;
@@ -180,26 +189,45 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
     : "No messages yet.";
 
   return (
-    <article
-      onClick={(event) => {
-        const target = event.target as HTMLElement;
-        if (target.closest('[data-card-interactive="true"]')) return;
-        data.onToggleCard(summary.branch.id);
-      }}
-      className={cn(
-        "group relative flex h-full w-full flex-col overflow-hidden rounded border bg-background text-left transition-[border-color,box-shadow]",
-        data.active || selected
-          ? "border-foreground ring-2 ring-ring"
-          : "border-border hover:border-foreground/45",
-        summary.expanded ? "cursor-default" : "cursor-pointer",
-      )}
-      style={
-        summary.tone
-          ? { borderLeftColor: summary.tone.color, borderLeftWidth: 4 }
-          : undefined
-      }
-      aria-label={`${summary.branch.title} branch card`}
-    >
+    <>
+      <NodeResizer
+        isVisible={summary.expanded}
+        minWidth={MIN_EXPANDED_CARD_WIDTH}
+        minHeight={MIN_EXPANDED_CARD_HEIGHT}
+        maxWidth={MAX_EXPANDED_CARD_WIDTH}
+        maxHeight={MAX_EXPANDED_CARD_HEIGHT}
+        lineStyle={{ borderColor: "var(--foreground)", opacity: 0.28 }}
+        handleStyle={{
+          width: 8,
+          height: 8,
+          borderRadius: 2,
+          border: "1px solid var(--background)",
+          background: "var(--foreground)",
+        }}
+        onResizeEnd={(_, bounds) =>
+          data.onResizeCard(summary.branch.id, bounds)
+        }
+      />
+      <article
+        onClick={(event) => {
+          const target = event.target as HTMLElement;
+          if (target.closest('[data-card-interactive="true"]')) return;
+          data.onToggleCard(summary.branch.id);
+        }}
+        className={cn(
+          "group relative flex h-full w-full flex-col overflow-hidden rounded border bg-background text-left transition-[border-color,box-shadow]",
+          data.active || selected
+            ? "border-foreground ring-2 ring-ring"
+            : "border-border hover:border-foreground/45",
+          summary.expanded ? "cursor-default" : "cursor-pointer",
+        )}
+        style={
+          summary.tone
+            ? { borderLeftColor: summary.tone.color, borderLeftWidth: 4 }
+            : undefined
+        }
+        aria-label={`${summary.branch.title} branch card`}
+      >
       <Handle
         type="target"
         position={Position.Left}
@@ -388,7 +416,8 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
           </div>
         </div>
       )}
-    </article>
+      </article>
+    </>
   );
 }
 
@@ -561,22 +590,39 @@ function CanvasFlow({
     [onStartBranchDraft],
   );
 
+  const resizeCard = useCallback(
+    (
+      branchId: BranchId,
+      bounds: { x: number; y: number; width: number; height: number },
+    ) => {
+      setSelectedId(branchId);
+      onPatchCanvas({
+        focusedBranchId: branchId,
+        nodes: { [branchId]: bounds },
+      });
+    },
+    [onPatchCanvas],
+  );
+
   const desiredNodes = useMemo<CanvasFlowNode[]>(() => {
     const branchNodes: BranchFlowNode[] = Object.values(snapshot.branches)
       .filter((branch) => visibleIds.has(branch.id))
       .map((branch) => {
         const saved = snapshot.canvas.nodes[branch.id];
         const expanded = saved?.expanded === true;
+        const width = expanded
+          ? saved?.width ?? EXPANDED_CARD_WIDTH
+          : CARD_WIDTH;
+        const height = expanded
+          ? saved?.height ?? EXPANDED_CARD_HEIGHT
+          : CARD_HEIGHT;
         return {
           id: branch.id,
           type: "branch",
           position: { x: saved?.x ?? 0, y: saved?.y ?? 0 },
-          initialWidth: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
-          initialHeight: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
-          style: {
-            width: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
-            height: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
-          },
+          initialWidth: width,
+          initialHeight: height,
+          style: { width, height },
           data: {
             summary: summaries.get(branch.id)!,
             active: branch.id === selectedId,
@@ -589,6 +635,7 @@ function CanvasFlow({
             onRename: onRenameBranch,
             onDelete: onDeleteBranch,
             onStartBranchDraft: startBranchDraft,
+            onResizeCard: resizeCard,
           },
           selected: branch.id === selectedId,
         };
@@ -597,7 +644,9 @@ function CanvasFlow({
       return branchNodes;
     }
     const parentNode = snapshot.canvas.nodes[branchDraft.parentBranchId];
-    const parentWidth = parentNode?.expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH;
+    const parentWidth = parentNode?.expanded
+      ? parentNode.width ?? EXPANDED_CARD_WIDTH
+      : CARD_WIDTH;
     const draftNode: BranchDraftFlowNode = {
       id: DRAFT_NODE_ID,
       type: "branchDraft",
@@ -630,6 +679,7 @@ function CanvasFlow({
     onCancelBranchDraft,
     renderBranchDraft,
     renderBranchThread,
+    resizeCard,
     selectedId,
     snapshot.branches,
     snapshot.canvas.nodes,
@@ -673,7 +723,10 @@ function CanvasFlow({
   const expansionSignature = useMemo(
     () =>
       Object.values(snapshot.canvas.nodes)
-        .map((node) => `${node.branchId}:${node.expanded ? 1 : 0}`)
+        .map(
+          (node) =>
+            `${node.branchId}:${node.expanded ? 1 : 0}:${node.width ?? ""}:${node.height ?? ""}`,
+        )
         .sort()
         .join("|"),
     [snapshot.canvas.nodes],
@@ -749,9 +802,10 @@ function CanvasFlow({
     );
     for (const node of branchNodes) {
       const expanded = node.data.summary.expanded;
+      const saved = snapshot.canvas.nodes[node.id];
       graph.setNode(node.id, {
-        width: expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH,
-        height: expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
+        width: expanded ? saved?.width ?? EXPANDED_CARD_WIDTH : CARD_WIDTH,
+        height: expanded ? saved?.height ?? EXPANDED_CARD_HEIGHT : CARD_HEIGHT,
       });
     }
     for (const edge of edges) {
@@ -763,8 +817,11 @@ function CanvasFlow({
     const nextNodes = branchNodes.map((node) => {
       const positioned = graph.node(node.id) as { x: number; y: number };
       const expanded = node.data.summary.expanded;
-      const width = expanded ? EXPANDED_CARD_WIDTH : CARD_WIDTH;
-      const height = expanded ? EXPANDED_CARD_HEIGHT : CARD_HEIGHT;
+      const saved = snapshot.canvas.nodes[node.id];
+      const width = expanded ? saved?.width ?? EXPANDED_CARD_WIDTH : CARD_WIDTH;
+      const height = expanded
+        ? saved?.height ?? EXPANDED_CARD_HEIGHT
+        : CARD_HEIGHT;
       const position = {
         x: positioned.x - width / 2,
         y: positioned.y - height / 2,
@@ -778,7 +835,7 @@ function CanvasFlow({
     ]);
     onPatchCanvas({ nodes: patchNodes });
     window.setTimeout(() => void flow.fitView({ padding: 0.18, duration: 280 }), 0);
-  }, [edges, flow, nodes, onPatchCanvas, setNodes]);
+  }, [edges, flow, nodes, onPatchCanvas, setNodes, snapshot.canvas.nodes]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
