@@ -40,12 +40,25 @@ test("exposes exact command methods over their allowlisted channels", async () =
   const harness = createHarness();
 
   await harness.api.createConversation({ title: "First branch" });
+  await harness.api.saveComposerDraft({
+    conversationId: "conversation-1",
+    branchId: "branch-1",
+    content: "Keep this",
+  });
   await harness.api.getAccountState();
 
   assert.deepEqual(harness.invocations, [
     {
       channel: IPC_CHANNELS.createConversation,
       payload: { title: "First branch" },
+    },
+    {
+      channel: IPC_CHANNELS.saveComposerDraft,
+      payload: {
+        conversationId: "conversation-1",
+        branchId: "branch-1",
+        content: "Keep this",
+      },
     },
     {
       channel: IPC_CHANNELS.getAccountState,

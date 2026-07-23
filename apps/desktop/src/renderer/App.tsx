@@ -370,6 +370,20 @@ export function App(): React.JSX.Element {
     [],
   );
 
+  const queueDraftSave = useCallback(
+    (conversationId: string, branchId: BranchId, content: string) => {
+      void window.branchy
+        .saveComposerDraft({ conversationId, branchId, content })
+        .catch((error: unknown) => {
+          notify(
+            errorMessage(error, "Branchy could not save this draft."),
+            "error",
+          );
+        });
+    },
+    [notify],
+  );
+
   const updateAttachmentsByBranch = useCallback(
     (
       update: (
@@ -457,9 +471,10 @@ export function App(): React.JSX.Element {
         bootstrap.kind === "ready" ? bootstrap.activeStreams : [],
       );
       if (sameConversation && bootstrap.kind === "ready") {
-        setDraftsByBranch((current) =>
-          retainBranchRecords(current, bootstrap.snapshot.branches),
-        );
+        setDraftsByBranch((current) => ({
+          ...bootstrap.draftsByBranch,
+          ...retainBranchRecords(current, bootstrap.snapshot.branches),
+        }));
         updateAttachmentsByBranch((current) =>
           retainBranchRecords(current, bootstrap.snapshot.branches),
         );
@@ -467,7 +482,9 @@ export function App(): React.JSX.Element {
           retainBranchRecords(current, bootstrap.snapshot.branches),
         );
       } else {
-        setDraftsByBranch({});
+        setDraftsByBranch(
+          bootstrap.kind === "ready" ? bootstrap.draftsByBranch : {},
+        );
         updateAttachmentsByBranch(() => ({}));
         setRetryByBranch({});
       }
@@ -495,6 +512,9 @@ export function App(): React.JSX.Element {
           setScreen(screenFromBootstrap(bootstrap));
           setStreamsToResume(
             bootstrap.kind === "ready" ? bootstrap.activeStreams : [],
+          );
+          setDraftsByBranch(
+            bootstrap.kind === "ready" ? bootstrap.draftsByBranch : {},
           );
         }
       })
@@ -1091,6 +1111,7 @@ export function App(): React.JSX.Element {
             ...current,
             [branchId]: content,
           }));
+          queueDraftSave(ready.conversationId, branchId, content);
         }
         notify(
           errorMessage(error, "Branchy could not finish this reply."),
@@ -1103,6 +1124,7 @@ export function App(): React.JSX.Element {
       draftsByBranch,
       loadBootstrap,
       notify,
+      queueDraftSave,
       ready,
       reconcileSend,
       retryByBranch,
@@ -1452,6 +1474,7 @@ export function App(): React.JSX.Element {
     ) => {
       if (!ready) return;
       setDraftsByBranch((current) => ({ ...current, [branchId]: prompt }));
+      queueDraftSave(ready.conversationId, branchId, prompt);
       setRetryByBranch((current) => ({
         ...current,
         [branchId]: { messageId, imageId },
@@ -1462,7 +1485,7 @@ export function App(): React.JSX.Element {
       }));
       openBranch(branchId);
     },
-    [openBranch, ready],
+    [openBranch, queueDraftSave, ready],
   );
 
   const rename = useCallback(
@@ -1934,6 +1957,11 @@ export function App(): React.JSX.Element {
                   ...current,
                   [branchId]: value,
                 }));
+                queueDraftSave(
+                  screen.conversationId,
+                  branchId,
+                  value,
+                );
               }}
               onSend={(branchId) => void sendOnBranch(branchId)}
               onStop={(branchId) => void stopBranch(branchId)}

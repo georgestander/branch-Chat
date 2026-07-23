@@ -202,7 +202,10 @@ class FakeCodex implements BranchyCodexGateway {
   async stop(): Promise<void> {}
 }
 
-async function setup(t: test.TestContext) {
+async function setup(
+  t: test.TestContext,
+  options: { draftSaveDelayMilliseconds?: number } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), "branchy-application-"));
   const generatedRoot = join(directory, "codex-workspace");
   await mkdir(generatedRoot, { recursive: true });
@@ -219,6 +222,8 @@ async function setup(t: test.TestContext) {
   const application = new BranchyApplication({
     assets,
     codex,
+    draftSaveDelayMilliseconds:
+      options.draftSaveDelayMilliseconds ?? 0,
     repository,
     now: () => new Date(NOW),
     publishStream: (streamId, event) => {
@@ -251,6 +256,138 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+test("bootstrap restores per-branch drafts and sending clears the canonical draft", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation({
+    title: "Draft recovery",
+  });
+  const branchId = created.snapshot.conversation.rootBranchId;
+
+  assert.deepEqual(
+    await harness.application.saveComposerDraft({
+      conversationId: created.conversationId,
+      branchId,
+      content: "  continue this thought\nwith the evidence  ",
+    }),
+    {
+      conversationId: created.conversationId,
+      branchId,
+      content: "  continue this thought\nwith the evidence  ",
+      updatedAt: NOW.toISOString(),
+    },
+  );
+  const bootstrap = await harness.application.bootstrap({
+    conversationId: created.conversationId,
+    branchId,
+  });
+  assert.equal(bootstrap.kind, "ready");
+  if (bootstrap.kind === "ready") {
+    assert.deepEqual(bootstrap.draftsByBranch, {
+      [branchId]: "  continue this thought\nwith the evidence  ",
+    });
+  }
+  assert.deepEqual(
+    harness.application.loadConversation(created.conversationId)
+      .draftsByBranch,
+    {
+      [branchId]: "  continue this thought\nwith the evidence  ",
+    },
+  );
+
+  const sent = await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId,
+    content: "continue this thought with the evidence",
+    streamId: "stream-draft-clear",
+  });
+
+  assert.deepEqual(sent.draftsByBranch, {});
+  assert.deepEqual(
+    harness.repository.loadDrafts(created.conversationId),
+    {},
+  );
+  const turn = harness.codex.turn("stream-draft-clear");
+  harness.codex.emit("stream-draft-clear", {
+    type: "complete",
+    streamId: "stream-draft-clear",
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    content: "Done.",
+    reasoningSummary: null,
+    promptTokens: 10,
+    completionTokens: 2,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+});
+
+test("main-owned draft debounce preserves ordering across reload and send", async (t) => {
+  const harness = await setup(t, {
+    draftSaveDelayMilliseconds: 60_000,
+  });
+  const created = harness.application.createConversation({
+    title: "Draft ordering",
+  });
+  const branchId = created.snapshot.conversation.rootBranchId;
+
+  const olderSave = harness.application.saveComposerDraft({
+    conversationId: created.conversationId,
+    branchId,
+    content: "older",
+  });
+  const newerSave = harness.application.saveComposerDraft({
+    conversationId: created.conversationId,
+    branchId,
+    content: "newer",
+  });
+  const bootstrap = await harness.application.bootstrap({
+    conversationId: created.conversationId,
+    branchId,
+  });
+
+  await Promise.all([olderSave, newerSave]);
+  assert.equal(bootstrap.kind, "ready");
+  if (bootstrap.kind === "ready") {
+    assert.deepEqual(bootstrap.draftsByBranch, {
+      [branchId]: "newer",
+    });
+  }
+
+  const pendingAtSend = harness.application.saveComposerDraft({
+    conversationId: created.conversationId,
+    branchId,
+    content: "send this",
+  });
+  const sent = await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId,
+    content: "send this",
+    streamId: "stream-draft-ordering",
+  });
+
+  await pendingAtSend;
+  assert.deepEqual(sent.draftsByBranch, {});
+  assert.deepEqual(
+    harness.repository.loadDrafts(created.conversationId),
+    {},
+  );
+  const turn = harness.codex.turn("stream-draft-ordering");
+  harness.codex.emit("stream-draft-ordering", {
+    type: "complete",
+    streamId: "stream-draft-ordering",
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    content: "Done.",
+    reasoningSummary: null,
+    promptTokens: 3,
+    completionTokens: 1,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+});
 
 test("persists streamed image progress, completion, and native fork context", async (t) => {
   const harness = await setup(t);

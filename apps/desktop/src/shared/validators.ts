@@ -21,6 +21,7 @@ import type {
   RenameConversationInput,
   RetryGeneratedImageInput,
   SaveBranchNoteInput,
+  SaveComposerDraftInput,
   SaveGeneratedImageInput,
   SendMessageInput,
   StreamCloseInput,
@@ -921,6 +922,28 @@ export function validateSaveBranchNoteInput(
   };
 }
 
+export function validateSaveComposerDraftInput(
+  value: unknown,
+): SaveComposerDraftInput {
+  const record = readRecord(value, "payload", [
+    "conversationId",
+    "branchId",
+    "content",
+  ]);
+  return {
+    conversationId: readId(
+      record.conversationId,
+      "payload.conversationId",
+    ),
+    branchId: readId(record.branchId, "payload.branchId"),
+    content: readString(record.content, "payload.content", {
+      maxCharacters: PAYLOAD_LIMITS.messageCharacters,
+      maxBytes: PAYLOAD_LIMITS.messageBytes,
+      allowEmpty: true,
+    }),
+  };
+}
+
 export function validateSendMessageInput(value: unknown): SendMessageInput {
   const record = readRecord(value, "payload", [
     "conversationId",
@@ -1703,6 +1726,7 @@ export const IPC_PAYLOAD_VALIDATORS = {
   [IPC_CHANNELS.renameBranch]: validateRenameBranchInput,
   [IPC_CHANNELS.deleteBranch]: validateBranchIdentityInput,
   [IPC_CHANNELS.saveBranchNote]: validateSaveBranchNoteInput,
+  [IPC_CHANNELS.saveComposerDraft]: validateSaveComposerDraftInput,
   [IPC_CHANNELS.sendMessage]: validateSendMessageInput,
   [IPC_CHANNELS.cancelMessage]: validateCancelMessageInput,
   [IPC_CHANNELS.getAttachmentConstraints]: validateEmptyPayload,

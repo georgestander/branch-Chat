@@ -5,10 +5,12 @@ export {
   PersistenceInvariantError,
   openBranchyDatabase,
   type BranchLoadResult,
+  type ComposerDraftRecord,
   type ConversationBatchCreateInput,
   type ConversationDirectoryEntry,
   type ConversationListOptions,
   type ConversationRepositoryOptions,
+  type ConversationSaveOptions,
   type ConversationWriteOptions,
 } from "./repository.ts";
 export {

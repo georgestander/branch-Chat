@@ -20,7 +20,11 @@ import { applyPersistenceSchema } from "./schema.ts";
 
 const MAX_ID_LENGTH = 512;
 const MAX_TITLE_LENGTH = 512;
+const MAX_DRAFT_CHARACTERS = 120_000;
+const MAX_DRAFT_BYTES = 256 * 1024;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
+const DRAFT_CONTROL_CHARACTER_PATTERN =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
 type SqlRow = Record<string, SQLOutputValue>;
 
@@ -42,6 +46,17 @@ export interface ConversationListOptions {
 export interface ConversationWriteOptions {
   title?: string;
   lastActiveAt?: string;
+}
+
+export interface ConversationSaveOptions extends ConversationWriteOptions {
+  clearDraftBranchId?: string;
+}
+
+export interface ComposerDraftRecord {
+  conversationId: ConversationModelId;
+  branchId: BranchId;
+  content: string;
+  updatedAt: string;
 }
 
 export interface ConversationBatchCreateInput {
@@ -132,6 +147,13 @@ interface SerializedMessageOrderRow {
   branchId: string;
   ordinal: number;
   messageId: string;
+}
+
+interface SerializedDraftRow {
+  conversationId: string;
+  branchId: string;
+  content: string;
+  updatedAt: string;
 }
 
 interface SerializedSnapshot {
@@ -265,6 +287,20 @@ function normalizeTitle(value: unknown): string {
     );
   }
   return normalized;
+}
+
+function normalizeDraftContent(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length > MAX_DRAFT_CHARACTERS ||
+    new TextEncoder().encode(value).byteLength > MAX_DRAFT_BYTES ||
+    DRAFT_CONTROL_CHARACTER_PATTERN.test(value)
+  ) {
+    throw new TypeError(
+      `draft content must be at most ${MAX_DRAFT_CHARACTERS} characters and ${MAX_DRAFT_BYTES} UTF-8 bytes`,
+    );
+  }
+  return value;
 }
 
 function validateStoredBranchTitle(value: string, branchId: string): void {
@@ -597,6 +633,46 @@ function parseMessageRow(row: SqlRow): Message {
   };
 }
 
+function parseDraftRow(
+  row: SqlRow,
+  conversationId: string,
+): SerializedDraftRow {
+  try {
+    const context = "drafts row";
+    const storedConversationId = normalizeIdentifier(
+      expectString(row, "conversation_id", context),
+      "draft.conversationId",
+    );
+    if (storedConversationId !== conversationId) {
+      throw new PersistenceInvariantError(
+        `drafts row belongs to unexpected conversation ${storedConversationId}`,
+      );
+    }
+    return {
+      conversationId: storedConversationId,
+      branchId: normalizeIdentifier(
+        expectString(row, "branch_id", context),
+        "draft.branchId",
+      ),
+      content: normalizeDraftContent(
+        expectString(row, "content", context),
+      ),
+      updatedAt: normalizeTimestamp(
+        expectString(row, "updated_at", context),
+        "draft updated_at",
+      ),
+    };
+  } catch (error) {
+    if (error instanceof PersistenceInvariantError) {
+      throw error;
+    }
+    throw new PersistenceInvariantError(
+      `conversation ${conversationId} contains an invalid composer draft`,
+      { cause: error },
+    );
+  }
+}
+
 function directoryEntryFromRow(row: ConversationRow): ConversationDirectoryEntry {
   return {
     id: row.id as ConversationModelId,
@@ -661,6 +737,7 @@ export class ConversationRepository {
   private readonly selectMessages: StatementSync;
   private readonly selectMessageOrder: StatementSync;
   private readonly selectBranchMessages: StatementSync;
+  private readonly selectDrafts: StatementSync;
   private readonly selectAllDirectory: StatementSync;
   private readonly selectActiveDirectory: StatementSync;
   private readonly selectDirectoryByOwner: StatementSync;
@@ -680,6 +757,8 @@ export class ConversationRepository {
   private readonly unarchiveConversationRow: StatementSync;
   private readonly touchConversationRow: StatementSync;
   private readonly deleteConversationRow: StatementSync;
+  private readonly upsertDraftRow: StatementSync;
+  private readonly deleteDraftRow: StatementSync;
 
   constructor(
     database: DatabaseSync,
@@ -716,6 +795,12 @@ export class ConversationRepository {
       WHERE branch_message_order.conversation_id = ?
         AND branch_message_order.branch_id = ?
       ORDER BY branch_message_order.ordinal
+    `);
+    this.selectDrafts = database.prepare(`
+      SELECT conversation_id, branch_id, content, updated_at
+      FROM drafts
+      WHERE conversation_id = ?
+      ORDER BY branch_id
     `);
     this.selectAllDirectory = database.prepare(
       "SELECT * FROM conversations ORDER BY last_active_at DESC, id ASC",
@@ -812,6 +897,17 @@ export class ConversationRepository {
     this.deleteConversationRow = database.prepare(
       "DELETE FROM conversations WHERE id = ?",
     );
+    this.upsertDraftRow = database.prepare(`
+      INSERT INTO drafts (
+        conversation_id, branch_id, content, updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT (conversation_id, branch_id) DO UPDATE SET
+        content = excluded.content,
+        updated_at = excluded.updated_at
+    `);
+    this.deleteDraftRow = database.prepare(`
+      DELETE FROM drafts WHERE conversation_id = ? AND branch_id = ?
+    `);
   }
 
   static open(
@@ -918,17 +1014,35 @@ export class ConversationRepository {
 
   save(
     value: unknown,
-    options: ConversationWriteOptions = {},
+    options: ConversationSaveOptions = {},
   ): ConversationDirectoryEntry {
     const snapshot = validateSnapshotForPersistence(value);
     const serialized = serializeSnapshot(snapshot);
     const timestamp = this.resolveTimestamp(options.lastActiveAt, "lastActiveAt");
     const title = this.resolveTitle(snapshot, options.title);
+    const clearDraftBranchId =
+      options.clearDraftBranchId === undefined
+        ? null
+        : normalizeIdentifier(
+            options.clearDraftBranchId,
+            "clearDraftBranchId",
+          );
+    if (
+      clearDraftBranchId &&
+      !snapshot.branches[clearDraftBranchId]
+    ) {
+      throw new TypeError(
+        `clearDraftBranchId ${clearDraftBranchId} is not part of the conversation`,
+      );
+    }
 
     return this.write(() => {
       if (!this.selectConversation.get(snapshot.conversation.id)) {
         throw new ConversationNotFoundError(snapshot.conversation.id);
       }
+      const drafts = (
+        this.selectDrafts.all(snapshot.conversation.id) as SqlRow[]
+      ).map((row) => parseDraftRow(row, snapshot.conversation.id));
 
       this.deleteMessages.run(snapshot.conversation.id);
       this.deleteBranches.run(snapshot.conversation.id);
@@ -945,6 +1059,19 @@ export class ConversationRepository {
         serialized.conversation.id,
       );
       this.writeChildRows(serialized);
+      for (const draft of drafts) {
+        if (
+          draft.branchId !== clearDraftBranchId &&
+          snapshot.branches[draft.branchId]
+        ) {
+          this.upsertDraftRow.run(
+            draft.conversationId,
+            draft.branchId,
+            draft.content,
+            draft.updatedAt,
+          );
+        }
+      }
       return this.requireDirectoryEntry(snapshot.conversation.id);
     });
   }
@@ -1039,6 +1166,70 @@ export class ConversationRepository {
       throw new ConversationNotFoundError(conversationId);
     }
     return snapshot;
+  }
+
+  loadDrafts(conversationId: string): Record<BranchId, string> {
+    const id = normalizeIdentifier(conversationId, "conversationId");
+    this.assertConversationExists(id);
+    const drafts: Record<BranchId, string> = {};
+    for (const row of this.selectDrafts.all(id) as SqlRow[]) {
+      const draft = parseDraftRow(row, id);
+      drafts[draft.branchId as BranchId] = draft.content;
+    }
+    return drafts;
+  }
+
+  saveDraft(
+    conversationId: string,
+    branchId: string,
+    content: string,
+    at?: string,
+  ): ComposerDraftRecord | null {
+    const id = normalizeIdentifier(conversationId, "conversationId");
+    const normalizedBranchId = normalizeIdentifier(branchId, "branchId");
+    const normalizedContent = normalizeDraftContent(content);
+    const timestamp = this.resolveTimestamp(at, "draft updatedAt");
+
+    return this.write(() => {
+      this.assertConversationExists(id);
+      if (!this.selectBranch.get(id, normalizedBranchId)) {
+        throw new Error(
+          `Branch ${normalizedBranchId} was not found in conversation ${id}`,
+        );
+      }
+      if (normalizedContent.length === 0) {
+        this.deleteDraftRow.run(id, normalizedBranchId);
+        return null;
+      }
+      this.upsertDraftRow.run(
+        id,
+        normalizedBranchId,
+        normalizedContent,
+        timestamp,
+      );
+      return {
+        conversationId: id as ConversationModelId,
+        branchId: normalizedBranchId as BranchId,
+        content: normalizedContent,
+        updatedAt: timestamp,
+      };
+    });
+  }
+
+  deleteDraft(conversationId: string, branchId: string): boolean {
+    const id = normalizeIdentifier(conversationId, "conversationId");
+    const normalizedBranchId = normalizeIdentifier(branchId, "branchId");
+    return this.write(() => {
+      this.assertConversationExists(id);
+      if (!this.selectBranch.get(id, normalizedBranchId)) {
+        throw new Error(
+          `Branch ${normalizedBranchId} was not found in conversation ${id}`,
+        );
+      }
+      return (
+        Number(this.deleteDraftRow.run(id, normalizedBranchId).changes) === 1
+      );
+    });
   }
 
   loadBranch(

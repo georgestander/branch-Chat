@@ -29,6 +29,7 @@ import {
   validateRenameConversationInput,
   validateRetryGeneratedImageInput,
   validateSaveBranchNoteInput,
+  validateSaveComposerDraftInput,
   validateSaveGeneratedImageInput,
   validateSendMessageInput,
   validateStreamCloseInput,
@@ -316,6 +317,48 @@ test("branch and note commands validate exact identities and selections", () => 
       conversationId: "conversation_1",
       branchId: "branch_1",
       arbitrary: true,
+    }),
+  );
+});
+
+test("composer draft commands preserve whitespace while bounding content", () => {
+  assert.deepEqual(
+    validateSaveComposerDraftInput({
+      conversationId: "conversation_1",
+      branchId: "branch_1",
+      content: "  unfinished thought\nwith context  ",
+    }),
+    {
+      conversationId: "conversation_1",
+      branchId: "branch_1",
+      content: "  unfinished thought\nwith context  ",
+    },
+  );
+  assert.deepEqual(
+    validateSaveComposerDraftInput({
+      conversationId: "conversation_1",
+      branchId: "branch_1",
+      content: "",
+    }),
+    {
+      conversationId: "conversation_1",
+      branchId: "branch_1",
+      content: "",
+    },
+  );
+  rejects(() =>
+    validateSaveComposerDraftInput({
+      conversationId: "conversation_1",
+      branchId: "branch_1",
+      content: "界".repeat(100_000),
+    }),
+  );
+  rejects(() =>
+    validateSaveComposerDraftInput({
+      conversationId: "conversation_1",
+      branchId: "branch_1",
+      content: "draft",
+      localPath: "/tmp/draft.txt",
     }),
   );
 });

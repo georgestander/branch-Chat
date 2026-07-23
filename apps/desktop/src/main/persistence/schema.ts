@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const LATEST_SCHEMA_VERSION = 1;
+export const LATEST_SCHEMA_VERSION = 2;
 
 interface SchemaVersionRow {
   user_version: number;
@@ -119,6 +119,23 @@ function migrateToVersionOne(database: DatabaseSync): void {
   `);
 }
 
+function migrateToVersionTwo(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE drafts (
+      conversation_id TEXT NOT NULL,
+      branch_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (conversation_id, branch_id),
+      FOREIGN KEY (conversation_id, branch_id)
+        REFERENCES branches(conversation_id, id)
+        ON DELETE CASCADE
+    ) STRICT;
+
+    PRAGMA user_version = 2;
+  `);
+}
+
 export function applyPersistenceSchema(database: DatabaseSync): void {
   database.exec("PRAGMA foreign_keys = ON");
 
@@ -137,6 +154,9 @@ export function applyPersistenceSchema(database: DatabaseSync): void {
   try {
     if (currentVersion === 0) {
       migrateToVersionOne(database);
+    }
+    if (readSchemaVersion(database) === 1) {
+      migrateToVersionTwo(database);
     }
 
     const migratedVersion = readSchemaVersion(database);

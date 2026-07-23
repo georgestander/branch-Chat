@@ -32,6 +32,7 @@ export const IPC_CHANNELS = {
   renameBranch: "branchy:branch:rename",
   deleteBranch: "branchy:branch:delete",
   saveBranchNote: "branchy:branch:note:save",
+  saveComposerDraft: "branchy:composer:draft:save",
   sendMessage: "branchy:message:send",
   cancelMessage: "branchy:message:cancel",
   getAttachmentConstraints: "branchy:attachment:constraints",
@@ -117,6 +118,7 @@ export interface ReadyConversationBootstrap {
   conversation: Conversation;
   initialActiveBranchId: BranchId;
   initialMessagesByBranch: Record<BranchId, RenderedMessage[]>;
+  draftsByBranch: Record<BranchId, string>;
   activeStreams: ActiveConversationStream[];
   conversations: ConversationDirectory;
   account: DesktopAccountState;
@@ -134,6 +136,7 @@ export interface ConversationLoadResult {
   conversationId: ConversationModelId;
   snapshot: ConversationGraphSnapshot;
   version: number;
+  draftsByBranch: Record<BranchId, string>;
   activeStreams: ActiveConversationStream[];
 }
 
@@ -226,6 +229,19 @@ export interface SaveBranchNoteResult extends ConversationLoadResult {
   branch: Branch;
   appendedMessages: Message[];
 }
+
+export interface SaveComposerDraftInput extends BranchIdentityInput {
+  content: string;
+}
+
+export interface ComposerDraft {
+  conversationId: ConversationModelId;
+  branchId: BranchId;
+  content: string;
+  updatedAt: string;
+}
+
+export type SaveComposerDraftResult = ComposerDraft | null;
 
 interface SendMessageBase extends ConversationIdentityInput {
   content: string;
@@ -450,6 +466,9 @@ export interface BranchyDesktopApi {
   renameBranch(input: RenameBranchInput): Promise<RenameBranchResult>;
   deleteBranch(input: BranchIdentityInput): Promise<DeleteBranchResult>;
   saveBranchNote(input: SaveBranchNoteInput): Promise<SaveBranchNoteResult>;
+  saveComposerDraft(
+    input: SaveComposerDraftInput,
+  ): Promise<SaveComposerDraftResult>;
   sendMessage(input: SendMessageInput): Promise<SendMessageResult>;
   cancelMessage(input: CancelMessageInput): Promise<CancelMessageResult>;
   getAttachmentConstraints(): Promise<AttachmentConstraints>;
@@ -489,6 +508,7 @@ export type DesktopCommandRequestMap = {
   [IPC_CHANNELS.renameBranch]: RenameBranchInput;
   [IPC_CHANNELS.deleteBranch]: BranchIdentityInput;
   [IPC_CHANNELS.saveBranchNote]: SaveBranchNoteInput;
+  [IPC_CHANNELS.saveComposerDraft]: SaveComposerDraftInput;
   [IPC_CHANNELS.sendMessage]: SendMessageInput;
   [IPC_CHANNELS.cancelMessage]: CancelMessageInput;
   [IPC_CHANNELS.getAttachmentConstraints]: EmptyPayload;
@@ -525,6 +545,7 @@ export type DesktopCommandResponseMap = {
   [IPC_CHANNELS.renameBranch]: RenameBranchResult;
   [IPC_CHANNELS.deleteBranch]: DeleteBranchResult;
   [IPC_CHANNELS.saveBranchNote]: SaveBranchNoteResult;
+  [IPC_CHANNELS.saveComposerDraft]: SaveComposerDraftResult;
   [IPC_CHANNELS.sendMessage]: SendMessageResult;
   [IPC_CHANNELS.cancelMessage]: CancelMessageResult;
   [IPC_CHANNELS.getAttachmentConstraints]: AttachmentConstraints;

@@ -38,6 +38,8 @@ import type {
   RetryGeneratedImageInput,
   SaveBranchNoteInput,
   SaveBranchNoteResult,
+  SaveComposerDraftInput,
+  SaveComposerDraftResult,
   SendMessageInput,
   SendMessageResult,
   StartChatGptLoginResult,
@@ -86,6 +88,7 @@ const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 const MAX_PENDING_ATTACHMENTS_PER_CONVERSATION = 64;
 const MAX_PENDING_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 const LOGIN_LIFETIME_MILLISECONDS = 15 * 60 * 1000;
+const DEFAULT_DRAFT_SAVE_DELAY_MILLISECONDS = 200;
 
 interface ActiveTurn {
   assistantMessageId: string;
@@ -106,9 +109,19 @@ interface ActiveTurn {
   userPrompt: string;
 }
 
+interface PendingDraftSave {
+  input: SaveComposerDraftInput;
+  timeout: ReturnType<typeof setTimeout>;
+  waiters: Array<{
+    resolve(result: SaveComposerDraftResult): void;
+    reject(error: unknown): void;
+  }>;
+}
+
 export interface BranchyApplicationOptions {
   assets: AssetStore;
   codex: BranchyCodexGateway;
+  draftSaveDelayMilliseconds?: number;
   now?: () => Date;
   publishStream: (streamId: string, event: BranchyStreamEvent) => void;
   repository: ConversationRepository;
@@ -278,6 +291,7 @@ function imageStorageKeys(
 export class BranchyApplication {
   private readonly assets: AssetStore;
   private readonly codex: BranchyCodexGateway;
+  private readonly draftSaveDelayMilliseconds: number;
   private readonly now: () => Date;
   private readonly publishStream: BranchyApplicationOptions["publishStream"];
   private readonly repository: ConversationRepository;
@@ -291,10 +305,22 @@ export class BranchyApplication {
   >();
   private readonly versions = new Map<string, number>();
   private readonly mutationTails = new Map<string, Promise<void>>();
+  private readonly pendingDraftSaves = new Map<string, PendingDraftSave>();
 
   constructor(options: BranchyApplicationOptions) {
     this.assets = options.assets;
     this.codex = options.codex;
+    this.draftSaveDelayMilliseconds =
+      options.draftSaveDelayMilliseconds ??
+      DEFAULT_DRAFT_SAVE_DELAY_MILLISECONDS;
+    if (
+      !Number.isSafeInteger(this.draftSaveDelayMilliseconds) ||
+      this.draftSaveDelayMilliseconds < 0
+    ) {
+      throw new TypeError(
+        "draftSaveDelayMilliseconds must be a non-negative integer",
+      );
+    }
     this.now = options.now ?? (() => new Date());
     this.publishStream = options.publishStream;
     this.repository = options.repository;
@@ -304,6 +330,7 @@ export class BranchyApplication {
     conversationId?: string;
     branchId?: string;
   } = {}): Promise<ConversationBootstrap> {
+    await this.flushPendingDraftSaves();
     const conversations = this.listConversations({ includeArchived: true });
     const account = await this.getAccountState();
     const requested = input.conversationId
@@ -337,6 +364,9 @@ export class BranchyApplication {
       initialMessagesByBranch: renderMessagesByBranch(snapshot, {
         activeStreams,
       }),
+      draftsByBranch: this.repository.loadDrafts(
+        snapshot.conversation.id,
+      ),
       activeStreams,
       conversations,
       account,
@@ -436,6 +466,9 @@ export class BranchyApplication {
       ?.values() ?? []) {
       assetKeys.add(attachment.storageKey);
     }
+    this.discardPendingDraftSaves(
+      (pending) => pending.input.conversationId === conversationId,
+    );
     this.repository.delete(conversationId);
     this.versions.delete(conversationId);
     this.pendingAttachments.delete(conversationId);
@@ -568,6 +601,11 @@ export class BranchyApplication {
     await this.deleteProviderThreads(
       [...beforeThreads].filter((threadId) => !afterThreads.has(threadId)),
     );
+    this.discardPendingDraftSaves(
+      (pending) =>
+        pending.input.conversationId === conversationId &&
+        !survivingBranches.has(pending.input.branchId),
+    );
     this.saveSnapshot(snapshot);
     await this.deleteUnreferencedAssets(assetKeys);
     return {
@@ -628,13 +666,45 @@ export class BranchyApplication {
     };
   }
 
+  saveComposerDraft(
+    input: SaveComposerDraftInput,
+  ): Promise<SaveComposerDraftResult> {
+    if (this.draftSaveDelayMilliseconds === 0) {
+      return this.persistComposerDraft(input);
+    }
+    const key = this.draftSaveKey(input.conversationId, input.branchId);
+    return new Promise<SaveComposerDraftResult>((resolve, reject) => {
+      const existing = this.pendingDraftSaves.get(key);
+      if (existing) {
+        clearTimeout(existing.timeout);
+        existing.input = input;
+        existing.waiters.push({ resolve, reject });
+        existing.timeout = this.scheduleDraftSave(key);
+        return;
+      }
+      this.pendingDraftSaves.set(key, {
+        input,
+        timeout: this.scheduleDraftSave(key),
+        waiters: [{ resolve, reject }],
+      });
+    });
+  }
+
   async sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
+    if (!input.branchDraft) {
+      await this.flushPendingDraftSave(
+        this.draftSaveKey(input.conversationId, input.branchId),
+      );
+    }
     return this.startMessage(input, input.content);
   }
 
   async retryGeneratedImage(
     input: RetryGeneratedImageInput,
   ): Promise<SendMessageResult> {
+    await this.flushPendingDraftSave(
+      this.draftSaveKey(input.conversationId, input.branchId),
+    );
     this.requireImageGenerationInvocation(
       input.conversationId,
       input.messageId,
@@ -996,6 +1066,7 @@ export class BranchyApplication {
   }
 
   async close(): Promise<void> {
+    await this.flushPendingDraftSaves();
     for (const session of this.loginSessions.values()) {
       await session.cancel().catch(() => undefined);
     }
@@ -1103,7 +1174,7 @@ export class BranchyApplication {
         },
       ];
       const next = applyConversationGraphUpdates(snapshot, updates);
-      this.saveSnapshot(next);
+      this.saveSnapshot(next, { clearDraftBranchId: branch.id });
       this.consumePendingAttachments(
         input.conversationId,
         input.attachmentIds ?? [],
@@ -1792,6 +1863,9 @@ export class BranchyApplication {
       conversationId: snapshot.conversation.id,
       snapshot,
       version: this.versionFor(snapshot.conversation.id),
+      draftsByBranch: this.repository.loadDrafts(
+        snapshot.conversation.id,
+      ),
       activeStreams: this.activeStreamsFor(snapshot.conversation.id),
     };
   }
@@ -1812,9 +1886,79 @@ export class BranchyApplication {
       .sort((left, right) => left.streamId.localeCompare(right.streamId));
   }
 
-  private saveSnapshot(snapshot: ConversationGraphSnapshot): void {
+  private draftSaveKey(
+    conversationId: string,
+    branchId: BranchId,
+  ): string {
+    return JSON.stringify([conversationId, branchId]);
+  }
+
+  private scheduleDraftSave(
+    key: string,
+  ): ReturnType<typeof setTimeout> {
+    const timeout = setTimeout(() => {
+      void this.flushPendingDraftSave(key).catch(() => undefined);
+    }, this.draftSaveDelayMilliseconds);
+    timeout.unref?.();
+    return timeout;
+  }
+
+  private persistComposerDraft(
+    input: SaveComposerDraftInput,
+  ): Promise<SaveComposerDraftResult> {
+    return this.withMutation(input.conversationId, () =>
+      this.repository.saveDraft(
+        input.conversationId,
+        input.branchId,
+        input.content,
+        this.now().toISOString(),
+      ),
+    );
+  }
+
+  private async flushPendingDraftSave(
+    key: string,
+  ): Promise<SaveComposerDraftResult | null> {
+    const pending = this.pendingDraftSaves.get(key);
+    if (!pending) return null;
+    this.pendingDraftSaves.delete(key);
+    clearTimeout(pending.timeout);
+    try {
+      const result = await this.persistComposerDraft(pending.input);
+      for (const waiter of pending.waiters) waiter.resolve(result);
+      return result;
+    } catch (error) {
+      for (const waiter of pending.waiters) waiter.reject(error);
+      throw error;
+    }
+  }
+
+  private async flushPendingDraftSaves(): Promise<void> {
+    for (const key of [...this.pendingDraftSaves.keys()]) {
+      await this.flushPendingDraftSave(key);
+    }
+  }
+
+  private discardPendingDraftSaves(
+    shouldDiscard: (pending: PendingDraftSave) => boolean,
+  ): void {
+    for (const [key, pending] of this.pendingDraftSaves) {
+      if (!shouldDiscard(pending)) continue;
+      clearTimeout(pending.timeout);
+      this.pendingDraftSaves.delete(key);
+      for (const waiter of pending.waiters) waiter.resolve(null);
+    }
+  }
+
+  private saveSnapshot(
+    snapshot: ConversationGraphSnapshot,
+    options: { clearDraftBranchId?: BranchId } = {},
+  ): void {
     this.repository.save(snapshot, {
       lastActiveAt: this.now().toISOString(),
+      ...(options.clearDraftBranchId
+        ? { clearDraftBranchId: options.clearDraftBranchId }
+        : {}),
     });
     this.bumpVersion(snapshot.conversation.id);
   }

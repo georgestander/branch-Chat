@@ -6,6 +6,7 @@ import { performance } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
+  deleteBranchSubtree,
   validateConversationGraphSnapshot,
   type ConversationGraphSnapshot,
   type Message,
@@ -362,11 +363,38 @@ test("schema migration creates the normalized versioned database", () => {
       "branch_message_order",
       "branches",
       "conversations",
+      "drafts",
       "messages",
     ]);
     assert.equal(
       database.prepare("PRAGMA foreign_keys").get()?.foreign_keys,
       1,
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("schema migration upgrades an existing version-one database", () => {
+  const database = openBranchyDatabase(":memory:");
+  try {
+    database.exec(`
+      DROP TABLE drafts;
+      PRAGMA user_version = 1;
+    `);
+
+    applyPersistenceSchema(database);
+
+    assert.equal(
+      database.prepare("PRAGMA user_version").get()?.user_version,
+      LATEST_SCHEMA_VERSION,
+    );
+    assert.deepEqual(
+      database
+        .prepare("PRAGMA table_info(drafts)")
+        .all()
+        .map((row) => row.name),
+      ["conversation_id", "branch_id", "content", "updated_at"],
     );
   } finally {
     database.close();
@@ -511,6 +539,116 @@ test("save replaces graph rows atomically and preserves directory archive state"
   );
 });
 
+test("composer drafts persist per branch across graph saves and clear atomically", (t) => {
+  const repository = ConversationRepository.open(createTempDatabasePath(t), {
+    clock: () => LAST_ACTIVE_AT,
+  });
+  t.after(() => repository.close());
+  const snapshot = createDeepSnapshot();
+  repository.create(snapshot);
+
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {});
+  assert.deepEqual(
+    repository.saveDraft(
+      "conversation-deep",
+      "root",
+      "Root draft\nwith context",
+      RENAMED_AT,
+    ),
+    {
+      conversationId: "conversation-deep",
+      branchId: "root",
+      content: "Root draft\nwith context",
+      updatedAt: RENAMED_AT,
+    },
+  );
+  repository.saveDraft(
+    "conversation-deep",
+    "child",
+    "  child draft  ",
+    ARCHIVED_AT,
+  );
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {
+    child: "  child draft  ",
+    root: "Root draft\nwith context",
+  });
+
+  const updated = structuredClone(snapshot);
+  updated.branches.root.title = "Updated root";
+  repository.save(updated, { lastActiveAt: UNARCHIVED_AT });
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {
+    child: "  child draft  ",
+    root: "Root draft\nwith context",
+  });
+
+  repository.save(updated, {
+    clearDraftBranchId: "root",
+    lastActiveAt: UNARCHIVED_AT,
+  });
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {
+    child: "  child draft  ",
+  });
+
+  assert.equal(
+    repository.saveDraft(
+      "conversation-deep",
+      "child",
+      "",
+      UNARCHIVED_AT,
+    ),
+    null,
+  );
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {});
+
+  repository.saveDraft(
+    "conversation-deep",
+    "child",
+    "This branch will be deleted",
+    UNARCHIVED_AT,
+  );
+  const pruned = structuredClone(updated);
+  deleteBranchSubtree(pruned, "child");
+  repository.save(pruned, { lastActiveAt: UNARCHIVED_AT });
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {});
+});
+
+test("composer draft writes validate conversation ownership and content bounds", (t) => {
+  const repository = ConversationRepository.open(createTempDatabasePath(t), {
+    clock: () => LAST_ACTIVE_AT,
+  });
+  t.after(() => repository.close());
+  repository.create(createDeepSnapshot());
+
+  assert.throws(
+    () =>
+      repository.saveDraft(
+        "conversation-deep",
+        "missing-branch",
+        "Do not persist me",
+      ),
+    /was not found in conversation/,
+  );
+  assert.throws(
+    () =>
+      repository.saveDraft(
+        "missing-conversation",
+        "root",
+        "Do not persist me",
+      ),
+    ConversationNotFoundError,
+  );
+  assert.throws(
+    () =>
+      repository.saveDraft(
+        "conversation-deep",
+        "root",
+        "界".repeat(100_000),
+      ),
+    /draft content must be at most/,
+  );
+  assert.deepEqual(repository.loadDrafts("conversation-deep"), {});
+});
+
 test("rename, archive, unarchive, and delete update canonical and directory state", (t) => {
   const repository = ConversationRepository.open(createTempDatabasePath(t), {
     clock: () => LAST_ACTIVE_AT,
@@ -557,6 +695,7 @@ test("rename, archive, unarchive, and delete update canonical and directory stat
   for (const table of [
     "conversations",
     "branches",
+    "drafts",
     "messages",
     "branch_message_order",
   ]) {
