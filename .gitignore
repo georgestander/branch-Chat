@@ -69,5 +69,8 @@ coverage
 *.tmp
 *.temp
 
+# Local visual QA state
+.omx/
+
 # Wrangler
 .wrangler
