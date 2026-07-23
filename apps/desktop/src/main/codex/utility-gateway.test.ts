@@ -197,6 +197,8 @@ test("factory waits for spawn and initializes the isolated worker", async () => 
       userDataPath: "/tmp/branchy-user-data",
       isPackaged: false,
       resourcesPath: "/tmp/branchy-resources",
+      transcriptionUserAgent:
+        "Mozilla/5.0 Electron/43.2.0 BranchyChat/1.0.0",
       developmentExecutablePath: "/tmp/branchy-codex",
     },
     spawnProcess: () => child,

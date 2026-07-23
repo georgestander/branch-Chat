@@ -8,6 +8,39 @@ import {
   recoverCodexUtilityRequestId,
 } from "./utility-contracts.ts";
 
+test("utility initialization accepts a bounded browser user agent and rejects header injection", () => {
+  const input = {
+    userDataPath: "/tmp/branchy-user-data",
+    isPackaged: true,
+    resourcesPath: "/tmp/branchy-resources",
+    transcriptionUserAgent:
+      "Mozilla/5.0 Electron/43.2.0 BranchyChat/1.0.0",
+  };
+  assert.deepEqual(
+    parseCodexUtilityRequest({
+      kind: "request",
+      id: "request-init",
+      method: "initialize",
+      input,
+    }).input,
+    input,
+  );
+  assert.throws(
+    () =>
+      parseCodexUtilityRequest({
+        kind: "request",
+        id: "request-bad-agent",
+        method: "initialize",
+        input: {
+          ...input,
+          transcriptionUserAgent:
+            "Branchy Chat\r\noriginator: injected",
+        },
+      }),
+    /control characters/u,
+  );
+});
+
 test("utility requests validate the complete turn boundary", () => {
   const request = parseCodexUtilityRequest({
     kind: "request",

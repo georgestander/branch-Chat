@@ -5,6 +5,7 @@ import { DictationRequestError, parsePcm16Wav } from "./audio.ts";
 import {
   buildChatGptTranscriptionRequest,
   CHATGPT_TRANSCRIPTION_ENDPOINT,
+  isChatGptSecurityChallenge,
   parseChatGptAuthStatus,
   readChatGptTranscript,
 } from "./chatgpt-transcription.ts";
@@ -118,6 +119,7 @@ export interface CodexAppServerClientOptions {
   runtime?: BranchyCodexRuntime;
   defaultModel?: string;
   fetchImpl?: typeof fetch;
+  transcriptionUserAgent?: string;
   onDiagnostic?: (message: string, detail?: unknown) => void;
   now?: () => number;
 }
@@ -149,6 +151,7 @@ export interface CreateBranchyCodexClientOptions {
   resourcesPath?: string;
   bundledExecutablePath?: string;
   developmentExecutablePath?: string;
+  transcriptionUserAgent?: string;
   sourceEnvironment?: NodeJS.ProcessEnv;
   spawnProcess?: SpawnCodexProcess;
   onDiagnostic?: (message: string, detail?: unknown) => void;
@@ -370,6 +373,7 @@ export class CodexAppServerClient {
   private readonly runtime?: BranchyCodexRuntime;
   private readonly defaultModel: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly configuredTranscriptionUserAgent: string | null;
   private readonly onDiagnostic?: (
     message: string,
     detail?: unknown,
@@ -383,6 +387,7 @@ export class CodexAppServerClient {
   private readonly pendingCancellations = new Map<string, number>();
   private readonly generatedImages = new Map<string, GeneratedImage>();
   private activeDictationAbortController: AbortController | null = null;
+  private appServerUserAgent: string | null = null;
 
   constructor({
     transport,
@@ -390,6 +395,7 @@ export class CodexAppServerClient {
     runtime,
     defaultModel = "gpt-5.6-sol",
     fetchImpl = globalThis.fetch,
+    transcriptionUserAgent,
     onDiagnostic,
     now = Date.now,
   }: CodexAppServerClientOptions) {
@@ -398,6 +404,8 @@ export class CodexAppServerClient {
     this.runtime = runtime;
     this.defaultModel = defaultModel;
     this.fetchImpl = fetchImpl;
+    this.configuredTranscriptionUserAgent =
+      stringValue(transcriptionUserAgent) ?? null;
     this.onDiagnostic = onDiagnostic;
     this.now = now;
     this.transport.subscribeLifecycle?.((event) => {
@@ -412,17 +420,23 @@ export class CodexAppServerClient {
     this.ready = (async () => {
       await this.hardenRuntime();
       await this.transport.start();
-      await this.transport.request("initialize", {
-        clientInfo: {
-          name: "branchy-chat",
-          title: "Branchy Chat",
-          version: "1.0.0",
+      const response = await this.transport.request<unknown>(
+        "initialize",
+        {
+          clientInfo: {
+            name: "branchy-chat",
+            title: "Branchy Chat",
+            version: "1.0.0",
+          },
+          capabilities: {
+            experimentalApi: true,
+            requestAttestation: false,
+          },
         },
-        capabilities: {
-          experimentalApi: true,
-          requestAttestation: false,
-        },
-      });
+      );
+      this.appServerUserAgent = stringValue(
+        isObject(response) ? response.userAgent : null,
+      );
       await this.transport.notify("initialized", {});
     })().catch((error: unknown) => {
       this.ready = null;
@@ -441,6 +455,7 @@ export class CodexAppServerClient {
     }
     await this.transport.stop();
     this.ready = null;
+    this.appServerUserAgent = null;
   }
 
   async readAccount(): Promise<CodexAccountState> {
@@ -1062,6 +1077,16 @@ export class CodexAppServerClient {
       throwIfAborted();
       const { durationSeconds } = parsePcm16Wav(input);
       throwIfAborted();
+      const preferredUserAgent =
+        this.appServerUserAgent ??
+        this.configuredTranscriptionUserAgent;
+      if (!preferredUserAgent) {
+        throw new DictationRequestError(
+          "Branchy Chat could not identify its transcription client",
+          502,
+        );
+      }
+      let userAgent = preferredUserAgent;
       let auth = parseChatGptAuthStatus(
         await this.transport.request("getAuthStatus", {
           includeToken: true,
@@ -1069,17 +1094,35 @@ export class CodexAppServerClient {
         }),
       );
       throwIfAborted();
-      let request = buildChatGptTranscriptionRequest(input, auth);
-      let response = await this.fetchImpl(
-        CHATGPT_TRANSCRIPTION_ENDPOINT,
-        {
+      const post = async (): Promise<Response> => {
+        const request = buildChatGptTranscriptionRequest(
+          input,
+          auth,
+          userAgent,
+        );
+        return this.fetchImpl(CHATGPT_TRANSCRIPTION_ENDPOINT, {
           method: "POST",
           headers: request.headers,
           body: request.body,
           redirect: "error",
           signal: abortController.signal,
-        },
-      );
+        });
+      };
+      const retrySecurityChallenge = async (
+        response: Response,
+      ): Promise<Response> => {
+        if (
+          !isChatGptSecurityChallenge(response) ||
+          !this.configuredTranscriptionUserAgent ||
+          this.configuredTranscriptionUserAgent === userAgent
+        ) {
+          return response;
+        }
+        userAgent = this.configuredTranscriptionUserAgent;
+        throwIfAborted();
+        return post();
+      };
+      let response = await retrySecurityChallenge(await post());
       if (response.status === 401) {
         auth = parseChatGptAuthStatus(
           await this.transport.request("getAuthStatus", {
@@ -1088,16 +1131,8 @@ export class CodexAppServerClient {
           }),
         );
         throwIfAborted();
-        request = buildChatGptTranscriptionRequest(input, auth);
-        response = await this.fetchImpl(
-          CHATGPT_TRANSCRIPTION_ENDPOINT,
-          {
-            method: "POST",
-            headers: request.headers,
-            body: request.body,
-            redirect: "error",
-            signal: abortController.signal,
-          },
+        response = await retrySecurityChallenge(
+          await post(),
         );
       }
       return {
@@ -1553,6 +1588,7 @@ export async function createBranchyCodexClient({
   resourcesPath,
   bundledExecutablePath,
   developmentExecutablePath,
+  transcriptionUserAgent,
   sourceEnvironment = process.env,
   spawnProcess,
   onDiagnostic,
@@ -1594,6 +1630,7 @@ export async function createBranchyCodexClient({
     transport,
     workspacePath: runtime.workspacePath,
     runtime,
+    transcriptionUserAgent,
     onDiagnostic,
   });
 }

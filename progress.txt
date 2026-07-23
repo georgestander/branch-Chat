@@ -25,3 +25,10 @@
 - Files changed: apps/desktop/src/renderer/Composer.tsx, apps/desktop/src/renderer/dictation.ts, apps/desktop/src/renderer/dictation.test.ts.
 - Verification: focused dictation tests 4/4; desktop tests 170/170; pnpm types; npm run test 284/284; npm run lint; independent code review found no actionable issue.
 - Next: run a packaged microphone smoke with real speech and verify the transcript remains editable without auto-send.
+
+2026-07-23 — Authenticated ChatGPT transcription request parity
+- Reference: Codex rust-v0.144.5 app-server initialization contract and the historical public Codex one-way transcription client.
+- Decisions: keep batch transcription on Branchy's isolated ChatGPT bearer/account state; send the official app-server user agent first; remove the unsupported originator header; retry an explicit Cloudflare challenge once with Branchy's actual Electron session user agent; never share Codex Desktop cookies or refresh auth for a WAF response; surface a sanitized retryable error if the challenge remains.
+- Files changed: apps/desktop/src/main/codex/chatgpt-transcription.ts, apps/desktop/src/main/codex/client.ts, apps/desktop/src/main/codex/client.test.ts, apps/desktop/src/main/codex/utility-contracts.ts, apps/desktop/src/main/codex/utility-contracts.test.ts, apps/desktop/src/main/codex/utility-gateway.test.ts, apps/desktop/src/main/main.ts.
+- Verification: focused Codex client and utility tests 32/32; pnpm types; npm run test 289/289; npm run lint; git diff --check; ad-hoc package build and codesign verification passed.
+- Next: complete the packaged microphone smoke with real speech once macOS computer use is unlocked.

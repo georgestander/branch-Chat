@@ -76,6 +76,7 @@ export function parseChatGptAuthStatus(
 export function buildChatGptTranscriptionRequest(
   input: Uint8Array,
   auth: ChatGptAuthStatus,
+  userAgent: string,
 ): {
   body: Buffer;
   headers: Record<string, string>;
@@ -85,7 +86,7 @@ export function buildChatGptTranscriptionRequest(
   const body = Buffer.concat([
     Buffer.from(
       `--${boundary}\r\n` +
-        'Content-Disposition: form-data; name="file"; filename="branchy-dictation.wav"\r\n' +
+        'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n' +
         "Content-Type: audio/wav\r\n\r\n",
       "utf8",
     ),
@@ -93,10 +94,9 @@ export function buildChatGptTranscriptionRequest(
     Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
   ]);
   const headers: Record<string, string> = {
-    Accept: "application/json",
     Authorization: `Bearer ${auth.accessToken}`,
     "Content-Type": `multipart/form-data; boundary=${boundary}`,
-    originator: "Branchy Chat",
+    "User-Agent": userAgent,
   };
   if (auth.accountId) {
     headers["ChatGPT-Account-Id"] = auth.accountId;
@@ -120,6 +120,12 @@ export async function readChatGptTranscript(
         429,
       );
     }
+    if (isChatGptSecurityChallenge(response)) {
+      throw new DictationRequestError(
+        "ChatGPT transcription was blocked by a network security check. Retry, or use another network",
+        503,
+      );
+    }
     throw new DictationRequestError(
       `ChatGPT transcription failed (${response.status})`,
       502,
@@ -134,4 +140,14 @@ export async function readChatGptTranscript(
     );
   }
   return transcript;
+}
+
+export function isChatGptSecurityChallenge(
+  response: Response,
+): boolean {
+  return (
+    response.status === 403 &&
+    response.headers.get("cf-mitigated")?.toLowerCase() ===
+      "challenge"
+  );
 }

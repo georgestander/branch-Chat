@@ -149,7 +149,7 @@ function createFakeChatGptToken(
 function defaultResponse(method: string): unknown {
   if (method === "initialize") {
     return {
-      userAgent: "fake",
+      userAgent: "codex_cli_rs/0.144.5 (branchy-chat; 1.0.0)",
       codexHome: "/isolated/codex-home",
       platformFamily: "unix",
       platformOs: "macos",
@@ -780,7 +780,7 @@ test("thread cleanup is idempotent for missing threads", async () => {
   );
 });
 
-test("dictation uses ChatGPT batch transcription with isolated account auth", async () => {
+test("dictation uses the Codex app-server user agent for isolated ChatGPT batch transcription", async () => {
   const wav = createPcm16Wav();
   const accessToken = createFakeChatGptToken("account-1");
   const transport = new FakeTransport((method) => {
@@ -829,7 +829,12 @@ test("dictation uses ChatGPT batch transcription with isolated account auth", as
   const headers = new Headers(request.init?.headers);
   assert.equal(headers.get("Authorization"), `Bearer ${accessToken}`);
   assert.equal(headers.get("ChatGPT-Account-Id"), "account-1");
-  assert.equal(headers.get("originator"), "Branchy Chat");
+  assert.equal(
+    headers.get("User-Agent"),
+    "codex_cli_rs/0.144.5 (branchy-chat; 1.0.0)",
+  );
+  assert.equal(headers.get("originator"), null);
+  assert.equal(headers.get("Accept"), null);
   assert.match(
     headers.get("Content-Type") ?? "",
     /^multipart\/form-data; boundary=----branchy-transcribe-/,
@@ -838,7 +843,7 @@ test("dictation uses ChatGPT batch transcription with isolated account auth", as
   assert.notEqual(body.indexOf(wav), -1);
   assert.match(
     body.toString("utf8", 0, Math.min(body.length, 300)),
-    /name="file"; filename="branchy-dictation\.wav"/,
+    /name="file"; filename="audio\.wav"/,
   );
   assert.equal(
     transport.calls.some((call) =>
@@ -846,6 +851,191 @@ test("dictation uses ChatGPT batch transcription with isolated account auth", as
     ),
     false,
   );
+});
+
+test("dictation falls back to the configured transcription user agent when initialize omits one", async () => {
+  const wav = createPcm16Wav();
+  const accessToken = createFakeChatGptToken("account-fallback");
+  const transport = new FakeTransport((method) => {
+    if (method === "initialize") {
+      return {
+        userAgent: "",
+        codexHome: "/isolated/codex-home",
+        platformFamily: "unix",
+        platformOs: "macos",
+      };
+    }
+    if (method === "getAuthStatus") {
+      return {
+        authMethod: "chatgpt",
+        authToken: accessToken,
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  const requests: Array<{
+    url: string;
+    init: RequestInit | undefined;
+  }> = [];
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    transcriptionUserAgent:
+      "Mozilla/5.0 Branchy-Chat-Test/1.0.0",
+    fetchImpl: async (input, init) => {
+      requests.push({ url: String(input), init });
+      return new Response(
+        JSON.stringify({ text: "fallback transcript" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    },
+  });
+
+  assert.equal(
+    (await client.transcribeWav(wav)).transcript,
+    "fallback transcript",
+  );
+  const request = requests[0];
+  assert(request);
+  const headers = new Headers(request.init?.headers);
+  assert.equal(
+    headers.get("User-Agent"),
+    "Mozilla/5.0 Branchy-Chat-Test/1.0.0",
+  );
+});
+
+test("dictation retries a security challenge once with Branchy's real browser user agent", async () => {
+  const refreshValues: boolean[] = [];
+  const transport = new FakeTransport((method, params) => {
+    if (method === "getAuthStatus") {
+      refreshValues.push(
+        (params as { refreshToken?: boolean }).refreshToken === true,
+      );
+      return {
+        authMethod: "chatgpt",
+        authToken: createFakeChatGptToken("account-browser-fallback"),
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  const userAgents: string[] = [];
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    transcriptionUserAgent:
+      "Mozilla/5.0 Electron/43.2.0 BranchyChat/1.0.0",
+    fetchImpl: async (_input, init) => {
+      userAgents.push(
+        new Headers(init?.headers).get("User-Agent") ?? "",
+      );
+      if (userAgents.length === 1) {
+        return new Response("challenge", {
+          status: 403,
+          headers: { "cf-mitigated": "challenge" },
+        });
+      }
+      return new Response(
+        JSON.stringify({ text: "browser fallback transcript" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    },
+  });
+
+  assert.equal(
+    (await client.transcribeWav(createPcm16Wav())).transcript,
+    "browser fallback transcript",
+  );
+  assert.deepEqual(userAgents, [
+    "codex_cli_rs/0.144.5 (branchy-chat; 1.0.0)",
+    "Mozilla/5.0 Electron/43.2.0 BranchyChat/1.0.0",
+  ]);
+  assert.deepEqual(refreshValues, [false]);
+});
+
+test("dictation classifies a Cloudflare challenge without refreshing auth or leaking its body", async () => {
+  const refreshValues: boolean[] = [];
+  const transport = new FakeTransport((method, params) => {
+    if (method === "getAuthStatus") {
+      refreshValues.push(
+        (params as { refreshToken?: boolean }).refreshToken === true,
+      );
+      return {
+        authMethod: "chatgpt",
+        authToken: createFakeChatGptToken("account-waf"),
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  let fetchCalls = 0;
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return new Response("private challenge body", {
+        status: 403,
+        headers: {
+          "cf-mitigated": "challenge",
+          "Content-Type": "text/html",
+        },
+      });
+    },
+  });
+
+  await assert.rejects(
+    () => client.transcribeWav(createPcm16Wav()),
+    (error) =>
+      error instanceof DictationRequestError &&
+      error.status === 503 &&
+      /network security check/u.test(error.message) &&
+      !/private challenge body/u.test(error.message),
+  );
+  assert.equal(fetchCalls, 1);
+  assert.deepEqual(refreshValues, [false]);
+});
+
+test("dictation reports an ordinary forbidden response without refreshing auth", async () => {
+  const refreshValues: boolean[] = [];
+  const transport = new FakeTransport((method, params) => {
+    if (method === "getAuthStatus") {
+      refreshValues.push(
+        (params as { refreshToken?: boolean }).refreshToken === true,
+      );
+      return {
+        authMethod: "chatgpt",
+        authToken: createFakeChatGptToken("account-forbidden"),
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ detail: "not allowed" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+  });
+
+  await assert.rejects(
+    () => client.transcribeWav(createPcm16Wav()),
+    (error) =>
+      error instanceof DictationRequestError &&
+      error.status === 502 &&
+      error.message === "ChatGPT transcription failed (403)",
+  );
+  assert.deepEqual(refreshValues, [false]);
 });
 
 test("dictation refreshes ChatGPT auth once after an unauthorized response", async () => {

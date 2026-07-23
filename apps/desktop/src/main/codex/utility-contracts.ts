@@ -21,6 +21,7 @@ export interface CodexUtilityInitializeInput {
   userDataPath: string;
   isPackaged: boolean;
   resourcesPath: string;
+  transcriptionUserAgent: string;
   developmentExecutablePath?: string;
 }
 
@@ -201,6 +202,18 @@ function absolutePath(value: unknown, label: string): string {
   return path;
 }
 
+function userAgent(value: unknown): string {
+  const result = string(value, "transcriptionUserAgent", {
+    maxCharacters: 1024,
+  });
+  if (/[\u0000-\u001f\u007f]/u.test(result)) {
+    throw new TypeError(
+      "transcriptionUserAgent must not contain control characters",
+    );
+  }
+  return result;
+}
+
 function initializeInput(value: unknown): CodexUtilityInitializeInput {
   const input = record(value, "initialize input");
   onlyKeys(
@@ -209,6 +222,7 @@ function initializeInput(value: unknown): CodexUtilityInitializeInput {
       "userDataPath",
       "isPackaged",
       "resourcesPath",
+      "transcriptionUserAgent",
       "developmentExecutablePath",
     ],
     "initialize input",
@@ -217,6 +231,7 @@ function initializeInput(value: unknown): CodexUtilityInitializeInput {
     userDataPath: absolutePath(input.userDataPath, "userDataPath"),
     isPackaged: boolean(input.isPackaged, "isPackaged"),
     resourcesPath: absolutePath(input.resourcesPath, "resourcesPath"),
+    transcriptionUserAgent: userAgent(input.transcriptionUserAgent),
     ...(input.developmentExecutablePath === undefined
       ? {}
       : {

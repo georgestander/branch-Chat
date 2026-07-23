@@ -578,6 +578,8 @@ async function initializeApplication(): Promise<void> {
       userDataPath,
       isPackaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
+      transcriptionUserAgent:
+        session.defaultSession.getUserAgent(),
       ...(app.isPackaged
         ? {}
         : {
