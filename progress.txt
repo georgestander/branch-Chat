@@ -38,3 +38,9 @@
 - Files: apps/desktop/src/renderer/BranchCanvas.tsx.
 - Verification: pnpm types; npm run test (265 passed); npm run lint.
 - Next: repackage and verify Tidy, branch-draft framing, and a new empty canvas at the target window size.
+
+2026-07-23 — Branch-selection affordance scope (live QA)
+- Decision: make only assistant Markdown visibly selectable so the text cursor consistently means “select this response to branch,” while user messages remain ordinary transcript content.
+- Files: apps/desktop/src/renderer/styles.css.
+- Verification: pnpm types; npm run test (265 passed); npm run lint.
+- Next: verify exact-span selection against the rebuilt packaged app.

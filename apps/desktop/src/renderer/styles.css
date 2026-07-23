@@ -1513,17 +1513,6 @@ button.account-avatar:hover {
   padding: 14px;
 }
 
-.message__body,
-.message__content,
-.markdown-body {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-.message__body {
-  cursor: text;
-}
-
 .message--assistant .message__content,
 .message--assistant .markdown-body {
   -webkit-user-select: text;
