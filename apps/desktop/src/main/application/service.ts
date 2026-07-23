@@ -1119,6 +1119,12 @@ export class BranchyApplication {
       let branch: Branch;
       let createdBranch: Branch | null = null;
       if (input.branchDraft) {
+        const sourceMessage = snapshot.messages[input.branchDraft.messageId];
+        if (!sourceMessage || sourceMessage.role !== "assistant") {
+          throw new Error(
+            "A model-backed child branch must start from an assistant response.",
+          );
+        }
         branch = this.createChildBranch(snapshot, input.branchDraft);
         createdBranch = branch;
       } else {
@@ -1271,6 +1277,25 @@ export class BranchyApplication {
         : null);
     const currentContext =
       initial.snapshot.branches[initial.branch.id]?.inferenceContext;
+    const branchSelection = input.branchDraft?.excerpt?.trim();
+    const additionalContext: Record<
+      string,
+      { kind: "application" | "untrusted"; value: string }
+    > = {};
+    if (branchSelection) {
+      additionalContext["branch-source-selection"] = {
+        kind: "application",
+        value:
+          "The user created this child from the following exact span of the parent assistant response. " +
+          "Treat this selected span as the primary focus of the new branch request. " +
+          "Use inherited conversation only as supporting context; do not replace the selected subject with a broader topic.\n\n" +
+          branchSelection,
+      };
+    }
+    Object.assign(
+      additionalContext,
+      attachmentContext.additionalContext ?? {},
+    );
 
     try {
       const session = await this.codex.startTurn(
@@ -1296,7 +1321,10 @@ export class BranchyApplication {
                 }
               : null,
           messages: initial.history,
-          additionalContext: attachmentContext.additionalContext,
+          additionalContext:
+            Object.keys(additionalContext).length > 0
+              ? additionalContext
+              : null,
           localImagePaths: attachmentContext.localImagePaths,
           model: initial.snapshot.conversation.settings.model,
           effort:

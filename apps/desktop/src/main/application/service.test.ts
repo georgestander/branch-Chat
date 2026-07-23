@@ -590,6 +590,20 @@ test("persists streamed image progress, completion, and native fork context", as
     threadId: turn.threadId,
     turnId: turn.turnId,
   });
+  assert.deepEqual(
+    harness.codex.inputs[1]?.additionalContext?.[
+      "branch-source-selection"
+    ],
+    {
+      kind: "application",
+      value:
+        "The user created this child from the following exact span of the parent assistant response. " +
+        "Treat this selected span as the primary focus of the new branch request. " +
+        "Use inherited conversation only as supporting context; do not replace the selected subject with a broader topic.\n\n" +
+        "Here is the image.",
+    },
+  );
+  assert.equal(harness.codex.inputs[1]?.content, "Explore a red version");
   const childTurn = harness.codex.turn("stream-child");
   harness.codex.emit("stream-child", {
     type: "cancelled",

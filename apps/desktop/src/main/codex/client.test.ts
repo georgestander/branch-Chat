@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import {
+  buildTurnInputText,
   CodexAppServerClient,
   CodexProtocolError,
   normalizeLocalImagePaths,
@@ -31,6 +32,25 @@ type RequestHandler = (
   params: unknown,
   transport: FakeTransport,
 ) => unknown | Promise<unknown>;
+
+test("turn input makes application branch context explicit before the request", () => {
+  const text = buildTurnInputText("Explain why this matters.", {
+    "branch-source-selection": {
+      value: "Selected parent passage",
+      kind: "application",
+    },
+  });
+
+  assert.match(
+    text,
+    /Application context:\nbranch-source-selection:\nSelected parent passage/u,
+  );
+  assert.match(text, /User request:\nExplain why this matters\./u);
+  assert.ok(
+    text.indexOf("branch-source-selection") <
+      text.indexOf("User request:"),
+  );
+});
 
 class FakeTransport implements CodexRpcTransport {
   readonly calls: Array<{
