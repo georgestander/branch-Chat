@@ -108,6 +108,21 @@
 - ❌ D1 helpers or migrations for the conversation graph.
 - ❌ Logging user content, secrets, access tokens, API keys, or private attachment excerpts.
 
+## Visual Language and Design Quality
+- Read `designs/visual-language.md` before designing or changing a user-facing surface. Treat it as the durable visual contract for both the web and desktop renderers.
+- Before implementation, state a short visual thesis, content hierarchy, and interaction plan. For an existing surface, explain how the change extends the current visual language.
+- Start from the product workflow and information hierarchy, not a component-library demo or generic SaaS template. Do not default to centered hero copy, three interchangeable cards, repeated full-width marketing sections, pricing tables, logo clouds, or FAQ accordions unless the content genuinely requires them.
+- Use composition, alignment, scale, whitespace, typography, and contrast before adding containers or decoration. A card must represent a meaningful grouped object or interaction; if plain layout preserves comprehension, do not wrap it in a card.
+- Do not reach for framework-default purple, indigo, blue, slate, gradients, oversized radii, or drop shadows because they are convenient defaults. Use the established tokens and semantic branch-lineage colors.
+- Keep one intentional radius, elevation, typography, spacing, and color vocabulary across a surface. Do not improvise a new visual system inside one feature.
+- Preserve the flat, single-boundary surface style. Shadows are reserved for temporary overlays that need depth, such as menus, popovers, dialogs, and dragged elements—not ordinary panels or content cards.
+- Treat typography as a design decision. Inherit the current product typography when extending an existing surface; do not introduce a fashionable display font or default framework font without a documented reason.
+- Write concrete product copy. Reject vague AI-marketing phrases such as “Empower,” “Unlock,” “Transform,” “Seamless Integration,” and “Built for modern teams” unless they refer to a specific, supportable product fact.
+- Use animation only to explain spatial change, hierarchy, progress, or causality. Do not add ornamental motion merely to make a screen feel “premium.”
+- When a visual reference or approved design exists, compare against the actual artifact before implementation and during review. Do not reduce a material mismatch to optional polish.
+- Visually verify UI work in a real browser or packaged desktop app at representative viewport sizes and in every affected theme. Capture screenshots and review hierarchy, density, alignment, overflow, focus, contrast, loading, empty, error, and interaction states.
+- Before declaring UI work complete, explicitly ask: does this resemble a starter template, framework example, or generic AI-generated interface? If so, revise the underlying composition or vocabulary rather than adding more decoration.
+
 ## House Style
 - Pages/RSC: `src/app/pages/**/SomePage.tsx`
 - Client islands: `src/app/components/**/Thing.tsx` with `"use client"`
@@ -118,6 +133,7 @@
 - Shared domain model: `src/lib/conversation/**`
 - Durable Objects: `src/lib/durable-objects/**`
 - Design specifications: `designs/<slug>.md`
+- Durable visual contract: `designs/visual-language.md`
 - Prefer simple, domain-named functions and explicit return types at server/client and persistence boundaries.
 - Preserve existing behavior unless the task intentionally changes it. Keep unrelated refactors out of focused changes.
 
