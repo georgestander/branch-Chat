@@ -351,17 +351,6 @@ kbd {
   background: var(--muted-strong);
 }
 
-.conversation-item.is-active::before {
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-  content: "";
-}
-
 .conversation-item__main {
   display: grid;
   min-width: 0;
@@ -933,7 +922,6 @@ button.account-avatar:hover {
   width: 176px;
   height: 96px;
   border: 1px solid var(--border-strong);
-  border-left: 4px solid var(--foreground);
   border-radius: var(--radius);
   background: var(--background);
   animation: ghost-enter 520ms both ease-out;
@@ -967,21 +955,18 @@ button.account-avatar:hover {
 .ghost-node--one {
   top: 17%;
   left: 53%;
-  border-left-color: #0891b2;
   animation-delay: 90ms;
 }
 
 .ghost-node--two {
   top: 43%;
   left: 57%;
-  border-left-color: #059669;
   animation-delay: 160ms;
 }
 
 .ghost-node--three {
   top: 69%;
   left: 46%;
-  border-left-color: #d97706;
   animation-delay: 230ms;
 }
 
@@ -1219,7 +1204,6 @@ button.account-avatar:hover {
   flex-direction: column;
   overflow: visible;
   border: 1px solid var(--border-strong);
-  border-left: 4px solid var(--branch-tone);
   border-radius: var(--radius);
   background: var(--background);
   color: var(--foreground);
@@ -1241,8 +1225,8 @@ button.account-avatar:hover {
 .branch-handle {
   width: 8px !important;
   height: 8px !important;
-  border: 1px solid var(--background) !important;
-  background: var(--branch-tone) !important;
+  border: 1px solid var(--border-strong) !important;
+  background: var(--background) !important;
   pointer-events: none;
 }
 
@@ -1282,7 +1266,7 @@ button.account-avatar:hover {
   min-width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--branch-tone);
+  background: var(--muted-foreground);
 }
 
 .branch-card__heading {
@@ -1410,7 +1394,7 @@ button.account-avatar:hover {
   display: -webkit-box;
   overflow: hidden;
   flex: none;
-  border-left: 3px solid #f59e0b;
+  border-left: 2px solid var(--border-strong);
   margin: 8px 10px;
   background: var(--muted);
   padding: 6px 8px;
@@ -1490,7 +1474,6 @@ button.account-avatar:hover {
 .message--user .message__body {
   width: 100%;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--muted-foreground);
   border-radius: var(--radius);
   background: var(--muted);
   padding: 12px 14px;
@@ -1499,7 +1482,6 @@ button.account-avatar:hover {
 .message--assistant .message__body {
   position: relative;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--branch-tone, var(--foreground));
   border-radius: var(--radius);
   background: var(--card);
   padding: 14px;
@@ -1725,12 +1707,8 @@ button.account-avatar:hover {
 }
 
 .branch-highlight {
-  border-bottom: 2px solid var(--branch-highlight-color, var(--accent));
-  background: color-mix(
-    in srgb,
-    var(--branch-highlight-color, var(--accent)) 16%,
-    transparent
-  );
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--muted);
   color: inherit;
   font-weight: 650;
 }
@@ -1991,8 +1969,7 @@ button.account-avatar:hover {
   align-items: center;
   gap: 5px;
   overflow: hidden;
-  border: 1px solid var(--anchor-tone);
-  border-left-width: 3px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--background);
   padding: 0 8px;
@@ -2752,7 +2729,7 @@ button.account-avatar:hover {
 .branch-quote {
   max-height: 112px;
   overflow-y: auto;
-  border-left: 3px solid var(--accent);
+  border-left: 2px solid var(--border-strong);
   margin: 0;
   background: var(--muted);
   padding: 10px 11px;
@@ -2854,7 +2831,6 @@ button.account-avatar:hover {
   align-items: center;
   gap: 8px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--foreground);
   border-radius: var(--radius);
   background: var(--popover);
   padding: 7px 8px 7px 10px;
@@ -2863,14 +2839,6 @@ button.account-avatar:hover {
   box-shadow: var(--menu-shadow);
   pointer-events: auto;
   animation: toast-in 160ms ease-out both;
-}
-
-.toast--success {
-  border-left-color: var(--success);
-}
-
-.toast--error {
-  border-left-color: var(--destructive);
 }
 
 .toast span {

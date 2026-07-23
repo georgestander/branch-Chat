@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { branchToneByKey } from "@branchy/conversation-core";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
 import { createBranchSelectionDraft } from "./branch-selection.ts";
@@ -22,7 +21,6 @@ import {
 type MessageBubbleProps = {
   message: RenderedMessage;
   branchId: string;
-  toneColor: string | null;
   onCreateBranch: (draft: BranchSelectionDraft) => void;
   onOpenBranch: (branchId: string) => void;
   onDownloadImage: (messageId: string, imageId: string) => void;
@@ -44,7 +42,6 @@ const COLLAPSED_USER_MESSAGE_HEIGHT_PX = 208;
 export const MessageBubble = memo(function MessageBubble({
   message,
   branchId,
-  toneColor,
   onCreateBranch,
   onOpenBranch,
   onDownloadImage,
@@ -261,25 +258,17 @@ export const MessageBubble = memo(function MessageBubble({
             className="branch-anchors"
             aria-label="Branches from this reply"
           >
-            {message.branchAnchors.map((anchor) => {
-              const anchorTone = anchor.tone
-                ? branchToneByKey(anchor.tone).color
-                : toneColor ?? "#6b7280";
-              return (
-                <button
-                  key={anchor.branchId}
-                  className="branch-anchor"
-                  style={
-                    { "--anchor-tone": anchorTone } as React.CSSProperties
-                  }
-                  type="button"
-                  onClick={() => onOpenBranch(anchor.branchId)}
-                >
-                  <Icon name="branch" size={14} />
-                  <span>Child: {anchor.title}</span>
-                </button>
-              );
-            })}
+            {message.branchAnchors.map((anchor) => (
+              <button
+                key={anchor.branchId}
+                className="branch-anchor"
+                type="button"
+                onClick={() => onOpenBranch(anchor.branchId)}
+              >
+                <Icon name="branch" size={14} />
+                <span>Child: {anchor.title}</span>
+              </button>
+            ))}
           </nav>
         ) : null}
       </div>

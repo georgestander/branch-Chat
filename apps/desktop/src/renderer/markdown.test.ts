@@ -112,7 +112,8 @@ test("marks exact visible source ranges with stable branch lineage", () => {
   );
   assert.match(html, /data-message-id="message-source"/);
   assert.match(html, /data-branch-tone="amber"/);
-  assert.match(html, /--branch-highlight-color:#d97706/);
+  assert.doesNotMatch(html, /--branch-highlight-color/);
+  assert.doesNotMatch(html, /border-bottom:2px solid/);
   assert.doesNotMatch(html, />Alpha<\/mark>/);
   assert.doesNotMatch(html, /> delta<\/mark>/);
 });

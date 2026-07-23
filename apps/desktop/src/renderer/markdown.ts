@@ -1,5 +1,4 @@
 import {
-  branchToneByKey,
   branchToneForId,
   type BranchToneKey,
 } from "@branchy/conversation-core";
@@ -377,7 +376,6 @@ function highlightedSegment(
   value: string,
   highlight: Highlight,
 ): HastElement {
-  const color = branchToneByKey(highlight.tone).color;
   return {
     type: "element",
     tagName: "mark",
@@ -387,12 +385,6 @@ function highlightedSegment(
       "data-branch-id": highlight.branchId,
       "data-message-id": highlight.messageId,
       "data-branch-tone": highlight.tone,
-      style: [
-        `--branch-highlight-color:${color}`,
-        `background-color:color-mix(in srgb,${color} 16%,transparent)`,
-        `border-bottom:2px solid ${color}`,
-        "color:inherit",
-      ].join(";"),
     },
     children: [{ type: "text", value }],
   };

@@ -28,7 +28,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   arrangeFocusedChildOnCanvas,
-  branchToneForBranch,
   type Branch,
   type BranchId,
   type ConversationCanvasPatch,
@@ -91,7 +90,6 @@ type BranchNodeData = {
   expanded: boolean;
   folded: boolean;
   draftParent: boolean;
-  toneColor: string | null;
   childCount: number;
   draft: string;
   attachments: AttachmentDraft[];
@@ -289,15 +287,7 @@ const BranchCard = memo(function BranchCard({
   data,
   selected,
 }: NodeProps<BranchFlowNode>): React.JSX.Element {
-  const {
-    branch,
-    messages,
-    stream,
-    expanded,
-    folded,
-    active,
-    toneColor,
-  } = data;
+  const { branch, messages, stream, expanded, folded, active } = data;
   const threadRef = useRef<HTMLDivElement>(null);
   const title = branch.title || "Untitled branch";
   const visibleMessages = messages.filter(
@@ -381,12 +371,7 @@ const BranchCard = memo(function BranchCard({
           if (target.closest("button")) return;
           data.onOpen(branch.id);
         }}
-        style={
-          {
-            "--branch-tone": toneColor ?? "var(--foreground)",
-            isolation: "isolate",
-          } as React.CSSProperties
-        }
+        style={{ isolation: "isolate" }}
       >
         <Handle
           className="branch-handle branch-handle--target"
@@ -407,7 +392,7 @@ const BranchCard = memo(function BranchCard({
             type="source"
             position={Position.Right}
             isConnectable={false}
-            style={{ top: 24, background: "#f59e0b" }}
+            style={{ top: 24 }}
           />
         ) : null}
 
@@ -570,7 +555,6 @@ const BranchCard = memo(function BranchCard({
                     key={message.id}
                     message={message}
                     branchId={branch.id}
-                    toneColor={toneColor}
                     onCreateBranch={data.onCreateBranch}
                     onOpenBranch={data.onOpen}
                     onDownloadImage={data.onDownloadImage}
@@ -704,12 +688,6 @@ const BranchDraftCard = memo(function BranchDraftCard({
       className="branch-card nodrag nopan nowheel"
       aria-label="New branch draft"
       data-branch-draft-card="true"
-      style={
-        {
-          "--branch-tone": "#f59e0b",
-          borderColor: "#f59e0b",
-        } as React.CSSProperties
-      }
     >
       <Handle
         id="draft-target"
@@ -717,7 +695,7 @@ const BranchDraftCard = memo(function BranchDraftCard({
         type="target"
         position={Position.Left}
         isConnectable={false}
-        style={{ top: 24, background: "#f59e0b" }}
+        style={{ top: 24 }}
       />
       <header className="branch-card__header">
         <span className="branch-card__identity">
@@ -992,7 +970,6 @@ function BranchCanvasInner({
             messagesByBranch,
             branch.id,
           );
-          const tone = branchToneForBranch(snapshot, branch.id);
           const isEmptyRoot =
             branch.id === rootBranchId && messages.length === 0;
           const expandedWidth =
@@ -1028,7 +1005,6 @@ function BranchCanvasInner({
               expanded,
               folded: canvasNode?.folded === true,
               draftParent: branchDraft?.parentBranchId === branch.id,
-              toneColor: tone?.color ?? null,
               childCount: descendantCount(snapshot, branch.id),
               draft: draftsByBranch[branch.id] ?? "",
               attachments: attachmentsByBranch[branch.id] ?? [],
@@ -1280,8 +1256,8 @@ function BranchCanvasInner({
           type: "smoothstep",
           animated: Boolean(streamsByBranch[branch.id]),
           style: {
-            stroke: branchToneForBranch(snapshot, branch.id)?.color ?? "#9ca3af",
-            strokeWidth: 1.6,
+            stroke: "var(--border-strong)",
+            strokeWidth: 1.4,
           },
         }));
     if (branchDraft && draftLayout) {
@@ -1294,8 +1270,8 @@ function BranchCanvasInner({
         type: "smoothstep",
         animated: true,
         style: {
-          stroke: "#f59e0b",
-          strokeWidth: 2,
+          stroke: "var(--border-strong)",
+          strokeWidth: 1.4,
         },
       });
     }
@@ -1593,12 +1569,7 @@ function BranchCanvasInner({
           pannable
           zoomable
           nodeStrokeWidth={2}
-          nodeColor={(node) => {
-            if (node.type === "branchDraft") return "#f59e0b";
-            return (
-              (node.data as BranchNodeData).toneColor ?? "var(--foreground)"
-            );
-          }}
+          nodeColor={() => "var(--border-strong)"}
           maskColor="color-mix(in srgb, var(--background) 74%, transparent)"
         />
       </ReactFlow>
