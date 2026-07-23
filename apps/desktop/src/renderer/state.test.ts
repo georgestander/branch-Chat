@@ -9,6 +9,7 @@ import type {
 
 import {
   branchToFocusBeforeFold,
+  clearTransientImageUrls,
   descendantCount,
   initialStreamState,
   isBranchDescendant,
@@ -306,6 +307,21 @@ test("same-conversation reloads retain only live branch composer state", () => {
       snapshot().branches,
     ),
     { root: "root draft", child: "child draft" },
+  );
+});
+
+test("conversation reloads retry only unresolved private image URLs", () => {
+  assert.deepEqual(
+    clearTransientImageUrls({
+      ready: "branchy-asset://asset/ready",
+      loading: "__loading__",
+      unavailable: "__unavailable__",
+      missing: undefined,
+    }),
+    {
+      ready: "branchy-asset://asset/ready",
+      missing: undefined,
+    },
   );
 });
 

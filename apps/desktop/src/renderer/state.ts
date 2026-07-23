@@ -21,6 +21,16 @@ export function retainBranchRecords<T>(
   );
 }
 
+export function clearTransientImageUrls(
+  current: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  return Object.fromEntries(
+    Object.entries(current).filter(
+      ([, url]) => url !== "__loading__" && url !== "__unavailable__",
+    ),
+  );
+}
+
 export function retainBranchSelectionDraft(
   draft: BranchSelectionDraft | null,
   previousConversationId: string | null,

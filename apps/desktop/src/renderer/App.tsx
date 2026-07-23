@@ -47,6 +47,7 @@ import {
   visitDiscardedAttachments,
 } from "./pending-uploads.ts";
 import {
+  clearTransientImageUrls,
   initialStreamState,
   isStreamActive,
   latestUserPrompt,
@@ -490,6 +491,7 @@ export function App(): React.JSX.Element {
         ),
       );
       setStreamsByBranch({});
+      setImageUrls(clearTransientImageUrls);
       setStreamsToResume(
         bootstrap.kind === "ready" ? bootstrap.activeStreams : [],
       );
