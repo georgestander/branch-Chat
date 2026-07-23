@@ -207,6 +207,63 @@ test("unexpected child exit notifies listeners and permits a clean restart", asy
   await transport.stop();
 });
 
+test("output from a replaced child cannot affect the active transport", async () => {
+  const children = [new FakeCodexChild(), new FakeCodexChild()];
+  const diagnostics: string[] = [];
+  let spawnCount = 0;
+  const transport = new StdioCodexTransport({
+    command: "codex",
+    args: [],
+    cwd: "/tmp",
+    environment: {},
+    onDiagnostic: (message) => diagnostics.push(message),
+    spawnProcess: () => {
+      const child = children[spawnCount++]!;
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    },
+  });
+  const notifications: string[] = [];
+  transport.subscribe((notification) => {
+    notifications.push(notification.method);
+  });
+
+  await transport.start();
+  children[0]!.emit("exit", 1, null);
+  await new Promise((resolve) => setImmediate(resolve));
+  await transport.start();
+
+  const pending = transport.request<{ source: string }>("wait", {});
+  const requestId = children[1]!.writes.at(-1)?.id;
+  assert.equal(typeof requestId, "number");
+  children[0]!.stdout.write(
+    `${JSON.stringify({
+      id: requestId,
+      result: { source: "replaced-child" },
+    })}\n${JSON.stringify({
+      method: "stale/notification",
+      params: {},
+    })}\n`,
+  );
+  children[0]!.stderr.write("stale diagnostic\n");
+  children[1]!.stdout.write(
+    `${JSON.stringify({
+      id: requestId,
+      result: { source: "active-child" },
+    })}\n${JSON.stringify({
+      method: "active/notification",
+      params: {},
+    })}\n`,
+  );
+  children[1]!.stderr.write("active diagnostic\n");
+
+  assert.deepEqual(await pending, { source: "active-child" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(notifications, ["active/notification"]);
+  assert.deepEqual(diagnostics, ["active diagnostic"]);
+  await transport.stop();
+});
+
 test("a silent app-server request times out and tears down the child", async () => {
   const children = [new FakeCodexChild(), new FakeCodexChild()];
   let spawnCount = 0;

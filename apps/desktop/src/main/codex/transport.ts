@@ -141,10 +141,16 @@ export class StdioCodexTransport implements CodexRpcTransport {
       this.child = child;
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk: string | Buffer) => {
+        if (this.child !== child) {
+          return;
+        }
         this.handleData(String(chunk));
       });
       child.stderr?.setEncoding("utf8");
       child.stderr?.on("data", (chunk: string | Buffer) => {
+        if (this.child !== child) {
+          return;
+        }
         const message = String(chunk).trim();
         if (message) {
           this.options.onDiagnostic?.(message);
