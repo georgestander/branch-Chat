@@ -490,6 +490,102 @@ test("turn subscribes before request and preserves structured event order", asyn
   );
 });
 
+test("image generation notifications progress from running to ready before turn completion", async () => {
+  const transport = new FakeTransport((method, _params, fake) => {
+    if (method === "thread/start") {
+      return { thread: { id: "thread-image" } };
+    }
+    if (method === "turn/start") {
+      fake.emit({
+        method: "turn/started",
+        params: {
+          threadId: "thread-image",
+          turn: { id: "turn-image" },
+        },
+      });
+      fake.emit({
+        method: "item/started",
+        params: {
+          threadId: "thread-image",
+          turnId: "turn-image",
+          item: {
+            type: "imageGeneration",
+            id: "image-1",
+          },
+        },
+      });
+      fake.emit({
+        method: "item/completed",
+        params: {
+          threadId: "thread-image",
+          turnId: "turn-image",
+          item: {
+            type: "imageGeneration",
+            id: "image-1",
+            savedPath: "/isolated/workspace/generated/image-1.png",
+            revisedPrompt: "A cobalt tree at dusk",
+          },
+        },
+      });
+      fake.emit({
+        method: "turn/completed",
+        params: {
+          threadId: "thread-image",
+          turn: {
+            id: "turn-image",
+            status: "completed",
+            items: [
+              {
+                type: "agentMessage",
+                text: "Here is the generated image.",
+              },
+            ],
+          },
+        },
+      });
+      return { turn: { id: "turn-image" } };
+    }
+    return defaultResponse(method);
+  });
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+  });
+  const events: CodexTurnEvent[] = [];
+
+  const session = await client.startTurn(
+    {
+      streamId: "stream-image",
+      content: "Generate a cobalt tree",
+    },
+    (event) => events.push(event),
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["context", "start", "tool_progress", "image_ready", "complete"],
+  );
+  assert.deepEqual(events[2], {
+    type: "tool_progress",
+    streamId: "stream-image",
+    threadId: "thread-image",
+    turnId: "turn-image",
+    tool: "image_generation",
+    callId: "image-1",
+    status: "running",
+  });
+  assert.deepEqual(events[3], {
+    type: "image_ready",
+    streamId: "stream-image",
+    threadId: "thread-image",
+    turnId: "turn-image",
+    imageId: "image-1",
+    savedPath: "/isolated/workspace/generated/image-1.png",
+    revisedPrompt: "A cobalt tree at dusk",
+  });
+  assert.equal((await session.completion).type, "complete");
+});
+
 test("unexpected transport closure settles the turn and allows restart", async () => {
   const transport = new FakeTransport((method) => {
     if (method === "thread/start") {
