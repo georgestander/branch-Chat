@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@branchy/conversation-core':
+        specifier: workspace:*
+        version: link:packages/conversation-core
       '@dagrejs/dagre':
         specifier: 3.0.0
         version: 3.0.0
@@ -123,6 +126,15 @@ importers:
       wrangler:
         specifier: 4.42.0
         version: 4.42.0(@cloudflare/workers-types@4.20251004.0)
+
+  packages/conversation-core:
+    devDependencies:
+      '@types/node':
+        specifier: ~24.5.2
+        version: 24.5.2
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
 
 packages:
 

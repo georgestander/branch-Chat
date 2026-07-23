@@ -6,12 +6,12 @@ import type {
   ConversationGraphSnapshot,
   Message,
   MessageAttachment,
-} from "../../lib/conversation/model.ts";
+} from "./model.ts";
 import {
   getBoundedBranchRecoveryMessages,
   getEffectiveBranchAttachmentIds,
   getEffectiveBranchMessages,
-} from "./conversationContext.ts";
+} from "./context.ts";
 
 const createdAt = "2026-07-22T00:00:00.000Z";
 

@@ -1,0 +1,32 @@
+{
+  "name": "@branchy/conversation-core",
+  "version": "0.1.0",
+  "description": "Portable conversation graph and presentation contracts for Branchy Chat",
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./attachment-citations": "./src/attachmentCitations.ts",
+    "./branch-tone": "./src/branchTone.ts",
+    "./codex": "./src/codex.ts",
+    "./context": "./src/context.ts",
+    "./generated-images": "./src/generatedImages.ts",
+    "./image-generation": "./src/imageGeneration.ts",
+    "./model": "./src/model.ts",
+    "./presentation": "./src/presentation.ts",
+    "./retrieval": "./src/retrieval.ts",
+    "./tools": "./src/tools.ts",
+    "./validation": "./src/validation.ts",
+    "./web-search-intent": "./src/webSearchIntent.ts"
+  },
+  "scripts": {
+    "lint": "pnpm run types",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
+    "types": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "~24.5.2",
+    "typescript": "5.8.3"
+  }
+}

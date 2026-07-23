@@ -28,6 +28,7 @@
     "lint": "npm run types -- --pretty false"
   },
   "dependencies": {
+    "@branchy/conversation-core": "workspace:*",
     "@dagrejs/dagre": "3.0.0",
     "@openai/agents": "^0.2.1",
     "@tailwindcss/vite": "^4.1.16",
