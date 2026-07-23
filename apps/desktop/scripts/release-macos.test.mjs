@@ -27,8 +27,24 @@ test("local QA is ad-hoc signed without changing the pinned Codex executable", (
   const options = createMacSigningOptions({ enabled: false });
   assert.equal(options.identity, "-");
   assert.equal(options.identityValidation, false);
-  assert.equal(options.hardenedRuntime, true);
-  assert.equal(options.timestamp, "none");
+  const appOptions = options.optionsForFile(
+    "/tmp/Branchy Chat.app",
+  );
+  assert.equal(appOptions.hardenedRuntime, true);
+  assert.equal(appOptions.timestamp, "none");
+  assert.match(appOptions.entitlements, /resources\/entitlements\/qa\.plist$/);
+  assert.match(
+    options.optionsForFile(
+      "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (Plugin).app",
+    ).entitlements,
+    /resources\/entitlements\/qa-plugin\.plist$/,
+  );
+  assert.deepEqual(
+    options.optionsForFile(
+      "/tmp/Branchy Chat.app/Contents/Frameworks/Electron Framework.framework",
+    ),
+    { hardenedRuntime: true, timestamp: "none" },
+  );
   assert.equal(options.preAutoEntitlements, false);
   assert.equal(options.preEmbedProvisioningProfile, false);
   assert.equal(
@@ -61,8 +77,11 @@ test("release configuration fails closed on invalid or missing inputs", () => {
 
 test("release signing keeps the pinned Codex executable untouched", () => {
   const options = createMacSigningOptions(enabledConfiguration);
-  assert.equal(options.hardenedRuntime, true);
   assert.equal(options.identity, identity);
+  assert.deepEqual(
+    options.optionsForFile("/tmp/Branchy Chat.app"),
+    { hardenedRuntime: true },
+  );
   assert.equal(
     options.ignore(
       "/tmp/Branchy Chat.app/Contents/Resources/codex/bin/codex-app-server",

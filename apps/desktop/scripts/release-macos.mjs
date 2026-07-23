@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, normalize, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { notarize } from "@electron/notarize";
@@ -11,6 +12,14 @@ const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const CODEX_TEAM_IDENTIFIER = "2DC432GLL2";
 const CODEX_AUTHORITY_FRAGMENT = "OpenAI OpCo, LLC";
+const QA_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/qa.plist",
+);
+const QA_PLUGIN_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/qa-plugin.plist",
+);
 const CODEX_PACKAGED_SUFFIX = [
   "Contents",
   "Resources",
@@ -168,8 +177,20 @@ export function createMacSigningOptions(releaseConfiguration) {
     return {
       identity: "-",
       identityValidation: false,
-      hardenedRuntime: true,
-      timestamp: "none",
+      // The ad-hoc app and nested Electron framework have no shared Team ID.
+      // Keep the hardened runtime, but grant only executable app bundles the
+      // documented exception required to load Electron Framework in local QA.
+      optionsForFile: (filePath) => ({
+        ...(isAppBundle(filePath)
+          ? {
+              entitlements: isPluginAppBundle(filePath)
+                ? QA_PLUGIN_ENTITLEMENTS
+                : QA_ENTITLEMENTS,
+            }
+          : {}),
+        hardenedRuntime: true,
+        timestamp: "none",
+      }),
       preAutoEntitlements: false,
       preEmbedProvisioningProfile: false,
       ignore: isBundledCodexBinary,
@@ -177,10 +198,18 @@ export function createMacSigningOptions(releaseConfiguration) {
   }
   return {
     identity: releaseConfiguration.signingIdentity,
-    hardenedRuntime: true,
     identityValidation: true,
+    optionsForFile: () => ({ hardenedRuntime: true }),
     ignore: isBundledCodexBinary,
   };
+}
+
+function isAppBundle(filePath) {
+  return normalize(filePath).endsWith(".app");
+}
+
+function isPluginAppBundle(filePath) {
+  return normalize(filePath).endsWith("(Plugin).app");
 }
 
 export async function assertReleaseHostReady(

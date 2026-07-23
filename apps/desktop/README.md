@@ -17,7 +17,12 @@ Open:
 apps/desktop/out/Branchy Chat-darwin-arm64/Branchy Chat.app
 ```
 
-The local QA build is ad-hoc signed so the bundle is internally valid on the Mac that built it. It is not notarized for distribution.
+The local QA build is ad-hoc signed with the hardened runtime and a narrowly
+scoped library-validation exception for Electron host processes. That
+exception lets the Team-ID-less app load its separately signed Electron
+framework. The build is intended only for the Mac that built it and is not
+notarized for distribution. Release builds still require a Developer ID
+identity and do not use the QA exception.
 
 To run with Vite development tooling:
 
