@@ -22,9 +22,21 @@ const enabledConfiguration = readReleaseConfiguration({
   BRANCHY_APPLE_NOTARY_PROFILE: profile,
 });
 
-test("local QA stays unsigned when release mode is unset", () => {
+test("local QA is ad-hoc signed without changing the pinned Codex executable", () => {
   assert.deepEqual(readReleaseConfiguration({}), { enabled: false });
-  assert.equal(createMacSigningOptions({ enabled: false }), undefined);
+  const options = createMacSigningOptions({ enabled: false });
+  assert.equal(options.identity, "-");
+  assert.equal(options.identityValidation, false);
+  assert.equal(options.hardenedRuntime, true);
+  assert.equal(options.timestamp, "none");
+  assert.equal(options.preAutoEntitlements, false);
+  assert.equal(options.preEmbedProvisioningProfile, false);
+  assert.equal(
+    options.ignore(
+      "/tmp/Branchy Chat.app/Contents/Resources/codex/bin/codex-app-server",
+    ),
+    true,
+  );
 });
 
 test("release configuration fails closed on invalid or missing inputs", () => {

@@ -51,9 +51,7 @@ export default {
       : {}),
     executableName: "Branchy Chat",
     name: "Branchy Chat",
-    ...(releaseConfiguration.enabled
-      ? { osxSign: createMacSigningOptions(releaseConfiguration) }
-      : {}),
+    osxSign: createMacSigningOptions(releaseConfiguration),
     extendInfo: {
       LSApplicationCategoryType: "public.app-category.productivity",
       NSAppTransportSecurity: {

@@ -165,7 +165,15 @@ export function isBundledCodexBinary(filePath) {
 
 export function createMacSigningOptions(releaseConfiguration) {
   if (!releaseConfiguration.enabled) {
-    return undefined;
+    return {
+      identity: "-",
+      identityValidation: false,
+      hardenedRuntime: true,
+      timestamp: "none",
+      preAutoEntitlements: false,
+      preEmbedProvisioningProfile: false,
+      ignore: isBundledCodexBinary,
+    };
   }
   return {
     identity: releaseConfiguration.signingIdentity,
