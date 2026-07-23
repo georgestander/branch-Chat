@@ -1,14 +1,12 @@
 import {
-  applyCanvasPatch,
+  applyConversationGraphUpdates,
   cloneConversationSnapshot,
-  deleteBranchSubtree,
   normalizeConversationCanvasState,
   type ConversationGraphSnapshot,
   type ConversationGraphUpdate,
   type ConversationModelId,
   type AttachmentChunk,
   type AttachmentIngestionRecord,
-  type Message,
   type PendingAttachment,
   type WebSearchSnippet,
 } from "@/lib/conversation";
@@ -542,7 +540,9 @@ export class ConversationStoreDO implements DurableObject {
         if (parsed.op === "replace") {
           snapshot = cloneConversationSnapshot(parsed.snapshot);
         } else {
-          snapshot = this.applyUpdates(snapshot, parsed.updates, parsed.allowMissing);
+          snapshot = applyConversationGraphUpdates(snapshot, parsed.updates, {
+            allowMissing: parsed.allowMissing,
+          });
         }
         return {
           snapshot,
@@ -1112,127 +1112,6 @@ export class ConversationStoreDO implements DurableObject {
     throw new TypeError("Unsupported op");
   }
 
-  private applyUpdates(
-    snapshot: ConversationGraphSnapshot | null,
-    updates: ConversationGraphUpdate[],
-    allowMissing?: boolean,
-  ): ConversationGraphSnapshot {
-    if (!snapshot) {
-      if (!allowMissing) {
-        throw new Error("Snapshot not initialized");
-      }
-
-      return {
-        conversation: updates.find(
-          (update) => update.type === "conversation:update",
-        )?.conversation ?? (() => {
-          throw new Error("Missing conversation data for initialization");
-        })(),
-        branches: {},
-        messages: {},
-        canvas: {
-          version: 2,
-          viewport: {
-            x: 0,
-            y: 0,
-            zoom: 1,
-          },
-          focusedBranchId: null,
-          nodes: {},
-        },
-      };
-    }
-
-    const next = cloneConversationSnapshot(snapshot);
-
-    for (const update of updates) {
-      switch (update.type) {
-        case "conversation:update": {
-          next.conversation = update.conversation;
-          break;
-        }
-        case "canvas:update": {
-          next.canvas = applyCanvasPatch(next, update.patch);
-          break;
-        }
-        case "branch:create": {
-          next.branches[update.branch.id] = update.branch;
-          next.canvas = normalizeConversationCanvasState(next);
-          break;
-        }
-        case "branch:update": {
-          next.branches[update.branch.id] = update.branch;
-          break;
-        }
-        case "branch:delete": {
-          deleteBranchSubtree(next, update.branchId);
-          break;
-        }
-        case "message:append": {
-          this.appendMessage(next, update.message);
-          break;
-        }
-        case "message:update": {
-          this.updateMessage(next, update.message);
-          break;
-        }
-        case "message:delete": {
-          const messageIds = new Set(update.messageIds);
-          for (const messageId of messageIds) delete next.messages[messageId];
-          for (const branch of Object.values(next.branches)) {
-            branch.messageIds = branch.messageIds.filter(
-              (messageId) => !messageIds.has(messageId),
-            );
-          }
-          break;
-        }
-        default: {
-          const exhaustiveCheck: never = update;
-          throw new Error(`Unsupported update type ${(exhaustiveCheck as any).type}`);
-        }
-      }
-    }
-
-    next.canvas = normalizeConversationCanvasState(next);
-    return next;
-  }
-
-  private appendMessage(
-    snapshot: ConversationGraphSnapshot,
-    message: Message,
-  ): void {
-    snapshot.messages[message.id] = message;
-    const branch = snapshot.branches[message.branchId];
-    if (!branch) {
-      throw new Error(
-        `Branch ${message.branchId} missing for message ${message.id}`,
-      );
-    }
-    if (!branch.messageIds.includes(message.id)) {
-      branch.messageIds.push(message.id);
-    }
-  }
-
-  private updateMessage(
-    snapshot: ConversationGraphSnapshot,
-    message: Message,
-  ): void {
-    const existing = snapshot.messages[message.id];
-    if (!existing) {
-      throw new Error(`Cannot update missing message ${message.id}`);
-    }
-
-    snapshot.messages[message.id] = {
-      ...existing,
-      ...message,
-      tokenUsage: message.tokenUsage ?? existing.tokenUsage,
-    };
-
-    const branch = snapshot.branches[message.branchId];
-    if (branch && !branch.messageIds.includes(message.id)) {
-      branch.messageIds.push(message.id);
-    }
-  }
 }
 
 export class ConversationStoreClient {

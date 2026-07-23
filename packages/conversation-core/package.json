@@ -17,6 +17,7 @@
     "./presentation": "./src/presentation.ts",
     "./retrieval": "./src/retrieval.ts",
     "./tools": "./src/tools.ts",
+    "./updates": "./src/updates.ts",
     "./validation": "./src/validation.ts",
     "./web-search-intent": "./src/webSearchIntent.ts"
   },
