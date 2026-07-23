@@ -9,3 +9,8 @@
 - Files: apps/desktop/src/renderer/MessageBubble.tsx, MarkdownContent.tsx, markdown.ts, markdown.test.ts, styles.css.
 - Verification: pnpm types; npm run test (265 passed); npm run lint.
 - Next: commit the connected branch canvas, composer controls, and canvas-first shell.
+
+2026-07-23 — Desktop composer parity (feat/canvas-chat)
+- Decision: reuse one typed composer for regular, empty-canvas, and branch-draft modes; persist complete model/reasoning/tool selections and retain failed WAV data for an explicit dictation retry.
+- Files: apps/desktop/src/renderer/Composer.tsx, Composer.css, composer-settings.ts, composer-settings.test.ts.
+- Blocker/next check: run the complete feedback loop, then verify the compact and expanded composer in the packaged app.
