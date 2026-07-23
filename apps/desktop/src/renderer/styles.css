@@ -1236,14 +1236,13 @@ button.account-avatar:hover {
 }
 
 .branch-card:hover {
-  border-top-color: color-mix(in srgb, var(--branch-tone) 64%, var(--border));
-  border-right-color: color-mix(in srgb, var(--branch-tone) 64%, var(--border));
-  border-bottom-color: color-mix(in srgb, var(--branch-tone) 64%, var(--border));
+  border-top-color: var(--border-strong);
+  border-right-color: var(--border-strong);
+  border-bottom-color: var(--border-strong);
 }
 
 .branch-card.is-active {
-  outline: 2px solid color-mix(in srgb, var(--branch-tone) 34%, var(--ring));
-  outline-offset: 2px;
+  outline: 0;
 }
 
 .branch-handle {
@@ -1512,6 +1511,17 @@ button.account-avatar:hover {
   border-radius: var(--radius);
   background: var(--card);
   padding: 14px;
+}
+
+.message__body,
+.message__content,
+.markdown-body {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.message__body {
+  cursor: text;
 }
 
 .message--assistant .message__content,

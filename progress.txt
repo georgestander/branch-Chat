@@ -26,3 +26,9 @@
 - Files: apps/desktop/src/renderer/styles.css.
 - Verification: pnpm types; npm run test (265 passed); npm run lint.
 - Next: package and verify that selecting assistant text opens the connected temporary branch card.
+
+2026-07-23 — Flat branch-card treatment (visual QA)
+- Decision: remove colored outlines, hover halos, resize chrome, and the draft-card glow; keep branch identity in the edge, dot, and restrained left border.
+- Files: apps/desktop/src/renderer/BranchCanvas.tsx, styles.css.
+- Verification: pnpm types; npm run test (265 passed); npm run lint.
+- Next: repackage and visually verify light and dark canvas states.

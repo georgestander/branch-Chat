@@ -75,6 +75,7 @@ const MAX_EXPANDED_CARD_HEIGHT = 1_000;
 const DRAFT_NODE_ID = "__branch-draft__";
 const DRAFT_CARD_WIDTH = 420;
 const DRAFT_CARD_HEIGHT = 360;
+const CANVAS_FIT_PADDING = 0.24;
 
 export type BranchStopMode = "edit" | "discard";
 
@@ -356,15 +357,14 @@ const BranchCard = memo(function BranchCard({
         maxWidth={MAX_EXPANDED_CARD_WIDTH}
         maxHeight={MAX_EXPANDED_CARD_HEIGHT}
         lineStyle={{
-          borderColor: toneColor ?? "var(--foreground)",
-          opacity: 0.34,
+          borderColor: "var(--border-strong)",
         }}
         handleStyle={{
           width: 8,
           height: 8,
-          border: "1px solid var(--background)",
+          border: "1px solid var(--border-strong)",
           borderRadius: 2,
-          background: toneColor ?? "var(--foreground)",
+          background: "var(--background)",
         }}
         onResizeEnd={(_event, bounds) =>
           data.onResize(branch.id, bounds)
@@ -711,7 +711,6 @@ const BranchDraftCard = memo(function BranchDraftCard({
         {
           "--branch-tone": "#f59e0b",
           borderColor: "#f59e0b",
-          boxShadow: "0 0 0 2px color-mix(in srgb, #f59e0b 16%, transparent)",
         } as React.CSSProperties
       }
     >
@@ -1215,7 +1214,7 @@ function BranchCanvasInner({
       if (!parent || !draft) return;
       void flow.fitView({
         nodes: [parent, draft],
-        padding: 0.18,
+        padding: CANVAS_FIT_PADDING,
         duration: 220,
         maxZoom: 1,
       });
@@ -1357,7 +1356,11 @@ function BranchCanvasInner({
     );
     onPatchCanvas({ nodes: patchNodes });
     window.requestAnimationFrame(() => {
-      void flow.fitView({ padding: 0.18, duration: 280, maxZoom: 1 });
+      void flow.fitView({
+        padding: CANVAS_FIT_PADDING,
+        duration: 280,
+        maxZoom: 1,
+      });
     });
   }, [edges, flow, layoutNodes, onPatchCanvas, setNodes]);
 
