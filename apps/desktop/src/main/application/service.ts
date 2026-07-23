@@ -82,6 +82,7 @@ import {
 } from "./presentation.ts";
 
 const MAX_ATTACHMENTS_PER_MESSAGE = 8;
+const MAX_PENDING_ATTACHMENTS_PER_CONVERSATION = 64;
 const MAX_PENDING_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 const LOGIN_LIFETIME_MILLISECONDS = 15 * 60 * 1000;
 
@@ -677,47 +678,49 @@ export class BranchyApplication {
         "Legacy .doc attachments are not supported. Convert the file to DOCX, PDF, or plain text.",
       );
     }
-    const pending =
-      this.pendingAttachments.get(input.conversationId) ?? new Map();
-    if (pending.size >= MAX_ATTACHMENTS_PER_MESSAGE) {
-      throw new Error(
-        `You can attach at most ${MAX_ATTACHMENTS_PER_MESSAGE} files at a time.`,
+    return this.withMutation(input.conversationId, async () => {
+      const pending =
+        this.pendingAttachments.get(input.conversationId) ?? new Map();
+      if (pending.size >= MAX_PENDING_ATTACHMENTS_PER_CONVERSATION) {
+        throw new Error(
+          `A conversation can keep at most ${MAX_PENDING_ATTACHMENTS_PER_CONVERSATION} pending attachments. Send or remove files and try again.`,
+        );
+      }
+      const pendingBytes = [...pending.values()].reduce(
+        (total, attachment) => total + attachment.size,
+        0,
       );
-    }
-    const pendingBytes = [...pending.values()].reduce(
-      (total, attachment) => total + attachment.size,
-      0,
-    );
-    if (pendingBytes + bytes.byteLength > MAX_PENDING_ATTACHMENT_BYTES) {
-      throw new Error(
-        "Pending attachments may use at most 64 MB. Remove a file and try again.",
-      );
-    }
-    const asset = await this.assets.writeAttachment({
-      bytes,
-      fileName: input.fileName,
-      mimeType: input.contentType,
+      if (pendingBytes + bytes.byteLength > MAX_PENDING_ATTACHMENT_BYTES) {
+        throw new Error(
+          "Pending attachments may use at most 64 MB. Remove a file and try again.",
+        );
+      }
+      const asset = await this.assets.writeAttachment({
+        bytes,
+        fileName: input.fileName,
+        mimeType: input.contentType,
+      });
+      if (asset.mimeType === "application/msword") {
+        await this.deleteUnreferencedAssets(new Set([asset.assetId]));
+        throw new Error(
+          "Legacy .doc attachments are not supported. Convert the file to DOCX, PDF, or plain text.",
+        );
+      }
+      const createdAt = this.now().toISOString();
+      const attachment: PendingAttachment = {
+        id: `attachment-${randomUUID()}`,
+        name: validateAttachmentFilename(input.fileName, asset.mimeType),
+        contentType: asset.mimeType,
+        size: asset.byteLength,
+        storageKey: asset.assetId,
+        status: "ready",
+        createdAt,
+        uploadedAt: createdAt,
+      };
+      pending.set(attachment.id, attachment);
+      this.pendingAttachments.set(input.conversationId, pending);
+      return attachment;
     });
-    if (asset.mimeType === "application/msword") {
-      await this.deleteUnreferencedAssets(new Set([asset.assetId]));
-      throw new Error(
-        "Legacy .doc attachments are not supported. Convert the file to DOCX, PDF, or plain text.",
-      );
-    }
-    const createdAt = this.now().toISOString();
-    const attachment: PendingAttachment = {
-      id: `attachment-${randomUUID()}`,
-      name: validateAttachmentFilename(input.fileName, asset.mimeType),
-      contentType: asset.mimeType,
-      size: asset.byteLength,
-      storageKey: asset.assetId,
-      status: "ready",
-      createdAt,
-      uploadedAt: createdAt,
-    };
-    pending.set(attachment.id, attachment);
-    this.pendingAttachments.set(input.conversationId, pending);
-    return attachment;
   }
 
   async removeAttachment(
@@ -1581,6 +1584,11 @@ export class BranchyApplication {
     conversationId: string,
     attachmentIds: readonly string[],
   ): MessageAttachment[] {
+    if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+      throw new Error(
+        `You can attach at most ${MAX_ATTACHMENTS_PER_MESSAGE} files to one message.`,
+      );
+    }
     const pending = this.pendingAttachments.get(conversationId);
     return attachmentIds.map((attachmentId) => {
       const attachment = pending?.get(attachmentId);

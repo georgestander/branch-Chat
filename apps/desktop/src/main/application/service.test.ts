@@ -723,13 +723,13 @@ test("restart recovery marks a plain blank assistant as interrupted", async (t) 
   );
 });
 
-test("attachment limits are enforced before persistence and removal collects bytes", async (t) => {
+test("conversation-wide pending attachment limits are bounded and removal collects bytes", async (t) => {
   const harness = await setup(t);
   const created = harness.application.createConversation({
     title: "Attachment quota",
   });
   const attachments = [];
-  for (let index = 0; index < 8; index += 1) {
+  for (let index = 0; index < 64; index += 1) {
     attachments.push(
       await harness.application.createAttachment({
         conversationId: created.conversationId,
@@ -752,7 +752,7 @@ test("attachment limits are enforced before persistence and removal collects byt
       contentType: "text/plain",
       bytes: new TextEncoder().encode("ninth file"),
     }),
-    /at most 8 files/u,
+    /at most 64 pending attachments/u,
   );
   await assert.rejects(
     harness.application.createAttachment({
@@ -773,6 +773,74 @@ test("attachment limits are enforced before persistence and removal collects byt
     harness.assets.resolveAssetFile(attachments[2]!.storageKey),
     /not found/u,
   );
+});
+
+test("independent branch composers can stage 5 plus 4 files while each message stays capped at 8", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation({
+    title: "Parallel branch composers",
+  });
+  const rootBranchId = created.snapshot.conversation.rootBranchId;
+  const attachments = await Promise.all(
+    Array.from({ length: 9 }, (_, index) =>
+      harness.application.createAttachment({
+        conversationId: created.conversationId,
+        fileName: `composer-${index}.txt`,
+        contentType: "text/plain",
+        bytes: new TextEncoder().encode(`composer attachment ${index}`),
+      }),
+    ),
+  );
+
+  await assert.rejects(
+    harness.application.sendMessage({
+      conversationId: created.conversationId,
+      branchId: rootBranchId,
+      content: "Do not accept nine files on one message",
+      streamId: "stream-nine-attachments",
+      attachmentIds: attachments.map((attachment) => attachment.id),
+    }),
+    /at most 8 files to one message/u,
+  );
+  assert.equal(
+    Object.keys(
+      harness.repository.require(created.conversationId).messages,
+    ).length,
+    0,
+  );
+
+  const sent = await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId: rootBranchId,
+    content: "Use the first composer files",
+    streamId: "stream-five-attachments",
+    attachmentIds: attachments.slice(0, 5).map((attachment) => attachment.id),
+  });
+  assert.equal(sent.optimisticUserMessage.attachments?.length, 5);
+
+  const branchNote = harness.application.saveBranchNote({
+    conversationId: created.conversationId,
+    parentBranchId: rootBranchId,
+    messageId: sent.optimisticUserMessage.id,
+    content: "Use the second composer files",
+    attachmentIds: attachments.slice(5).map((attachment) => attachment.id),
+  });
+  assert.equal(branchNote.appendedMessages[0]?.attachments?.length, 4);
+
+  const turn = harness.codex.turn("stream-five-attachments");
+  harness.codex.emit("stream-five-attachments", {
+    type: "complete",
+    streamId: "stream-five-attachments",
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    content: "Used the first composer files.",
+    reasoningSummary: null,
+    promptTokens: 5,
+    completionTokens: 4,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
 });
 
 test("conversation deletion fails closed on provider cleanup and collects local assets", async (t) => {
