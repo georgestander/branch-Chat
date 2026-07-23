@@ -14,5 +14,11 @@ export default defineConfig({
     outDir: resolve(desktopRoot, ".vite/renderer/main_window"),
   },
   plugins: [react()],
+  resolve: {
+    // Transitive renderer dependencies are hoisted to the workspace root,
+    // which also hosts the legacy web app's React version. Keep every hook
+    // caller on the desktop package's React dispatcher.
+    dedupe: ["react", "react-dom"],
+  },
   root: resolve(desktopRoot, "src/renderer"),
 });

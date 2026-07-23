@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { build } from "vite";
 
 const packageJson = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -40,6 +41,32 @@ test("the renderer bundle is emitted into Forge's packaged .vite tree", () => {
   assert.equal(
     rendererConfig.build?.outDir,
     fileURLToPath(new URL("../.vite/renderer/main_window", import.meta.url)),
+  );
+});
+
+test("the production renderer bundles exactly one React runtime", async () => {
+  const result = await build({
+    ...rendererConfig,
+    build: {
+      ...rendererConfig.build,
+      emptyOutDir: false,
+      write: false,
+    },
+    configFile: false,
+    logLevel: "silent",
+  });
+  const outputs = Array.isArray(result) ? result : [result];
+  const code = outputs
+    .flatMap((output) => output.output)
+    .filter((output) => output.type === "chunk")
+    .map((output) => output.code)
+    .join("\n");
+  const runtimeCount = code.match(/react\.production\.js/gu)?.length ?? 0;
+
+  assert.equal(
+    runtimeCount,
+    1,
+    `Expected one React runtime in the renderer bundle, found ${runtimeCount}`,
   );
 });
 
