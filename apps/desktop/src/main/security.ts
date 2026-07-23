@@ -53,6 +53,20 @@ export function isTrustedRendererUrl(
   }
 }
 
+export function isAllowedAudioMediaPermission(
+  permission: string,
+  mediaTypes: readonly string[],
+  requestingUrl: string,
+  developmentServerUrl?: string,
+): boolean {
+  return (
+    permission === "media" &&
+    mediaTypes.length === 1 &&
+    mediaTypes[0] === "audio" &&
+    isTrustedRendererUrl(requestingUrl, developmentServerUrl)
+  );
+}
+
 export function resolveRendererAsset(
   rendererRoot: string,
   encodedPath: string,

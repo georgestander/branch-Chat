@@ -12,6 +12,7 @@ import test from "node:test";
 
 import {
   CHATGPT_DEVICE_VERIFICATION_URL,
+  isAllowedAudioMediaPermission,
   isAllowedChatGptDeviceVerificationUrl,
   isAllowedExternalUrl,
   isTrustedRendererUrl,
@@ -69,6 +70,57 @@ test("trusted renderer URLs are bound to the app or exact dev origin", () => {
     isTrustedRendererUrl(
       "http://127.0.0.1:5174/src/main.ts",
       "http://127.0.0.1:5173",
+    ),
+    false,
+  );
+});
+
+test("media permission allows only audio from the trusted renderer", () => {
+  assert.equal(
+    isAllowedAudioMediaPermission(
+      "media",
+      ["audio"],
+      "branchy://renderer/index.html",
+    ),
+    true,
+  );
+  assert.equal(
+    isAllowedAudioMediaPermission(
+      "media",
+      ["audio", "video"],
+      "branchy://renderer/index.html",
+    ),
+    false,
+  );
+  assert.equal(
+    isAllowedAudioMediaPermission(
+      "media",
+      ["video"],
+      "branchy://renderer/index.html",
+    ),
+    false,
+  );
+  assert.equal(
+    isAllowedAudioMediaPermission(
+      "media",
+      [],
+      "branchy://renderer/index.html",
+    ),
+    false,
+  );
+  assert.equal(
+    isAllowedAudioMediaPermission(
+      "geolocation",
+      ["audio"],
+      "branchy://renderer/index.html",
+    ),
+    false,
+  );
+  assert.equal(
+    isAllowedAudioMediaPermission(
+      "media",
+      ["audio"],
+      "https://example.com/",
     ),
     false,
   );

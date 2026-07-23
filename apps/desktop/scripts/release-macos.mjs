@@ -16,9 +16,29 @@ const QA_ENTITLEMENTS = join(
   dirname(fileURLToPath(import.meta.url)),
   "../resources/entitlements/qa.plist",
 );
+const QA_HELPER_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/qa-helper.plist",
+);
 const QA_PLUGIN_ENTITLEMENTS = join(
   dirname(fileURLToPath(import.meta.url)),
   "../resources/entitlements/qa-plugin.plist",
+);
+const QA_RENDERER_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/qa-renderer.plist",
+);
+const RELEASE_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/release.plist",
+);
+const RELEASE_HELPER_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/release-helper.plist",
+);
+const RELEASE_RENDERER_ENTITLEMENTS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../resources/entitlements/release-renderer.plist",
 );
 const CODEX_PACKAGED_SUFFIX = [
   "Contents",
@@ -185,7 +205,11 @@ export function createMacSigningOptions(releaseConfiguration) {
           ? {
               entitlements: isPluginAppBundle(filePath)
                 ? QA_PLUGIN_ENTITLEMENTS
-                : QA_ENTITLEMENTS,
+                : isRendererAppBundle(filePath)
+                  ? QA_RENDERER_ENTITLEMENTS
+                  : isNestedAppBundle(filePath)
+                    ? QA_HELPER_ENTITLEMENTS
+                    : QA_ENTITLEMENTS,
             }
           : {}),
         hardenedRuntime: true,
@@ -199,7 +223,20 @@ export function createMacSigningOptions(releaseConfiguration) {
   return {
     identity: releaseConfiguration.signingIdentity,
     identityValidation: true,
-    optionsForFile: () => ({ hardenedRuntime: true }),
+    optionsForFile: (filePath) => ({
+      ...(isAppBundle(filePath) &&
+      !isPluginAppBundle(filePath) &&
+      !isGpuAppBundle(filePath)
+        ? {
+            entitlements: isRendererAppBundle(filePath)
+              ? RELEASE_RENDERER_ENTITLEMENTS
+              : isNestedAppBundle(filePath)
+                ? RELEASE_HELPER_ENTITLEMENTS
+                : RELEASE_ENTITLEMENTS,
+          }
+        : {}),
+      hardenedRuntime: true,
+    }),
     ignore: isBundledCodexBinary,
   };
 }
@@ -208,8 +245,20 @@ function isAppBundle(filePath) {
   return normalize(filePath).endsWith(".app");
 }
 
+function isNestedAppBundle(filePath) {
+  return normalize(filePath).includes(`.app${sep}`);
+}
+
 function isPluginAppBundle(filePath) {
   return normalize(filePath).endsWith("(Plugin).app");
+}
+
+function isGpuAppBundle(filePath) {
+  return normalize(filePath).endsWith("(GPU).app");
+}
+
+function isRendererAppBundle(filePath) {
+  return normalize(filePath).endsWith("(Renderer).app");
 }
 
 export async function assertReleaseHostReady(

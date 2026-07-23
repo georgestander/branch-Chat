@@ -36,6 +36,7 @@ import {
 import { ConversationRepository } from "./persistence/index.ts";
 import {
   appProtocol,
+  isAllowedAudioMediaPermission,
   isAllowedExternalUrl,
   isTrustedRendererUrl,
   resolveRendererAsset,
@@ -179,6 +180,18 @@ function registerAssetProtocol(assets: AssetStore): void {
 }
 
 function configureSession(): void {
+  session.defaultSession.setPermissionCheckHandler(
+    (_webContents, permission, requestingOrigin, details) => {
+      const requestingUrl = details.requestingUrl ?? requestingOrigin;
+      return isAllowedAudioMediaPermission(
+        permission,
+        details.mediaType ? [details.mediaType] : [],
+        requestingUrl,
+        developmentServerUrl,
+      );
+    },
+  );
+
   session.defaultSession.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const requestingUrl = details.requestingUrl ?? webContents.getURL();
@@ -187,10 +200,12 @@ function configureSession(): void {
           ? (details.mediaTypes ?? [])
           : [];
       callback(
-        permission === "media" &&
-          mediaTypes.includes("audio") &&
-          !mediaTypes.includes("video") &&
-          trustedRenderer(requestingUrl),
+        isAllowedAudioMediaPermission(
+          permission,
+          mediaTypes,
+          requestingUrl,
+          developmentServerUrl,
+        ),
       );
     },
   );

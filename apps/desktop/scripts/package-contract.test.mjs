@@ -85,6 +85,25 @@ test("desktop packaging and runtime surfaces use the supplied Branchy icon", asy
   );
 });
 
+test("microphone permissions require audio-only access from the trusted renderer", () => {
+  assert.match(
+    mainSource,
+    /setPermissionCheckHandler\([\s\S]*?isAllowedAudioMediaPermission\(/u,
+  );
+  assert.match(
+    mainSource,
+    /setPermissionRequestHandler\([\s\S]*?isAllowedAudioMediaPermission\(/u,
+  );
+  assert.equal(
+    mainSource.match(/setPermissionCheckHandler\(/gu)?.length,
+    1,
+  );
+  assert.equal(
+    mainSource.match(/setPermissionRequestHandler\(/gu)?.length,
+    1,
+  );
+});
+
 test("branch creation chrome stays neutral without colored rails or shadows", () => {
   assert.doesNotMatch(
     rendererStyles,

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -22,6 +28,14 @@ const enabledConfiguration = readReleaseConfiguration({
   BRANCHY_APPLE_NOTARY_PROFILE: profile,
 });
 
+async function entitlementKeys(filePath) {
+  const source = await readFile(filePath, "utf8");
+  return Array.from(
+    source.matchAll(/<key>([^<]+)<\/key>/gu),
+    (match) => match[1],
+  ).sort();
+}
+
 test("local QA is ad-hoc signed without changing the pinned Codex executable", () => {
   assert.deepEqual(readReleaseConfiguration({}), { enabled: false });
   const options = createMacSigningOptions({ enabled: false });
@@ -39,6 +53,24 @@ test("local QA is ad-hoc signed without changing the pinned Codex executable", (
     ).entitlements,
     /resources\/entitlements\/qa-plugin\.plist$/,
   );
+  assert.match(
+    options.optionsForFile(
+      "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (Renderer).app",
+    ).entitlements,
+    /resources\/entitlements\/qa-renderer\.plist$/,
+  );
+  assert.match(
+    options.optionsForFile(
+      "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (GPU).app",
+    ).entitlements,
+    /resources\/entitlements\/qa-helper\.plist$/,
+  );
+  assert.match(
+    options.optionsForFile(
+      "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper.app",
+    ).entitlements,
+    /resources\/entitlements\/qa-helper\.plist$/,
+  );
   assert.deepEqual(
     options.optionsForFile(
       "/tmp/Branchy Chat.app/Contents/Frameworks/Electron Framework.framework",
@@ -53,6 +85,48 @@ test("local QA is ad-hoc signed without changing the pinned Codex executable", (
     ),
     true,
   );
+});
+
+test("local QA grants microphone access only to the app and Renderer helper", async () => {
+  const options = createMacSigningOptions({ enabled: false });
+  const appEntitlements = options.optionsForFile(
+    "/tmp/Branchy Chat.app",
+  ).entitlements;
+  const rendererEntitlements = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (Renderer).app",
+  ).entitlements;
+  const helperEntitlements = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper.app",
+  ).entitlements;
+  const gpuEntitlements = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (GPU).app",
+  ).entitlements;
+  const pluginEntitlements = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (Plugin).app",
+  ).entitlements;
+
+  assert.deepEqual(await entitlementKeys(appEntitlements), [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.disable-library-validation",
+    "com.apple.security.device.audio-input",
+  ]);
+  assert.deepEqual(await entitlementKeys(rendererEntitlements), [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.disable-library-validation",
+    "com.apple.security.device.audio-input",
+  ]);
+  assert.deepEqual(await entitlementKeys(helperEntitlements), [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.cs.disable-library-validation",
+  ]);
+  assert.deepEqual(
+    await entitlementKeys(gpuEntitlements),
+    await entitlementKeys(helperEntitlements),
+  );
+  assert.deepEqual(await entitlementKeys(pluginEntitlements), [
+    "com.apple.security.cs.allow-unsigned-executable-memory",
+    "com.apple.security.cs.disable-library-validation",
+  ]);
 });
 
 test("release configuration fails closed on invalid or missing inputs", () => {
@@ -78,9 +152,13 @@ test("release configuration fails closed on invalid or missing inputs", () => {
 test("release signing keeps the pinned Codex executable untouched", () => {
   const options = createMacSigningOptions(enabledConfiguration);
   assert.equal(options.identity, identity);
-  assert.deepEqual(
-    options.optionsForFile("/tmp/Branchy Chat.app"),
-    { hardenedRuntime: true },
+  assert.match(
+    options.optionsForFile("/tmp/Branchy Chat.app").entitlements,
+    /resources\/entitlements\/release\.plist$/,
+  );
+  assert.equal(
+    options.optionsForFile("/tmp/Branchy Chat.app").hardenedRuntime,
+    true,
   );
   assert.equal(
     options.ignore(
@@ -94,6 +172,42 @@ test("release signing keeps the pinned Codex executable untouched", () => {
     ),
     false,
   );
+});
+
+test("Developer ID signing grants microphone access only to the app and Renderer helper", async () => {
+  const options = createMacSigningOptions(enabledConfiguration);
+  const appOptions = options.optionsForFile("/tmp/Branchy Chat.app");
+  const rendererOptions = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (Renderer).app",
+  );
+  const helperOptions = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper.app",
+  );
+  const gpuOptions = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (GPU).app",
+  );
+  const pluginOptions = options.optionsForFile(
+    "/tmp/Branchy Chat.app/Contents/Frameworks/Branchy Chat Helper (Plugin).app",
+  );
+
+  assert.deepEqual(await entitlementKeys(appOptions.entitlements), [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.device.audio-input",
+  ]);
+  assert.deepEqual(await entitlementKeys(rendererOptions.entitlements), [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.device.audio-input",
+  ]);
+  assert.deepEqual(await entitlementKeys(helperOptions.entitlements), [
+    "com.apple.security.cs.allow-jit",
+  ]);
+  assert.equal(gpuOptions.entitlements, undefined);
+  assert.equal(pluginOptions.entitlements, undefined);
+  assert.equal(appOptions.hardenedRuntime, true);
+  assert.equal(rendererOptions.hardenedRuntime, true);
+  assert.equal(helperOptions.hardenedRuntime, true);
+  assert.equal(gpuOptions.hardenedRuntime, true);
+  assert.equal(pluginOptions.hardenedRuntime, true);
 });
 
 test("host preflight verifies tools, identity, then notary profile", async () => {
