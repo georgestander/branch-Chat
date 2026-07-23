@@ -24,6 +24,12 @@ import {
   type ComposerSettingsChangeHandler,
   type ComposerSettingsSelection,
 } from "./composer-settings.ts";
+import {
+  dictationOwnsDraft,
+  dictationPresentation,
+  mergeDictationTranscript,
+  type DictationState,
+} from "./dictation.ts";
 import { Icon } from "./icons.tsx";
 import type { AttachmentDraft } from "./types.ts";
 import "./Composer.css";
@@ -53,13 +59,6 @@ export type ComposerProps = {
   onSaveNote?: () => void;
 };
 
-type DictationState =
-  | "idle"
-  | "requesting"
-  | "recording"
-  | "transcribing"
-  | "error";
-
 const MAX_RECORDING_MS = 120_000;
 
 const PRESET_OPTIONS = [
@@ -86,14 +85,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(1)} MB`;
 }
 
-function mergeTranscript(current: string, transcript: string): string {
-  const base = current.trimEnd();
-  const next = transcript.trim();
-  if (!base) return next;
-  if (!next) return current;
-  return `${base}${/[.!?]$/.test(base) ? " " : ". "}${next}`;
-}
-
 export function Composer({
   branchTitle,
   value,
@@ -116,6 +107,7 @@ export function Composer({
   const inputId = useId();
   const settingsPanelId = useId();
   const expandedEditorTitleId = useId();
+  const dictationStatusId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -123,6 +115,8 @@ export function Composer({
   const recordingTimeoutRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const draftAtRecordingStartRef = useRef("");
+  const currentDraftRef = useRef(value);
+  const dictationAttemptRef = useRef(0);
   const [dictationState, setDictationState] =
     useState<DictationState>("idle");
   const [dictationError, setDictationError] = useState<string | null>(null);
@@ -149,6 +143,7 @@ export function Composer({
   const settingsBusy = settingsSaving || settingsChanging;
   const settingsDisabled =
     disabled || streaming || settingsBusy || !onSettingsChange;
+  currentDraftRef.current = value;
 
   useEffect(() => {
     if (focusToken > 0) {
@@ -159,6 +154,7 @@ export function Composer({
 
   useEffect(
     () => () => {
+      dictationAttemptRef.current += 1;
       if (recordingTimeoutRef.current !== null) {
         window.clearTimeout(recordingTimeoutRef.current);
       }
@@ -203,24 +199,39 @@ export function Composer({
   }, []);
 
   const transcribeRecording = useCallback(
-    async (wav: Uint8Array) => {
+    async (wav: Uint8Array, attemptId: number) => {
+      if (attemptId !== dictationAttemptRef.current) return;
       setDictationState("transcribing");
       setDictationError(null);
       try {
         const transcript = await onTranscribe(wav, "audio/wav");
-        onChange(
-          mergeTranscript(draftAtRecordingStartRef.current, transcript),
+        if (attemptId !== dictationAttemptRef.current) return;
+        const merged = mergeDictationTranscript(
+          draftAtRecordingStartRef.current,
+          currentDraftRef.current,
+          transcript,
         );
+        if (merged.kind === "stale") {
+          setFailedDictation(wav);
+          setDictationState("error");
+          setDictationError(
+            "The draft changed while dictation was processing, so the transcript was not inserted. Retry to add it to the current draft.",
+          );
+          return;
+        }
+        onChange(merged.value);
+        currentDraftRef.current = merged.value;
         setFailedDictation(null);
         setDictationState("idle");
         window.requestAnimationFrame(() => {
-          if (expandedEditorOpen) {
+          if (expandedTextareaRef.current) {
             expandedTextareaRef.current?.focus();
           } else {
             textareaRef.current?.focus();
           }
         });
       } catch (error) {
+        if (attemptId !== dictationAttemptRef.current) return;
         setFailedDictation(wav);
         setDictationState("error");
         setDictationError(
@@ -230,7 +241,7 @@ export function Composer({
         );
       }
     },
-    [expandedEditorOpen, onChange, onTranscribe],
+    [onChange, onTranscribe],
   );
 
   const startRecording = useCallback(async () => {
@@ -241,19 +252,29 @@ export function Composer({
     if (dictationState === "requesting" || dictationState === "transcribing") {
       return;
     }
+    const attemptId = dictationAttemptRef.current + 1;
+    dictationAttemptRef.current = attemptId;
+    draftAtRecordingStartRef.current = currentDraftRef.current;
     setDictationError(null);
+    setFailedDictation(null);
     setDictationState("requesting");
+    let requestedStream: MediaStream | null = null;
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Microphone recording is unavailable on this Mac.");
       }
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
+      requestedStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
         },
       });
+      if (attemptId !== dictationAttemptRef.current) {
+        for (const track of requestedStream.getTracks()) track.stop();
+        return;
+      }
+      const mediaStream = requestedStream;
       streamRef.current = mediaStream;
       const preferredType = [
         "audio/webm;codecs=opus",
@@ -266,8 +287,6 @@ export function Composer({
       );
       recorderRef.current = recorder;
       chunksRef.current = [];
-      draftAtRecordingStartRef.current = value;
-      setFailedDictation(null);
       recorder.addEventListener("dataavailable", (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       });
@@ -276,6 +295,8 @@ export function Composer({
         () => {
           for (const track of mediaStream.getTracks()) track.stop();
           streamRef.current = null;
+          recorderRef.current = null;
+          if (attemptId !== dictationAttemptRef.current) return;
           const blob = new Blob(chunksRef.current, {
             type: recorder.mimeType || "audio/webm",
           });
@@ -284,9 +305,12 @@ export function Composer({
             setDictationError("No speech was recorded. Try again.");
             return;
           }
+          setDictationState("transcribing");
+          setDictationError(null);
           void recordingToWav(blob)
-            .then(transcribeRecording)
+            .then((wav) => transcribeRecording(wav, attemptId))
             .catch((error: unknown) => {
+              if (attemptId !== dictationAttemptRef.current) return;
               setFailedDictation(null);
               setDictationState("error");
               setDictationError(
@@ -305,8 +329,11 @@ export function Composer({
         MAX_RECORDING_MS,
       );
     } catch (error) {
-      for (const track of streamRef.current?.getTracks() ?? []) track.stop();
-      streamRef.current = null;
+      for (const track of requestedStream?.getTracks() ?? []) track.stop();
+      if (attemptId !== dictationAttemptRef.current) return;
+      if (streamRef.current === requestedStream) {
+        streamRef.current = null;
+      }
       setDictationState("error");
       setDictationError(
         error instanceof DOMException && error.name === "NotAllowedError"
@@ -320,16 +347,20 @@ export function Composer({
     dictationState,
     stopRecording,
     transcribeRecording,
-    value,
   ]);
 
+  const dictationDraftLocked = dictationOwnsDraft(dictationState);
   const blockedAttachment = attachments.some(
     (attachment) =>
       attachment.status === "uploading" ||
       attachment.status === "error",
   );
   const canSend =
-    !disabled && !streaming && !blockedAttachment && value.trim().length > 0;
+    !disabled &&
+    !streaming &&
+    !dictationDraftLocked &&
+    !blockedAttachment &&
+    value.trim().length > 0;
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -377,12 +408,12 @@ export function Composer({
     [onSettingsChange, settingsBusy],
   );
 
-  const dictationLabel =
-    dictationState === "recording" ? "Stop recording" : "Start dictation";
+  const dictationUi = dictationPresentation(dictationState);
   const dictationDisabled =
-    disabled ||
-    dictationState === "requesting" ||
-    dictationState === "transcribing";
+    dictationState !== "recording" &&
+    (disabled ||
+      dictationState === "requesting" ||
+      dictationState === "transcribing");
 
   const renderDictationButton = (expanded = false) => (
     <button
@@ -391,7 +422,10 @@ export function Composer({
       } ${expanded ? "composer__dictation--expanded" : ""}`}
       type="button"
       disabled={dictationDisabled}
-      aria-label={dictationLabel}
+      aria-label={dictationUi.buttonLabel}
+      aria-describedby={
+        dictationUi.status ? dictationStatusId : undefined
+      }
       aria-pressed={dictationState === "recording"}
       onClick={() => void startRecording()}
     >
@@ -419,6 +453,15 @@ export function Composer({
         multiple
         onChange={chooseFiles}
       />
+      <span
+        id={dictationStatusId}
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {dictationUi.status ?? ""}
+      </span>
 
       <div className="composer__settings-bar">
         <div
@@ -592,7 +635,13 @@ export function Composer({
         <textarea
           aria-label={`Message ${branchTitle}`}
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
+          readOnly={dictationDraftLocked}
+          aria-describedby={
+            dictationUi.status ? dictationStatusId : undefined
+          }
+          onChange={(event) => {
+            if (!dictationDraftLocked) onChange(event.target.value);
+          }}
           onKeyDown={handleKeyDown}
           placeholder={
             disabled
@@ -627,8 +676,11 @@ export function Composer({
               <button
                 type="button"
                 onClick={() => {
-                  draftAtRecordingStartRef.current = value;
-                  void transcribeRecording(failedDictation);
+                  const attemptId = dictationAttemptRef.current + 1;
+                  dictationAttemptRef.current = attemptId;
+                  draftAtRecordingStartRef.current =
+                    currentDraftRef.current;
+                  void transcribeRecording(failedDictation, attemptId);
                 }}
               >
                 Retry
@@ -637,6 +689,7 @@ export function Composer({
             <button
               type="button"
               onClick={() => {
+                dictationAttemptRef.current += 1;
                 setFailedDictation(null);
                 setDictationError(null);
                 setDictationState("idle");
@@ -657,9 +710,14 @@ export function Composer({
           {renderDictationButton()}
           <span
             className="composer__model"
-            title={`${currentModelLabel} · ${REASONING_EFFORT_LABELS[currentReasoningEffort]}`}
+            title={
+              dictationUi.status ??
+              `${currentModelLabel} · ${REASONING_EFFORT_LABELS[currentReasoningEffort]}`
+            }
+            aria-hidden={dictationUi.status ? "true" : undefined}
           >
-            {currentModelLabel} · {REASONING_EFFORT_LABELS[currentReasoningEffort]}
+            {dictationUi.status ??
+              `${currentModelLabel} · ${REASONING_EFFORT_LABELS[currentReasoningEffort]}`}
           </span>
         </div>
 
@@ -737,9 +795,15 @@ export function Composer({
                   autoFocus
                   value={value}
                   disabled={disabled}
+                  readOnly={dictationDraftLocked}
                   aria-label={`Expanded message ${branchTitle}`}
+                  aria-describedby={
+                    dictationUi.status ? dictationStatusId : undefined
+                  }
                   placeholder={`Continue ${branchTitle}…`}
-                  onChange={(event) => onChange(event.target.value)}
+                  onChange={(event) => {
+                    if (!dictationDraftLocked) onChange(event.target.value);
+                  }}
                   onKeyDown={handleKeyDown}
                 />
                 <footer>
@@ -752,8 +816,9 @@ export function Composer({
                       <span className="sr-only">Attach files</span>
                     </label>
                     {renderDictationButton(true)}
-                    <span>
-                      Enter to send · Shift + Enter for a new line
+                    <span aria-hidden={dictationUi.status ? "true" : undefined}>
+                      {dictationUi.status ??
+                        "Enter to send · Shift + Enter for a new line"}
                     </span>
                   </div>
                   {streaming ? (
