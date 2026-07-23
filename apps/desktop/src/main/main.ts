@@ -29,6 +29,10 @@ import {
   createCodexUtilityGateway,
   type CodexUtilityProcess,
 } from "./codex/utility-gateway.ts";
+import {
+  createQuitCoordinator,
+  shouldReportRendererLoadFailure,
+} from "./lifecycle.ts";
 import { ConversationRepository } from "./persistence/index.ts";
 import {
   appProtocol,
@@ -64,8 +68,6 @@ const utilityEnvironmentKeys = [
 let application: BranchyApplication | null = null;
 let streamHub: StreamHub | null = null;
 let developmentServerUrl: string | undefined;
-let shutdownStarted = false;
-let shutdownComplete = false;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -104,7 +106,15 @@ function requireTrustedEvent(event: IpcMainEvent): void {
   }
 }
 
-function requireApplication(): BranchyApplication {
+function requireApplication(
+  options: { allowDuringShutdown?: boolean } = {},
+): BranchyApplication {
+  if (
+    quitCoordinator.isShuttingDown() &&
+    options.allowDuringShutdown !== true
+  ) {
+    throw new Error("Branchy Chat is closing.");
+  }
   if (!application) {
     throw new Error("Branchy Chat is still starting.");
   }
@@ -216,7 +226,10 @@ function configureSession(): void {
   });
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(): BrowserWindow | null {
+  if (quitCoordinator.isShuttingDown()) {
+    return null;
+  }
   const preloadPath = join(
     dirname(fileURLToPath(import.meta.url)),
     "preload.cjs",
@@ -241,7 +254,12 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", () => {
+    if (quitCoordinator.isShuttingDown()) {
+      return;
+    }
+    window.show();
+  });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) {
       void shell.openExternal(url);
@@ -256,6 +274,14 @@ function createWindow(): BrowserWindow {
   const rendererUrl =
     developmentServerUrl ?? `${appProtocol}://renderer/index.html`;
   void window.loadURL(rendererUrl).catch((error: unknown) => {
+    if (
+      !shouldReportRendererLoadFailure(
+        quitCoordinator.isShuttingDown(),
+        window.isDestroyed(),
+      )
+    ) {
+      return;
+    }
     const detail =
       error instanceof Error ? error.message : "Unknown renderer load error";
     console.error("[TRACE] renderer load failed", detail);
@@ -373,7 +399,7 @@ function registerIpc(): void {
     requireApplication().saveBranchNote(input),
   );
   registerInvoke(IPC_CHANNELS.saveComposerDraft, (input) =>
-    requireApplication().saveComposerDraft(input),
+    requireApplication({ allowDuringShutdown: true }).saveComposerDraft(input),
   );
   registerInvoke(IPC_CHANNELS.sendMessage, (input) =>
     requireApplication().sendMessage(input),
@@ -574,11 +600,35 @@ async function shutdown(): Promise<void> {
   streamHub?.dispose();
   streamHub = null;
   const activeApplication = application;
-  application = null;
   if (activeApplication) {
-    await activeApplication.close();
+    try {
+      await activeApplication.close();
+    } finally {
+      if (application === activeApplication) {
+        application = null;
+      }
+    }
   }
 }
+
+const quitCoordinator = createQuitCoordinator({
+  shutdown,
+  hideWindows: () => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.hide();
+      }
+    }
+  },
+  quit: () => app.quit(),
+  exit: (exitCode) => app.exit(exitCode),
+  onError: (error) => {
+    console.error(
+      "[TRACE] shutdown failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  },
+});
 
 app.setName("Branchy Chat");
 
@@ -586,6 +636,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
+    if (quitCoordinator.isShuttingDown()) {
+      return;
+    }
     const window = BrowserWindow.getAllWindows()[0];
     if (window) {
       if (window.isMinimized()) {
@@ -613,7 +666,10 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
+      if (
+        !quitCoordinator.isShuttingDown() &&
+        BrowserWindow.getAllWindows().length === 0
+      ) {
         createWindow();
       }
     });
@@ -632,18 +688,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("before-quit", (event) => {
-    if (shutdownComplete || !application) {
-      return;
-    }
-    event.preventDefault();
-    if (shutdownStarted) {
-      return;
-    }
-    shutdownStarted = true;
-    void shutdown().finally(() => {
-      shutdownComplete = true;
-      app.quit();
-    });
+    quitCoordinator.handleBeforeQuit(event);
   });
 
   app.on("window-all-closed", () => {

@@ -20,7 +20,10 @@ import {
   BranchyApplication,
   type BranchyCodexGateway,
 } from "./service.ts";
-import type { BranchyStreamEvent } from "../../shared/contracts.ts";
+import type {
+  BranchyStreamEvent,
+  SaveComposerDraftResult,
+} from "../../shared/contracts.ts";
 
 const NOW = new Date("2026-07-23T12:00:00.000Z");
 const PNG = new Uint8Array([
@@ -204,7 +207,10 @@ class FakeCodex implements BranchyCodexGateway {
 
 async function setup(
   t: test.TestContext,
-  options: { draftSaveDelayMilliseconds?: number } = {},
+  options: {
+    draftSaveDelayMilliseconds?: number;
+    drainMainLoop?: () => Promise<void>;
+  } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), "branchy-application-"));
   const generatedRoot = join(directory, "codex-workspace");
@@ -224,6 +230,7 @@ async function setup(
     codex,
     draftSaveDelayMilliseconds:
       options.draftSaveDelayMilliseconds ?? 0,
+    drainMainLoop: options.drainMainLoop,
     repository,
     now: () => new Date(NOW),
     publishStream: (streamId, event) => {
@@ -387,6 +394,89 @@ test("main-owned draft debounce preserves ordering across reload and send", asyn
     recovered: false,
     historyTruncated: false,
   });
+});
+
+test(
+  "close drains a final renderer draft before closing persistence",
+  async (t) => {
+    let queueLateDraft = () => {};
+    const harness = await setup(t, {
+      draftSaveDelayMilliseconds: 60_000,
+      drainMainLoop: async () => {
+        queueLateDraft();
+        await Promise.resolve();
+      },
+    });
+    const created = harness.application.createConversation({
+      title: "Quit-safe draft",
+    });
+    const branchId = created.snapshot.conversation.rootBranchId;
+    let resolveLateSave:
+      | ((result: SaveComposerDraftResult) => void)
+      | undefined;
+    let rejectLateSave: ((error: unknown) => void) | undefined;
+    const lateSave = new Promise<SaveComposerDraftResult>((resolve, reject) => {
+      resolveLateSave = resolve;
+      rejectLateSave = reject;
+    });
+    queueLateDraft = () => {
+      queueLateDraft = () => {};
+      void harness.application
+        .saveComposerDraft({
+          conversationId: created.conversationId,
+          branchId,
+          content: "the final keystroke",
+        })
+        .then(resolveLateSave, rejectLateSave);
+    };
+
+    await harness.application.close();
+
+    assert.equal((await lateSave)?.content, "the final keystroke");
+    await assert.rejects(
+      harness.application.saveComposerDraft({
+        conversationId: created.conversationId,
+        branchId,
+        content: "too late",
+      }),
+      /Branchy Chat is closing/u,
+    );
+  },
+);
+
+test("close waits for an immediate draft mutation accepted during its drain", async (t) => {
+  let queueLateDraft = () => {};
+  const harness = await setup(t, {
+    drainMainLoop: async () => {
+      queueLateDraft();
+    },
+  });
+  const created = harness.application.createConversation({
+    title: "Quit-safe immediate draft",
+  });
+  const branchId = created.snapshot.conversation.rootBranchId;
+  let resolveLateSave:
+    | ((result: SaveComposerDraftResult) => void)
+    | undefined;
+  let rejectLateSave: ((error: unknown) => void) | undefined;
+  const lateSave = new Promise<SaveComposerDraftResult>((resolve, reject) => {
+    resolveLateSave = resolve;
+    rejectLateSave = reject;
+  });
+  queueLateDraft = () => {
+    queueLateDraft = () => {};
+    void harness.application
+      .saveComposerDraft({
+        conversationId: created.conversationId,
+        branchId,
+        content: "immediate final keystroke",
+      })
+      .then(resolveLateSave, rejectLateSave);
+  };
+
+  await harness.application.close();
+
+  assert.equal((await lateSave)?.content, "immediate final keystroke");
 });
 
 test("persists streamed image progress, completion, and native fork context", async (t) => {

@@ -122,9 +122,16 @@ export interface BranchyApplicationOptions {
   assets: AssetStore;
   codex: BranchyCodexGateway;
   draftSaveDelayMilliseconds?: number;
+  drainMainLoop?: () => Promise<void>;
   now?: () => Date;
   publishStream: (streamId: string, event: BranchyStreamEvent) => void;
   repository: ConversationRepository;
+}
+
+function drainMainProcessLoop(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(() => setImmediate(resolve), 0);
+  });
 }
 
 export interface BranchyCodexGateway {
@@ -292,6 +299,7 @@ export class BranchyApplication {
   private readonly assets: AssetStore;
   private readonly codex: BranchyCodexGateway;
   private readonly draftSaveDelayMilliseconds: number;
+  private readonly drainMainLoop: () => Promise<void>;
   private readonly now: () => Date;
   private readonly publishStream: BranchyApplicationOptions["publishStream"];
   private readonly repository: ConversationRepository;
@@ -306,6 +314,8 @@ export class BranchyApplication {
   private readonly versions = new Map<string, number>();
   private readonly mutationTails = new Map<string, Promise<void>>();
   private readonly pendingDraftSaves = new Map<string, PendingDraftSave>();
+  private acceptingDraftSaves = true;
+  private closePromise: Promise<void> | null = null;
 
   constructor(options: BranchyApplicationOptions) {
     this.assets = options.assets;
@@ -313,6 +323,9 @@ export class BranchyApplication {
     this.draftSaveDelayMilliseconds =
       options.draftSaveDelayMilliseconds ??
       DEFAULT_DRAFT_SAVE_DELAY_MILLISECONDS;
+    this.drainMainLoop =
+      options.drainMainLoop ??
+      drainMainProcessLoop;
     if (
       !Number.isSafeInteger(this.draftSaveDelayMilliseconds) ||
       this.draftSaveDelayMilliseconds < 0
@@ -669,6 +682,9 @@ export class BranchyApplication {
   saveComposerDraft(
     input: SaveComposerDraftInput,
   ): Promise<SaveComposerDraftResult> {
+    if (!this.acceptingDraftSaves) {
+      return Promise.reject(new Error("Branchy Chat is closing."));
+    }
     if (this.draftSaveDelayMilliseconds === 0) {
       return this.persistComposerDraft(input);
     }
@@ -1065,15 +1081,31 @@ export class BranchyApplication {
     return recovered;
   }
 
-  async close(): Promise<void> {
-    await this.flushPendingDraftSaves();
-    for (const session of this.loginSessions.values()) {
-      await session.cancel().catch(() => undefined);
+  close(): Promise<void> {
+    this.closePromise ??= this.performClose();
+    return this.closePromise;
+  }
+
+  private async performClose(): Promise<void> {
+    try {
+      await this.flushPendingDraftSaves();
+      for (const session of this.loginSessions.values()) {
+        await session.cancel().catch(() => undefined);
+      }
+      this.loginSessions.clear();
+      this.loginExpiryById.clear();
+      await this.codex.stop();
+    } finally {
+      try {
+        await this.drainMainLoop();
+        this.acceptingDraftSaves = false;
+        await this.flushPendingDraftSaves();
+        await this.waitForMutationsToSettle();
+      } finally {
+        this.acceptingDraftSaves = false;
+        this.repository.close();
+      }
     }
-    this.loginSessions.clear();
-    this.loginExpiryById.clear();
-    await this.codex.stop();
-    this.repository.close();
   }
 
   private async startMessage(
@@ -1934,8 +1966,16 @@ export class BranchyApplication {
   }
 
   private async flushPendingDraftSaves(): Promise<void> {
-    for (const key of [...this.pendingDraftSaves.keys()]) {
-      await this.flushPendingDraftSave(key);
+    while (this.pendingDraftSaves.size > 0) {
+      for (const key of [...this.pendingDraftSaves.keys()]) {
+        await this.flushPendingDraftSave(key);
+      }
+    }
+  }
+
+  private async waitForMutationsToSettle(): Promise<void> {
+    while (this.mutationTails.size > 0) {
+      await Promise.all([...this.mutationTails.values()]);
     }
   }
 
