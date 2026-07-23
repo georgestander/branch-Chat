@@ -35,7 +35,10 @@ import {
   type ToastMessage,
 } from "./Overlays.tsx";
 import { Sidebar } from "./Sidebar.tsx";
-import { PendingUploadRegistry } from "./pending-uploads.ts";
+import {
+  PendingUploadRegistry,
+  visitDiscardedAttachments,
+} from "./pending-uploads.ts";
 import {
   initialStreamState,
   isStreamActive,
@@ -344,6 +347,9 @@ export function App(): React.JSX.Element {
   );
   const loginIdRef = useRef<string | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
+  const attachmentsByBranchRef = useRef<
+    Record<BranchId, AttachmentDraft[] | undefined>
+  >({});
   const pendingUploadsRef = useRef(new PendingUploadRegistry());
   const subscriptionsRef = useRef(new Map<string, () => void>());
   const streamBranchesRef = useRef(new Map<string, BranchId>());
@@ -360,6 +366,50 @@ export function App(): React.JSX.Element {
     [],
   );
 
+  const updateAttachmentsByBranch = useCallback(
+    (
+      update: (
+        current: Record<BranchId, AttachmentDraft[] | undefined>,
+      ) => Record<BranchId, AttachmentDraft[] | undefined>,
+    ) => {
+      const next = update(attachmentsByBranchRef.current);
+      attachmentsByBranchRef.current = next;
+      setAttachmentsByBranch(next);
+    },
+    [],
+  );
+
+  const removeDiscardedAttachments = useCallback(
+    (conversationId: string, validBranchIds: ReadonlySet<BranchId>) => {
+      visitDiscardedAttachments(
+        attachmentsByBranchRef.current,
+        validBranchIds,
+        {
+          upload: (localId) => {
+            pendingUploadsRef.current.discard(localId);
+          },
+          ready: (attachmentId) => {
+            void window.branchy
+              .removeAttachment({
+                conversationId,
+                attachmentId,
+              })
+              .catch((error: unknown) => {
+                notify(
+                  errorMessage(
+                    error,
+                    "A discarded attachment could not be cleaned up.",
+                  ),
+                  "error",
+                );
+              });
+          },
+        },
+      );
+    },
+    [notify],
+  );
+
   const loadBootstrap = useCallback(
     async (input?: { conversationId?: string; branchId?: string }) => {
       for (const unsubscribe of subscriptionsRef.current.values()) {
@@ -370,17 +420,25 @@ export function App(): React.JSX.Element {
       const bootstrap = await window.branchy.bootstrap(input);
       const nextConversationId =
         bootstrap.kind === "ready" ? bootstrap.conversationId : null;
+      const previousConversationId = activeConversationIdRef.current;
       const sameConversation =
         nextConversationId !== null &&
-        nextConversationId === activeConversationIdRef.current;
+        nextConversationId === previousConversationId;
+      const validBranchIds = new Set(
+        bootstrap.kind === "ready"
+          ? Object.keys(bootstrap.snapshot.branches)
+          : [],
+      );
+      if (previousConversationId) {
+        removeDiscardedAttachments(
+          previousConversationId,
+          sameConversation ? validBranchIds : new Set(),
+        );
+      }
       activeConversationIdRef.current = nextConversationId;
       pendingUploadsRef.current.reconcile(
         nextConversationId,
-        new Set(
-          bootstrap.kind === "ready"
-            ? Object.keys(bootstrap.snapshot.branches)
-            : [],
-        ),
+        validBranchIds,
       );
       setScreen((current) =>
         screenFromBootstrap(
@@ -398,7 +456,7 @@ export function App(): React.JSX.Element {
         setDraftsByBranch((current) =>
           retainBranchRecords(current, bootstrap.snapshot.branches),
         );
-        setAttachmentsByBranch((current) =>
+        updateAttachmentsByBranch((current) =>
           retainBranchRecords(current, bootstrap.snapshot.branches),
         );
         setRetryByBranch((current) =>
@@ -406,12 +464,12 @@ export function App(): React.JSX.Element {
         );
       } else {
         setDraftsByBranch({});
-        setAttachmentsByBranch({});
+        updateAttachmentsByBranch(() => ({}));
         setRetryByBranch({});
       }
       return bootstrap;
     },
-    [],
+    [removeDiscardedAttachments, updateAttachmentsByBranch],
   );
 
   useEffect(() => {
@@ -936,7 +994,10 @@ export function App(): React.JSX.Element {
         ready.conversationId,
       );
       setDraftsByBranch((current) => ({ ...current, [branchId]: "" }));
-      setAttachmentsByBranch((current) => ({ ...current, [branchId]: [] }));
+      updateAttachmentsByBranch((current) => ({
+        ...current,
+        [branchId]: [],
+      }));
       setScreen((current) =>
         current.kind === "ready"
           ? {
@@ -1218,12 +1279,12 @@ export function App(): React.JSX.Element {
           status: "uploading",
           error: null,
         };
-        setAttachmentsByBranch((current) => ({
+        updateAttachmentsByBranch((current) => ({
           ...current,
           [branchId]: [...(current[branchId] ?? []), draft],
         }));
         if (file.size > constraints.maxSizeBytes) {
-          setAttachmentsByBranch((current) => ({
+          updateAttachmentsByBranch((current) => ({
             ...current,
             [branchId]: (current[branchId] ?? []).map((attachment) =>
               attachment.id === localId
@@ -1272,7 +1333,7 @@ export function App(): React.JSX.Element {
                   );
                 });
             }
-            setAttachmentsByBranch((current) => ({
+            updateAttachmentsByBranch((current) => ({
               ...current,
               [branchId]: (current[branchId] ?? []).map((candidate) =>
                 candidate.id === localId
@@ -1287,7 +1348,7 @@ export function App(): React.JSX.Element {
           })
           .catch((error: unknown) => {
             pendingUploadsRef.current.settle(localId);
-            setAttachmentsByBranch((current) => ({
+            updateAttachmentsByBranch((current) => ({
               ...current,
               [branchId]: (current[branchId] ?? []).map((candidate) =>
                 candidate.id === localId
@@ -1302,13 +1363,18 @@ export function App(): React.JSX.Element {
           });
       }
     },
-    [attachmentsByBranch, notify, ready],
+    [
+      attachmentsByBranch,
+      notify,
+      ready,
+      updateAttachmentsByBranch,
+    ],
   );
 
   const removeAttachment = useCallback(
     (branchId: BranchId, attachmentId: string) => {
       if (!ready) return;
-      setAttachmentsByBranch((current) => ({
+      updateAttachmentsByBranch((current) => ({
         ...current,
         [branchId]: (current[branchId] ?? []).filter(
           (attachment) => attachment.id !== attachmentId,
@@ -1327,7 +1393,7 @@ export function App(): React.JSX.Element {
           });
       }
     },
-    [notify, ready],
+    [notify, ready, updateAttachmentsByBranch],
   );
 
   const transcribe = useCallback(
@@ -1442,6 +1508,10 @@ export function App(): React.JSX.Element {
         const survivingBranchIds = new Set(
           Object.keys(result.snapshot.branches),
         );
+        removeDiscardedAttachments(
+          ready.conversationId,
+          survivingBranchIds,
+        );
         pendingUploadsRef.current.reconcile(
           ready.conversationId,
           survivingBranchIds,
@@ -1449,7 +1519,7 @@ export function App(): React.JSX.Element {
         setDraftsByBranch((current) =>
           retainBranchRecords(current, result.snapshot.branches),
         );
-        setAttachmentsByBranch((current) =>
+        updateAttachmentsByBranch((current) =>
           retainBranchRecords(current, result.snapshot.branches),
         );
         setRetryByBranch((current) =>
@@ -1478,7 +1548,14 @@ export function App(): React.JSX.Element {
     } finally {
       setBusyAction(null);
     }
-  }, [deleteTarget, loadBootstrap, notify, ready]);
+  }, [
+    deleteTarget,
+    loadBootstrap,
+    notify,
+    ready,
+    removeDiscardedAttachments,
+    updateAttachmentsByBranch,
+  ]);
 
   const startLogin = useCallback(async () => {
     setBusyAction("login");

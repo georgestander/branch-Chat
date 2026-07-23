@@ -1,5 +1,7 @@
 import type { BranchId } from "@branchy/conversation-core";
 
+import type { AttachmentDraft } from "./types.ts";
+
 type PendingUpload = {
   conversationId: string;
   branchId: BranchId;
@@ -40,5 +42,25 @@ export class PendingUploadRegistry {
     const upload = this.#uploads.get(localId) ?? null;
     this.#uploads.delete(localId);
     return upload;
+  }
+}
+
+export function visitDiscardedAttachments(
+  attachmentsByBranch: Record<BranchId, AttachmentDraft[] | undefined>,
+  validBranchIds: ReadonlySet<BranchId>,
+  visitor: {
+    upload(localId: string): void;
+    ready(attachmentId: string): void;
+  },
+): void {
+  for (const [branchId, attachments] of Object.entries(attachmentsByBranch)) {
+    if (validBranchIds.has(branchId)) continue;
+    for (const attachment of attachments ?? []) {
+      if (attachment.id.startsWith("upload-")) {
+        visitor.upload(attachment.id);
+      } else if (attachment.status === "ready") {
+        visitor.ready(attachment.id);
+      }
+    }
   }
 }

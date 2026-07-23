@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PendingUploadRegistry } from "./pending-uploads.ts";
+import {
+  PendingUploadRegistry,
+  visitDiscardedAttachments,
+} from "./pending-uploads.ts";
 
 test("an upload removed before completion is settled as discarded", () => {
   const uploads = new PendingUploadRegistry();
@@ -30,4 +33,49 @@ test("deleting an upload's branch discards it before completion", () => {
   uploads.reconcile("conversation", new Set(["root"]));
 
   assert.equal(uploads.settle("upload-1")?.discarded, true);
+});
+
+test("discarding a branch visits both unfinished and ready unsent files", () => {
+  const uploads: string[] = [];
+  const ready: string[] = [];
+  visitDiscardedAttachments(
+    {
+      root: [
+        {
+          id: "attachment-kept",
+          name: "kept.txt",
+          contentType: "text/plain",
+          size: 4,
+          status: "ready",
+          error: null,
+        },
+      ],
+      removed: [
+        {
+          id: "upload-local",
+          name: "loading.txt",
+          contentType: "text/plain",
+          size: 4,
+          status: "uploading",
+          error: null,
+        },
+        {
+          id: "attachment-ready",
+          name: "ready.txt",
+          contentType: "text/plain",
+          size: 4,
+          status: "ready",
+          error: null,
+        },
+      ],
+    },
+    new Set(["root"]),
+    {
+      upload: (id) => uploads.push(id),
+      ready: (id) => ready.push(id),
+    },
+  );
+
+  assert.deepEqual(uploads, ["upload-local"]);
+  assert.deepEqual(ready, ["attachment-ready"]);
 });
