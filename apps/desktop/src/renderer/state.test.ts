@@ -14,6 +14,7 @@ import {
   isBranchDescendant,
   isSupersededByActiveStream,
   isStreamActive,
+  latestUserPrompt,
   mergeRenderedMessage,
   parentComparisonForBranch,
   removeStreamStateIfMatching,
@@ -102,6 +103,23 @@ test("folded branches hide descendants without hiding siblings", () => {
   );
   assert.equal(descendantCount(snapshot(), "root"), 3);
   assert.equal(descendantCount(snapshot(), "child"), 1);
+});
+
+test("latest user prompt ignores assistant output and empty prompts", () => {
+  assert.equal(
+    latestUserPrompt([
+      { role: "user", content: "First prompt" },
+      { role: "assistant", content: "First answer" },
+      { role: "user", content: "  " },
+      { role: "user", content: "  Try this again  " },
+      { role: "assistant", content: "Partial answer" },
+    ]),
+    "Try this again",
+  );
+  assert.equal(
+    latestUserPrompt([{ role: "assistant", content: "Only an answer" }]),
+    "",
+  );
 });
 
 test("branch ancestry is cycle-safe and excludes the branch itself", () => {

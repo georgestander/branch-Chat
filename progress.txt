@@ -14,3 +14,9 @@
 - Decision: reuse one typed composer for regular, empty-canvas, and branch-draft modes; persist complete model/reasoning/tool selections and retain failed WAV data for an explicit dictation retry.
 - Files: apps/desktop/src/renderer/Composer.tsx, Composer.css, composer-settings.ts, composer-settings.test.ts.
 - Blocker/next check: run the complete feedback loop, then verify the compact and expanded composer in the packaged app.
+
+2026-07-23 — Canvas-first Electron experience (feat/canvas-chat parity)
+- Decision: preserve persisted viewport/live node positions, use the original 310x190 and 680x700 card geometry, keep only the active composer, and create child work inside a connected 420x360 amber card.
+- Files: apps/desktop/src/renderer/App.tsx, BranchCanvas.tsx, Sidebar.tsx, MessageBubble.tsx, state.ts, branch-canvas-layout.ts, styles.css and focused tests.
+- Verification: pnpm types; npm run test (265 passed); npm run lint.
+- Next: package the native app and run visual, keyboard, branch, image, reload, and dictation smoke tests.

@@ -123,6 +123,20 @@ export function messagesForBranch(
     .map(toRenderedMessage);
 }
 
+export function latestUserPrompt(
+  messages: ReadonlyArray<Pick<Message, "role" | "content">>,
+): string {
+  return (
+    [...messages]
+      .reverse()
+      .find(
+        (message) =>
+          message.role === "user" && message.content.trim().length > 0,
+      )
+      ?.content.trim() ?? ""
+  );
+}
+
 export type ParentBranchComparison = {
   parent: {
     branch: Branch;

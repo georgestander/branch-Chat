@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -38,6 +39,8 @@ type MessageBubbleProps = {
   ) => string | null;
 };
 
+const COLLAPSED_USER_MESSAGE_HEIGHT_PX = 208;
+
 export const MessageBubble = memo(function MessageBubble({
   message,
   branchId,
@@ -51,16 +54,29 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps): React.JSX.Element {
   const contentRef = useRef<HTMLDivElement>(null);
   const [userMessageExpanded, setUserMessageExpanded] = useState(false);
+  const [userMessageCollapsible, setUserMessageCollapsible] =
+    useState(false);
   const images = generatedImagesForMessage(message);
   const tools = (message.toolInvocations ?? []).filter(
     (invocation) => invocation.toolType !== "image_generation",
   );
-  const longUserMessage =
-    message.role === "user" && message.content.length > 720;
-  const visibleContent =
-    longUserMessage && !userMessageExpanded
-      ? `${message.content.slice(0, 680).trimEnd()}…`
-      : message.content;
+  useEffect(() => {
+    setUserMessageExpanded(false);
+    const element = contentRef.current;
+    if (message.role !== "user" || !element) {
+      setUserMessageCollapsible(false);
+      return;
+    }
+    const update = (): void => {
+      setUserMessageCollapsible(
+        element.scrollHeight > COLLAPSED_USER_MESSAGE_HEIGHT_PX + 4,
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [message.content, message.id, message.role]);
 
   const captureSelection = useCallback(() => {
     if (message.role !== "assistant" || !contentRef.current) return;
@@ -99,23 +115,11 @@ export const MessageBubble = memo(function MessageBubble({
       className={`message message--${message.role}`}
       aria-label={`${message.role} message`}
     >
-      <div className="message__role">
-        {message.role === "assistant" ? "Branchy" : "You"}
-      </div>
       <div
         className="message__body"
         onMouseUp={captureSelection}
       >
-        {visibleContent ? (
-          <MarkdownContent
-            branchAnchors={message.branchAnchors}
-            markdown={visibleContent}
-            messageId={message.id}
-            onOpenExternal={onOpenExternal}
-            ref={contentRef}
-          />
-        ) : null}
-        {longUserMessage ? (
+        {userMessageCollapsible ? (
           <button
             className="message__expand"
             type="button"
@@ -123,9 +127,33 @@ export const MessageBubble = memo(function MessageBubble({
               setUserMessageExpanded((current) => !current)
             }
           >
-            {userMessageExpanded ? "Show less" : "Show full prompt"}
+            {userMessageExpanded ? "Hide" : "Show"}
           </button>
         ) : null}
+        <div
+          className={`message__content ${
+            message.role === "user" &&
+            userMessageCollapsible &&
+            !userMessageExpanded
+              ? "is-collapsed"
+              : ""
+          }`}
+        >
+          {message.content ? (
+            <MarkdownContent
+              branchAnchors={message.branchAnchors}
+              markdown={message.content}
+              messageId={message.id}
+              onOpenExternal={onOpenExternal}
+              ref={contentRef}
+            />
+          ) : null}
+          {message.role === "user" &&
+          userMessageCollapsible &&
+          !userMessageExpanded ? (
+            <span className="message__content-fade" aria-hidden="true" />
+          ) : null}
+        </div>
 
         {(message.attachments?.length ?? 0) > 0 ? (
           <div className="message-attachments" aria-label="Sent attachments">

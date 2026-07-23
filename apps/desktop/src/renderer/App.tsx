@@ -9,10 +9,13 @@ import {
   applyCanvasPatch,
   type Branch,
   type BranchId,
+  type ComposerPreset,
   type ConversationCanvasPatch,
   type ConversationGraphSnapshot,
   type Message,
+  type ReasoningEffort,
 } from "@branchy/conversation-core";
+import type { ConversationComposerTool } from "@branchy/conversation-core/tools";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 import type {
   ActiveConversationStream,
@@ -25,10 +28,13 @@ import type {
 } from "../shared/contracts.ts";
 
 import { AccountPanel } from "./AccountPanel.tsx";
-import { BranchCanvas } from "./BranchCanvas.tsx";
+import {
+  BranchCanvas,
+  type BranchStopMode,
+} from "./BranchCanvas.tsx";
+import type { ComposerSettingsSelection } from "./composer-settings.ts";
 import { Icon } from "./icons.tsx";
 import {
-  BranchDraftDialog,
   ConfirmDialog,
   RenameDialog,
   ToastRegion,
@@ -42,6 +48,7 @@ import {
 import {
   initialStreamState,
   isStreamActive,
+  latestUserPrompt,
   mergeRenderedMessage,
   removeStreamStateIfMatching,
   reduceStreamState,
@@ -100,6 +107,8 @@ type ImageRetrySource = {
   messageId: string;
   imageId: string;
 };
+
+const BRANCH_DRAFT_ATTACHMENT_KEY = "__branch-draft__";
 
 const FALLBACK_ACCOUNT: AccountState = {
   status: "signed_out",
@@ -303,13 +312,7 @@ function streamEventView(event: BranchyStreamEvent): RendererStreamEvent {
 
 export function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ kind: "loading" });
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem("branchy:sidebar-collapsed") === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     try {
       const stored = window.localStorage.getItem("branchy:theme");
@@ -324,10 +327,21 @@ export function App(): React.JSX.Element {
   const [accountOpen, setAccountOpen] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [renameTarget, setRenameTarget] = useState<RenameTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [branchDraft, setBranchDraft] =
     useState<BranchSelectionDraft | null>(null);
+  const [startDraft, setStartDraft] = useState("");
+  const [startPreset, setStartPreset] =
+    useState<ComposerPreset>("fast");
+  const [startAdvancedOpen, setStartAdvancedOpen] = useState(false);
+  const [startModel, setStartModel] = useState("gpt-5.6-terra");
+  const [startReasoningEffort, setStartReasoningEffort] =
+    useState<ReasoningEffort>("medium");
+  const [startTools, setStartTools] = useState<
+    ConversationComposerTool[]
+  >(["web-search"]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [streamsByBranch, setStreamsByBranch] = useState<
     Record<BranchId, StreamState | undefined>
@@ -549,22 +563,12 @@ export function App(): React.JSX.Element {
   }, [theme]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "branchy:sidebar-collapsed",
-        String(sidebarCollapsed),
-      );
-    } catch {
-      // Local preference persistence is best effort.
-    }
-  }, [sidebarCollapsed]);
-
-  useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) {
         if (event.key === "Escape") {
           setHeaderMenuOpen(false);
           setAccountOpen(false);
+          setSidebarCollapsed(true);
         }
         return;
       }
@@ -574,6 +578,14 @@ export function App(): React.JSX.Element {
       } else if (event.key.toLowerCase() === "b") {
         event.preventDefault();
         setSidebarCollapsed((current) => !current);
+      } else if (event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSidebarCollapsed(false);
+        window.requestAnimationFrame(() => {
+          document
+            .querySelector<HTMLInputElement>(".search-field input")
+            ?.focus();
+        });
       }
     };
     window.addEventListener("keydown", handleShortcut);
@@ -704,6 +716,7 @@ export function App(): React.JSX.Element {
       setBusyAction(`open:${conversationId}`);
       try {
         await loadBootstrap({ conversationId });
+        setSidebarCollapsed(true);
       } catch (error) {
         notify(
           errorMessage(error, "Branchy could not open that conversation."),
@@ -774,6 +787,36 @@ export function App(): React.JSX.Element {
         });
     },
     [notify, ready],
+  );
+
+  const updateComposerSettings = useCallback(
+    async (settings: ComposerSettingsSelection): Promise<void> => {
+      if (!ready) return;
+      const conversationId = ready.conversationId;
+      setSettingsSaving(true);
+      try {
+        const result = await window.branchy.updateConversationSettings({
+          conversationId,
+          model: settings.model,
+          reasoningEffort: settings.reasoningEffort,
+          preset: settings.preset,
+          tools: settings.tools,
+        });
+        setScreen((current) =>
+          current.kind === "ready" &&
+          current.conversationId === conversationId
+            ? { ...current, snapshot: result.snapshot }
+            : current,
+        );
+      } catch (error) {
+        throw new Error(
+          errorMessage(error, "Composer settings could not be saved."),
+        );
+      } finally {
+        setSettingsSaving(false);
+      }
+    },
+    [ready],
   );
 
   const openBranch = useCallback(
@@ -1131,11 +1174,151 @@ export function App(): React.JSX.Element {
     ],
   );
 
+  const startConversationFromDraft = useCallback(async () => {
+    const content = startDraft.trim();
+    if (
+      !content ||
+      busyAction ||
+      account.status !== "signed_in"
+    ) {
+      if (account.status !== "signed_in") {
+        setAccountOpen(true);
+      }
+      return;
+    }
+    const tools = [...startTools];
+    const title =
+      content.length > 52 ? `${content.slice(0, 49)}…` : content;
+    let conversationId: string | null = null;
+    let rootBranchId: BranchId | null = null;
+    let streamId: string | null = null;
+    let stopSubscription: (() => void) | null = null;
+    setBusyAction("start-conversation");
+    try {
+      const created = await window.branchy.createConversation({
+        title,
+        preset: startPreset,
+        model: startModel,
+        reasoningEffort: startReasoningEffort,
+        tools,
+      });
+      conversationId = created.conversationId;
+      rootBranchId = created.snapshot.conversation.rootBranchId;
+      const bootstrap = await loadBootstrap({
+        conversationId,
+        branchId: rootBranchId,
+      });
+      if (bootstrap.kind !== "ready") {
+        throw new Error("The new conversation could not be opened.");
+      }
+      streamId = uniqueStreamId();
+      const optimistic = optimisticUserMessage(rootBranchId, content);
+      stopSubscription = subscribeToStream(
+        streamId,
+        rootBranchId,
+        conversationId,
+      );
+      setScreen((current) =>
+        current.kind === "ready" &&
+        current.conversationId === conversationId
+          ? {
+              ...current,
+              messagesByBranch: {
+                ...current.messagesByBranch,
+                [rootBranchId!]: [
+                  ...(current.messagesByBranch[rootBranchId!] ?? []),
+                  optimistic,
+                ],
+              },
+            }
+          : current,
+      );
+      const result = await window.branchy.sendMessage({
+        conversationId,
+        branchId: rootBranchId,
+        content,
+        streamId,
+        tools,
+      });
+      reconcileSend(result, rootBranchId, streamId, optimistic.id);
+      setStartDraft("");
+    } catch (error) {
+      stopSubscription?.();
+      if (conversationId && rootBranchId) {
+        await loadBootstrap({
+          conversationId,
+          branchId: rootBranchId,
+        }).catch(() => undefined);
+      }
+      notify(
+        errorMessage(error, "Branchy could not start this conversation."),
+        "error",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  }, [
+    account.status,
+    busyAction,
+    loadBootstrap,
+    notify,
+    reconcileSend,
+    startDraft,
+    startModel,
+    startPreset,
+    startReasoningEffort,
+    startTools,
+    subscribeToStream,
+  ]);
+
+  const discardBranchDraft = useCallback(() => {
+    const draftAttachments =
+      attachmentsByBranchRef.current[BRANCH_DRAFT_ATTACHMENT_KEY] ?? [];
+    for (const attachment of draftAttachments) {
+      if (attachment.id.startsWith("upload-")) {
+        pendingUploadsRef.current.discard(attachment.id);
+      } else if (ready) {
+        void window.branchy
+          .removeAttachment({
+            conversationId: ready.conversationId,
+            attachmentId: attachment.id,
+          })
+          .catch((error: unknown) => {
+            notify(
+              errorMessage(
+                error,
+                "A discarded branch attachment could not be cleaned up.",
+              ),
+              "error",
+            );
+          });
+      }
+    }
+    updateAttachmentsByBranch((current) => {
+      const next = { ...current };
+      delete next[BRANCH_DRAFT_ATTACHMENT_KEY];
+      return next;
+    });
+    setBranchDraft(null);
+  }, [notify, ready, updateAttachmentsByBranch]);
+
+  const beginBranchDraft = useCallback(
+    (draft: BranchSelectionDraft) => {
+      if (branchDraft) discardBranchDraft();
+      setBranchDraft(draft);
+    },
+    [branchDraft, discardBranchDraft],
+  );
+
   const stopBranch = useCallback(
-    async (branchId: BranchId) => {
+    async (branchId: BranchId, mode: BranchStopMode = "edit") => {
       if (!ready) return;
       const stream = streamsByBranch[branchId];
       if (!stream) return;
+      const prompt =
+        mode === "edit"
+          ? latestUserPrompt(ready.messagesByBranch[branchId] ?? [])
+          : "";
       try {
         await window.branchy.cancelMessage({
           conversationId: ready.conversationId,
@@ -1147,16 +1330,40 @@ export function App(): React.JSX.Element {
             ? { ...current[branchId]!, status: "cancelled" }
             : undefined,
         }));
+        setDraftsByBranch((current) => ({
+          ...current,
+          [branchId]: prompt,
+        }));
+        queueDraftSave(ready.conversationId, branchId, prompt);
+        if (mode === "edit" && prompt) {
+          setFocusTokensByBranch((current) => ({
+            ...current,
+            [branchId]: (current[branchId] ?? 0) + 1,
+          }));
+        }
       } catch (error) {
         notify(errorMessage(error, "Could not stop this response."), "error");
       }
     },
-    [notify, ready, streamsByBranch],
+    [notify, queueDraftSave, ready, streamsByBranch],
   );
 
   const createChildBranch = useCallback(
     async (prompt: string) => {
       if (!ready || !branchDraft) return;
+      const draftAttachments =
+        attachmentsByBranch[BRANCH_DRAFT_ATTACHMENT_KEY] ?? [];
+      if (
+        draftAttachments.some(
+          (attachment) => attachment.status === "uploading",
+        )
+      ) {
+        notify("Wait for branch attachments to finish uploading.", "error");
+        return;
+      }
+      const attachmentIds = draftAttachments
+        .filter((attachment) => attachment.status === "ready")
+        .map((attachment) => attachment.id);
       const streamId = uniqueStreamId();
       const provisionalBranchId = `draft-${streamId}`;
       const parentNode =
@@ -1212,6 +1419,11 @@ export function App(): React.JSX.Element {
       };
       setBusyAction("create-branch");
       setBranchDraft(null);
+      updateAttachmentsByBranch((current) => {
+        const next = { ...current };
+        delete next[BRANCH_DRAFT_ATTACHMENT_KEY];
+        return next;
+      });
       setScreen((current) =>
         current.kind === "ready"
           ? {
@@ -1235,6 +1447,7 @@ export function App(): React.JSX.Element {
           conversationId: ready.conversationId,
           content: prompt,
           streamId,
+          attachmentIds,
           branchDraft: {
             parentBranchId: branchDraft.parentBranchId,
             messageId: branchDraft.messageId,
@@ -1272,11 +1485,83 @@ export function App(): React.JSX.Element {
     },
     [
       branchDraft,
+      attachmentsByBranch,
       loadBootstrap,
       notify,
       ready,
       reconcileSend,
       subscribeToStream,
+      updateAttachmentsByBranch,
+    ],
+  );
+
+  const saveChildBranchNote = useCallback(
+    async (prompt: string) => {
+      if (!ready || !branchDraft) return;
+      const content = prompt.trim();
+      if (!content) return;
+      const draftAttachments =
+        attachmentsByBranch[BRANCH_DRAFT_ATTACHMENT_KEY] ?? [];
+      if (
+        draftAttachments.some(
+          (attachment) => attachment.status !== "ready",
+        )
+      ) {
+        notify(
+          "Resolve branch attachments before saving this note.",
+          "error",
+        );
+        return;
+      }
+      setBusyAction("save-branch-note");
+      try {
+        const result = await window.branchy.saveBranchNote({
+          conversationId: ready.conversationId,
+          parentBranchId: branchDraft.parentBranchId,
+          messageId: branchDraft.messageId,
+          span: branchDraft.span,
+          excerpt: branchDraft.excerpt,
+          content,
+          attachmentIds: draftAttachments.map(
+            (attachment) => attachment.id,
+          ),
+        });
+        setBranchDraft(null);
+        updateAttachmentsByBranch((current) => {
+          const next = { ...current };
+          delete next[BRANCH_DRAFT_ATTACHMENT_KEY];
+          return next;
+        });
+        setScreen((current) =>
+          current.kind === "ready" &&
+          current.conversationId === result.conversationId
+            ? {
+                ...current,
+                snapshot: result.snapshot,
+                activeBranchId: result.branch.id,
+                messagesByBranch: addMessagesByBranch(
+                  current.messagesByBranch,
+                  result.appendedMessages.map(toRenderedMessage),
+                ),
+              }
+            : current,
+        );
+        notify("Branch note saved.", "success");
+      } catch (error) {
+        notify(
+          errorMessage(error, "Branchy could not save this branch note."),
+          "error",
+        );
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [
+      attachmentsByBranch,
+      branchDraft,
+      notify,
+      ready,
+      updateAttachmentsByBranch,
     ],
   );
 
@@ -1721,11 +2006,16 @@ export function App(): React.JSX.Element {
       conversations={conversations}
       activeConversationId={ready?.conversationId ?? null}
       account={account}
-      collapsed={sidebarCollapsed}
+      collapsed={false}
+      overlay={screen.kind === "ready"}
+      hideToggle={screen.kind === "empty"}
       theme={theme}
       busy={busyAction === "create-conversation"}
       onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
-      onNewConversation={() => void createConversation()}
+      onNewConversation={() => {
+        setSidebarCollapsed(true);
+        void createConversation();
+      }}
       onOpenConversation={(conversationId) => void openConversation(conversationId)}
       onArchiveConversation={(conversationId) =>
         void archiveConversation(conversationId)
@@ -1742,7 +2032,18 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app-shell">
-      {sidebar}
+      {screen.kind === "empty" ? sidebar : null}
+      {screen.kind === "ready" && !sidebarCollapsed ? (
+        <>
+          <button
+            className="sidebar-scrim"
+            type="button"
+            aria-label="Close conversation drawer"
+            onClick={() => setSidebarCollapsed(true)}
+          />
+          {sidebar}
+        </>
+      ) : null}
 
       {screen.kind === "loading" ? (
         <main className="screen-state" aria-busy="true">
@@ -1768,69 +2069,303 @@ export function App(): React.JSX.Element {
           </button>
         </main>
       ) : screen.kind === "empty" ? (
-        <main className="empty-workspace">
-          <section className="empty-workspace__content">
+        <main className="empty-workspace empty-workspace--start">
+          <section className="empty-start">
             <span className="empty-workspace__mark">
               <Icon name="branch" size={28} />
             </span>
-            <span className="eyebrow">Your conversation canvas</span>
-            <h1>Start somewhere.<br />Branch anywhere.</h1>
+            <h1>Sign in once, keep branching</h1>
             <p>
-              Each reply can become a new path without losing the conversation
-              that led there.
+              Start a conversation here. Any reply can become a connected path
+              without losing the context that led there.
             </p>
-            <button
-              className="primary-button primary-button--large"
-              type="button"
-              disabled={busyAction === "create-conversation"}
-              onClick={() => void createConversation()}
+            <form
+              className="start-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void startConversationFromDraft();
+              }}
             >
-              {busyAction === "create-conversation" ? (
-                <span className="spinner" />
-              ) : (
-                <Icon name="plus" size={17} />
-              )}
-              New conversation
-            </button>
+              <fieldset className="start-composer__presets">
+                <legend>Start mode</legend>
+                {(
+                  [
+                    {
+                      id: "fast",
+                      label: "Fast",
+                      detail: "GPT‑5.6 Terra · medium",
+                      model: "gpt-5.6-terra",
+                      effort: "medium",
+                      tools: ["web-search"],
+                    },
+                    {
+                      id: "reasoning",
+                      label: "Reasoning",
+                      detail: "GPT‑5.6 Sol · high",
+                      model: "gpt-5.6-sol",
+                      effort: "high",
+                      tools: ["web-search"],
+                    },
+                    {
+                      id: "study",
+                      label: "Study",
+                      detail: "GPT‑5.6 Sol · medium",
+                      model: "gpt-5.6-sol",
+                      effort: "medium",
+                      tools: ["study-and-learn", "web-search"],
+                    },
+                    {
+                      id: "custom",
+                      label: "Custom",
+                      detail: "Choose model, effort & tools",
+                      model: null,
+                      effort: null,
+                      tools: null,
+                    },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    className={
+                      startPreset === option.id ? "is-selected" : ""
+                    }
+                    key={option.id}
+                    type="button"
+                    onClick={() => {
+                      setStartPreset(option.id);
+                      if (option.model && option.effort && option.tools) {
+                        setStartModel(option.model);
+                        setStartReasoningEffort(option.effort);
+                        setStartTools([...option.tools]);
+                      } else {
+                        setStartAdvancedOpen(true);
+                      }
+                    }}
+                  >
+                    <strong>{option.label}</strong>
+                    <span>{option.detail}</span>
+                  </button>
+                ))}
+              </fieldset>
+
+              <button
+                className="start-composer__advanced-toggle"
+                type="button"
+                aria-expanded={startAdvancedOpen}
+                onClick={() =>
+                  setStartAdvancedOpen((current) => !current)
+                }
+              >
+                <Icon
+                  name={
+                    startAdvancedOpen
+                      ? "chevron-down"
+                      : "chevron-right"
+                  }
+                  size={14}
+                />
+                Advanced
+              </button>
+              {startAdvancedOpen ? (
+                <div className="start-composer__advanced">
+                  <label>
+                    <span>Model</span>
+                    <select
+                      value={startModel}
+                      onChange={(event) => {
+                        setStartPreset("custom");
+                        setStartModel(event.target.value);
+                      }}
+                    >
+                      <option value="gpt-5.6-terra">
+                        GPT‑5.6 Terra · faster
+                      </option>
+                      <option value="gpt-5.6-luna">
+                        GPT‑5.6 Luna · efficient
+                      </option>
+                      <option value="gpt-5.6-sol">
+                        GPT‑5.6 Sol · deeper reasoning
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Reasoning</span>
+                    <select
+                      value={startReasoningEffort}
+                      onChange={(event) => {
+                        setStartPreset("custom");
+                        setStartReasoningEffort(
+                          event.target.value as ReasoningEffort,
+                        );
+                      }}
+                    >
+                      {(
+                        [
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh",
+                          "max",
+                          "ultra",
+                        ] as const
+                      ).map((effort) => (
+                        <option value={effort} key={effort}>
+                          {effort === "xhigh"
+                            ? "Extra high"
+                            : `${effort[0]?.toUpperCase()}${effort.slice(1)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <fieldset className="start-composer__tools">
+                    <legend>Tools</legend>
+                    {(
+                      [
+                        {
+                          id: "web-search",
+                          label: "Web search",
+                          detail: "Current source lookup",
+                        },
+                        {
+                          id: "study-and-learn",
+                          label: "Study & learn",
+                          detail: "Guided explanations",
+                        },
+                        {
+                          id: "file-upload",
+                          label: "File context",
+                          detail: "Enable attachments",
+                        },
+                      ] as const
+                    ).map((tool) => (
+                      <label
+                        className="start-composer__tool-toggle"
+                        key={tool.id}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={startTools.includes(tool.id)}
+                          onChange={(event) => {
+                            setStartPreset("custom");
+                            setStartTools((current) =>
+                              event.target.checked
+                                ? current.includes(tool.id)
+                                  ? current
+                                  : [...current, tool.id]
+                                : current.filter(
+                                    (candidate) => candidate !== tool.id,
+                                  ),
+                            );
+                          }}
+                        />
+                        <span>
+                          <strong>{tool.label}</strong>
+                          <small>{tool.detail}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                </div>
+              ) : null}
+
+              <div className="start-composer__input">
+                <span className="start-composer__input-mark">
+                  <Icon name="pencil" size={17} />
+                </span>
+                <label className="sr-only" htmlFor="start-conversation-prompt">
+                  Start a new conversation
+                </label>
+                <textarea
+                  id="start-conversation-prompt"
+                  rows={2}
+                  value={startDraft}
+                  disabled={busyAction === "start-conversation"}
+                  onChange={(event) => setStartDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      void startConversationFromDraft();
+                    }
+                  }}
+                  placeholder="Ask to explore a new direction…"
+                />
+                <button
+                  className="start-composer__send"
+                  type="submit"
+                  disabled={
+                    !startDraft.trim() ||
+                    busyAction === "start-conversation" ||
+                    account.status !== "signed_in"
+                  }
+                >
+                  {busyAction === "start-conversation" ? (
+                    <span className="spinner" />
+                  ) : (
+                    <Icon name="send" size={17} />
+                  )}
+                  <span>Start chat</span>
+                </button>
+              </div>
+            </form>
+            <p className="empty-start__hint">
+              {startTools.length > 0
+                ? `${startTools.length} ${
+                    startTools.length === 1 ? "tool" : "tools"
+                  } selected.`
+                : "No tools selected."}{" "}
+              Your first message is sent immediately.
+            </p>
             {account.status !== "signed_in" ? (
               <button
-                className="text-button empty-workspace__account"
+                className="text-button"
                 type="button"
                 onClick={() => setAccountOpen(true)}
               >
                 <Icon name="user" size={15} />
-                Connect ChatGPT first
+                Connect ChatGPT to start
               </button>
             ) : null}
           </section>
-          <div className="empty-workspace__map" aria-hidden="true">
-            <span className="ghost-node ghost-node--root" />
-            <span className="ghost-edge ghost-edge--one" />
-            <span className="ghost-node ghost-node--one" />
-            <span className="ghost-edge ghost-edge--two" />
-            <span className="ghost-node ghost-node--two" />
-            <span className="ghost-edge ghost-edge--three" />
-            <span className="ghost-node ghost-node--three" />
-          </div>
         </main>
       ) : (
         <main className="workspace">
           <header className="workspace__header">
             <div className="workspace__title">
-              <span className="workspace__title-mark">
-                <Icon name="branch" size={15} />
+              <button
+                className="workspace__canvas-selector"
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="Open conversation drawer"
+                title="Conversations (⌘B)"
+              >
+                <Icon name="sidebar" size={16} />
+                <span>{screen.title}</span>
+                <Icon name="chevron-down" size={14} />
+              </button>
+              <span className="workspace__branch-count">
+                {Object.keys(screen.snapshot.branches).length}{" "}
+                {Object.keys(screen.snapshot.branches).length === 1
+                  ? "branch"
+                  : "branches"}
               </span>
-              <div>
-                <h1>{screen.title}</h1>
-                <p>
-                  {Object.keys(screen.snapshot.branches).length}{" "}
-                  {Object.keys(screen.snapshot.branches).length === 1
-                    ? "branch"
-                    : "branches"}
-                </p>
-              </div>
             </div>
             <div className="workspace__actions">
+              <button
+                className="icon-button icon-button--quiet"
+                type="button"
+                onClick={() =>
+                  setTheme((current) =>
+                    current === "dark" ? "light" : "dark",
+                  )
+                }
+                aria-label={`Use ${theme === "dark" ? "light" : "dark"} theme`}
+                title={`Use ${theme === "dark" ? "light" : "dark"} theme`}
+              >
+                <Icon name={theme === "dark" ? "sun" : "moon"} size={17} />
+              </button>
               {account.status !== "signed_in" ? (
                 <button
                   className="connect-button"
@@ -1851,6 +2386,19 @@ export function App(): React.JSX.Element {
                   ChatGPT
                 </button>
               )}
+              <button
+                className="new-canvas-button"
+                type="button"
+                disabled={busyAction === "create-conversation"}
+                onClick={() => void createConversation()}
+              >
+                {busyAction === "create-conversation" ? (
+                  <span className="spinner" />
+                ) : (
+                  <Icon name="plus" size={15} />
+                )}
+                New canvas
+              </button>
               <div className="menu-anchor">
                 <button
                   className="icon-button"
@@ -1926,6 +2474,15 @@ export function App(): React.JSX.Element {
               draftsByBranch={draftsByBranch}
               attachmentsByBranch={attachmentsByBranch}
               focusTokensByBranch={focusTokensByBranch}
+              settingsSaving={settingsSaving}
+              branchDraft={branchDraft}
+              branchDraftAttachments={
+                attachmentsByBranch[BRANCH_DRAFT_ATTACHMENT_KEY] ?? []
+              }
+              isCreatingBranch={
+                busyAction === "create-branch" ||
+                busyAction === "save-branch-note"
+              }
               signedIn={account.status === "signed_in"}
               onOpenBranch={openBranch}
               onPatchCanvas={patchCanvas}
@@ -1949,7 +2506,23 @@ export function App(): React.JSX.Element {
                   });
                 }
               }}
-              onCreateBranch={setBranchDraft}
+              onCreateBranch={beginBranchDraft}
+              onCancelBranchDraft={discardBranchDraft}
+              onCreateBranchPrompt={(prompt) =>
+                void createChildBranch(prompt)
+              }
+              onSaveBranchNote={(prompt) =>
+                void saveChildBranchNote(prompt)
+              }
+              onChooseBranchDraftFiles={(files) =>
+                void chooseFiles(BRANCH_DRAFT_ATTACHMENT_KEY, files)
+              }
+              onRemoveBranchDraftAttachment={(attachmentId) =>
+                removeAttachment(
+                  BRANCH_DRAFT_ATTACHMENT_KEY,
+                  attachmentId,
+                )
+              }
               onChangeDraft={(branchId, value) => {
                 setDraftsByBranch((current) => ({
                   ...current,
@@ -1962,12 +2535,13 @@ export function App(): React.JSX.Element {
                 );
               }}
               onSend={(branchId) => void sendOnBranch(branchId)}
-              onStop={(branchId) => void stopBranch(branchId)}
+              onStop={(branchId, mode) => void stopBranch(branchId, mode)}
               onChooseFiles={(branchId, files) =>
                 void chooseFiles(branchId, files)
               }
               onRemoveAttachment={removeAttachment}
               onTranscribe={transcribe}
+              onSettingsChange={updateComposerSettings}
               onDownloadImage={(messageId, imageId) =>
                 void downloadImage(messageId, imageId)
               }
@@ -2014,15 +2588,6 @@ export function App(): React.JSX.Element {
           onConfirm={() => void removeTarget()}
         />
       ) : null}
-      {branchDraft ? (
-        <BranchDraftDialog
-          excerpt={branchDraft.excerpt}
-          busy={busyAction === "create-branch"}
-          onCancel={() => setBranchDraft(null)}
-          onCreate={(prompt) => void createChildBranch(prompt)}
-        />
-      ) : null}
-
       <ToastRegion
         toasts={toasts}
         onDismiss={(id) =>

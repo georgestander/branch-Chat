@@ -11,6 +11,8 @@ type SidebarProps = {
   activeConversationId: string | null;
   account: AccountState;
   collapsed: boolean;
+  overlay?: boolean;
+  hideToggle?: boolean;
   theme: "light" | "dark";
   busy?: boolean;
   onToggleCollapsed: () => void;
@@ -49,6 +51,8 @@ export function Sidebar({
   activeConversationId,
   account,
   collapsed,
+  overlay = false,
+  hideToggle = false,
   theme,
   busy = false,
   onToggleCollapsed,
@@ -125,7 +129,10 @@ export function Sidebar({
   }
 
   return (
-    <aside className="sidebar" aria-label="Conversations">
+    <aside
+      className={`sidebar ${overlay ? "sidebar--overlay" : ""}`}
+      aria-label="Conversations"
+    >
       <header className="sidebar__header">
         <div className="sidebar__traffic-spacer" />
         <div className="brand">
@@ -134,15 +141,17 @@ export function Sidebar({
           </span>
           <span>Branchy Chat</span>
         </div>
-        <button
-          className="icon-button icon-button--quiet"
-          type="button"
-          onClick={onToggleCollapsed}
-          aria-label="Close sidebar"
-          title="Close sidebar"
-        >
-          <Icon name="sidebar" size={17} />
-        </button>
+        {!hideToggle ? (
+          <button
+            className="icon-button icon-button--quiet"
+            type="button"
+            onClick={onToggleCollapsed}
+            aria-label="Close conversation drawer"
+            title="Close conversation drawer"
+          >
+            <Icon name="close" size={17} />
+          </button>
+        ) : null}
       </header>
 
       <div className="sidebar__controls">
