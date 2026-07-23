@@ -53,6 +53,7 @@ import {
 import {
   branchToFocusBeforeFold,
   descendantCount,
+  isStreamActive,
   isSupersededByActiveStream,
   messagesForBranch,
   parentComparisonForBranch,
@@ -311,15 +312,11 @@ const BranchCard = memo(function BranchCard({
   const parentTitle = branch.parentId
     ? data.snapshot.branches[branch.parentId]?.title ?? "Parent branch"
     : null;
+  const streamActive = isStreamActive(stream);
   const emptyRoot =
     branch.parentId === null &&
     visibleMessages.length === 0 &&
-    !stream;
-  const streamActive =
-    Boolean(stream) &&
-    stream?.status !== "complete" &&
-    stream?.status !== "cancelled" &&
-    stream?.status !== "error";
+    !streamActive;
   const composer = (
     <Composer
       branchTitle={title}
@@ -557,7 +554,7 @@ const BranchCard = memo(function BranchCard({
               data-card-interactive="true"
               ref={threadRef}
             >
-              {visibleMessages.length === 0 && !stream ? (
+              {visibleMessages.length === 0 && !streamActive ? (
                 <div className="branch-empty">
                   <span className="branch-empty__mark">
                     <Icon name="branch" size={22} />
@@ -588,9 +585,7 @@ const BranchCard = memo(function BranchCard({
                   />
                 ))
               )}
-              {stream &&
-              stream.status !== "complete" &&
-              stream.status !== "cancelled" ? (
+              {stream && streamActive ? (
                 <StreamBubble
                   stream={stream}
                   onStop={(mode) => data.onStop(branch.id, mode)}
@@ -1208,18 +1203,26 @@ function BranchCanvasInner({
         viewport: flow.getViewport(),
       };
     }
-    const frame = window.requestAnimationFrame(() => {
-      const parent = flow.getNode(branchDraft.parentBranchId);
-      const draft = flow.getNode(DRAFT_NODE_ID);
-      if (!parent || !draft) return;
-      void flow.fitView({
-        nodes: [parent, draft],
-        padding: CANVAS_FIT_PADDING,
-        duration: 220,
-        maxZoom: 1,
+    let measuredFrame: number | null = null;
+    const layoutFrame = window.requestAnimationFrame(() => {
+      measuredFrame = window.requestAnimationFrame(() => {
+        const parent = flow.getNode(branchDraft.parentBranchId);
+        const draft = flow.getNode(DRAFT_NODE_ID);
+        if (!parent || !draft) return;
+        void flow.fitView({
+          nodes: [parent, draft],
+          padding: CANVAS_FIT_PADDING,
+          duration: 220,
+          maxZoom: 1,
+        });
       });
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(layoutFrame);
+      if (measuredFrame !== null) {
+        window.cancelAnimationFrame(measuredFrame);
+      }
+    };
   }, [
     branchDraft,
     flow,
@@ -1356,10 +1359,12 @@ function BranchCanvasInner({
     );
     onPatchCanvas({ nodes: patchNodes });
     window.requestAnimationFrame(() => {
-      void flow.fitView({
-        padding: CANVAS_FIT_PADDING,
-        duration: 280,
-        maxZoom: 1,
+      window.requestAnimationFrame(() => {
+        void flow.fitView({
+          padding: CANVAS_FIT_PADDING,
+          duration: 280,
+          maxZoom: 1,
+        });
       });
     });
   }, [edges, flow, layoutNodes, onPatchCanvas, setNodes]);
