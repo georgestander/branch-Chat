@@ -1,15 +1,9 @@
-export {};
+import type { BranchyDesktopApi } from "../shared/contracts.ts";
 
 declare global {
   interface Window {
-    branchy: {
-      ping: () => Promise<{
-        ok: boolean;
-        appName: string;
-        electron: string;
-        node: string;
-        platform: string;
-      }>;
-    };
+    branchy: BranchyDesktopApi;
   }
 }
+
+export {};
