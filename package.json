@@ -1,13 +1,14 @@
 {
-  "name": "@redwoodjs/starter",
+  "name": "@branchy/web-legacy",
   "version": "1.0.0",
-  "description": "A bare-bones RedwoodSDK starter",
+  "description": "Legacy RedwoodSDK runtime retained while Branchy Chat moves to Electron",
   "main": "index.js",
   "type": "module",
   "keywords": [],
   "author": "",
   "license": "MIT",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "build": "vite build",
     "dev": "NO_PROXY=127.0.0.1,localhost HTTP_PROXY= HTTPS_PROXY= node scripts/dev-local.mjs",
