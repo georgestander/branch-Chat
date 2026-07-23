@@ -799,8 +799,6 @@ export function App(): React.JSX.Element {
             current.conversationId === result.conversationId
               ? {
                   ...current,
-                  snapshot: result.snapshot,
-                  activeBranchId: branchId,
                   messagesByBranch: {
                     ...current.messagesByBranch,
                     [branchId]: result.messages,

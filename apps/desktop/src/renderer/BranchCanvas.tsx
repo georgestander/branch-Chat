@@ -12,6 +12,7 @@ import {
   Controls,
   Handle,
   MiniMap,
+  Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -30,13 +31,16 @@ import {
 } from "@branchy/conversation-core";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
+import { BranchCompareDialog } from "./BranchCompareDialog.tsx";
 import { Composer } from "./Composer.tsx";
 import { Icon } from "./icons.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
 import {
+  branchToFocusBeforeFold,
   descendantCount,
   isSupersededByActiveStream,
   messagesForBranch,
+  parentComparisonForBranch,
   visibleBranchIds,
 } from "./state.ts";
 import type {
@@ -61,6 +65,7 @@ type BranchNodeData = {
   focusToken: number;
   onOpen: (branchId: BranchId) => void;
   onToggleFold: (branchId: BranchId) => void;
+  onCompareParent: (branchId: BranchId) => void;
   onRename: (branchId: BranchId) => void;
   onDelete: (branchId: BranchId) => void;
   onCreateBranch: (draft: BranchSelectionDraft) => void;
@@ -275,6 +280,19 @@ const BranchCard = memo(function BranchCard({
             </button>
             {menuOpen ? (
               <div className="context-menu">
+                {branch.parentId ? (
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      data.onCompareParent(branch.id);
+                    }}
+                  >
+                    <Icon name="branch" size={15} />
+                    Compare with parent
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -409,6 +427,11 @@ type BranchCanvasProps = {
   focusTokensByBranch: Record<BranchId, number | undefined>;
   signedIn: boolean;
   onOpenBranch: (branchId: BranchId) => void;
+  onJumpToRoot?: (rootBranchId: BranchId) => void;
+  onCompareParent?: (
+    childBranchId: BranchId,
+    parentBranchId: BranchId,
+  ) => void;
   onPatchCanvas: (patch: ConversationCanvasPatch) => void;
   onRenameBranch: (branchId: BranchId) => void;
   onDeleteBranch: (branchId: BranchId) => void;
@@ -447,6 +470,8 @@ function BranchCanvasInner({
   focusTokensByBranch,
   signedIn,
   onOpenBranch,
+  onJumpToRoot,
+  onCompareParent,
   onPatchCanvas,
   onRenameBranch,
   onDeleteBranch,
@@ -462,7 +487,37 @@ function BranchCanvasInner({
   onOpenExternal,
   resolveImageUrl,
 }: BranchCanvasProps): React.JSX.Element {
+  const [compareBranchId, setCompareBranchId] =
+    useState<BranchId | null>(null);
   const visible = useMemo(() => visibleBranchIds(snapshot), [snapshot]);
+  const activeBranch = snapshot.branches[activeBranchId] ?? null;
+  const rootBranchId = snapshot.conversation.rootBranchId;
+  const comparison = useMemo(
+    () =>
+      compareBranchId
+        ? parentComparisonForBranch(
+            snapshot,
+            messagesByBranch,
+            compareBranchId,
+          )
+        : null,
+    [compareBranchId, messagesByBranch, snapshot],
+  );
+
+  useEffect(() => {
+    if (compareBranchId && !comparison) setCompareBranchId(null);
+  }, [compareBranchId, comparison]);
+
+  const compareWithParent = useCallback(
+    (branchId: BranchId) => {
+      const parentId = snapshot.branches[branchId]?.parentId;
+      if (!parentId) return;
+      setCompareBranchId(branchId);
+      onCompareParent?.(branchId, parentId);
+    },
+    [onCompareParent, snapshot.branches],
+  );
+  const closeComparison = useCallback(() => setCompareBranchId(null), []);
 
   const nodes = useMemo<BranchFlowNode[]>(
     () =>
@@ -506,14 +561,22 @@ function BranchCanvasInner({
               signedIn,
               focusToken: focusTokensByBranch[branch.id] ?? 0,
               onOpen: onOpenBranch,
-              onToggleFold: (branchId) =>
+              onToggleFold: (branchId) => {
+                const focusBranchId = branchToFocusBeforeFold(
+                  snapshot,
+                  branchId,
+                  activeBranchId,
+                );
+                if (focusBranchId) onOpenBranch(focusBranchId);
                 onPatchCanvas({
                   nodes: {
                     [branchId]: {
                       folded: !snapshot.canvas.nodes[branchId]?.folded,
                     },
                   },
-                }),
+                });
+              },
+              onCompareParent: compareWithParent,
               onRename: onRenameBranch,
               onDelete: onDeleteBranch,
               onCreateBranch,
@@ -536,6 +599,7 @@ function BranchCanvasInner({
       draftsByBranch,
       focusTokensByBranch,
       messagesByBranch,
+      compareWithParent,
       onChangeDraft,
       onChooseFiles,
       onCreateBranch,
@@ -590,54 +654,94 @@ function BranchCanvasInner({
   );
 
   return (
-    <ReactFlow<BranchFlowNode>
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      minZoom={0.22}
-      maxZoom={1.8}
-      defaultViewport={snapshot.canvas.viewport}
-      onMoveEnd={handleMoveEnd}
-      onNodeDragStop={(_event, node) =>
-        onPatchCanvas({
-          nodes: {
-            [node.id]: { x: node.position.x, y: node.position.y },
-          },
-        })
-      }
-      onPaneClick={() => {
-        if (snapshot.canvas.focusedBranchId !== null) {
-          onPatchCanvas({ focusedBranchId: null });
+    <>
+      <ReactFlow<BranchFlowNode>
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        minZoom={0.22}
+        maxZoom={1.8}
+        defaultViewport={snapshot.canvas.viewport}
+        onMoveEnd={handleMoveEnd}
+        onNodeDragStop={(_event, node) =>
+          onPatchCanvas({
+            nodes: {
+              [node.id]: { x: node.position.x, y: node.position.y },
+            },
+          })
         }
-      }}
-      proOptions={{ hideAttribution: true }}
-      fitView={nodes.length > 0 && snapshot.canvas.viewport.zoom === 1}
-      fitViewOptions={{ padding: 0.14, maxZoom: 0.9 }}
-      aria-label="Branching conversation canvas"
-    >
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={22}
-        size={1}
-        color="var(--canvas-dot)"
-      />
-      <Controls
-        position="bottom-right"
-        showInteractive={false}
-        aria-label="Canvas controls"
-      />
-      {nodes.length > 4 ? (
-        <MiniMap
-          position="bottom-left"
-          pannable
-          zoomable
-          nodeColor={(node) =>
-            (node.data as BranchNodeData).toneColor ?? "var(--foreground)"
+        onPaneClick={() => {
+          if (snapshot.canvas.focusedBranchId !== null) {
+            onPatchCanvas({ focusedBranchId: null });
           }
-          maskColor="color-mix(in srgb, var(--background) 74%, transparent)"
+        }}
+        proOptions={{ hideAttribution: true }}
+        fitView={nodes.length > 0 && snapshot.canvas.viewport.zoom === 1}
+        fitViewOptions={{ padding: 0.14, maxZoom: 0.9 }}
+        aria-label="Branching conversation canvas"
+      >
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={22}
+          size={1}
+          color="var(--canvas-dot)"
+        />
+        <Panel
+          className="canvas-navigation nodrag"
+          position="top-right"
+          aria-label="Branch navigation"
+        >
+          {activeBranchId !== rootBranchId ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (onJumpToRoot) {
+                  onJumpToRoot(rootBranchId);
+                } else {
+                  onOpenBranch(rootBranchId);
+                }
+              }}
+            >
+              <Icon name="chevron-left" size={14} />
+              Jump to root
+            </button>
+          ) : null}
+          {activeBranch?.parentId ? (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={() => compareWithParent(activeBranch.id)}
+            >
+              <Icon name="branch" size={14} />
+              Compare with parent
+            </button>
+          ) : null}
+        </Panel>
+        <Controls
+          position="bottom-right"
+          showInteractive={false}
+          aria-label="Canvas controls"
+        />
+        {nodes.length > 4 ? (
+          <MiniMap
+            position="bottom-left"
+            pannable
+            zoomable
+            nodeColor={(node) =>
+              (node.data as BranchNodeData).toneColor ?? "var(--foreground)"
+            }
+            maskColor="color-mix(in srgb, var(--background) 74%, transparent)"
+          />
+        ) : null}
+      </ReactFlow>
+      {comparison ? (
+        <BranchCompareDialog
+          comparison={comparison}
+          onClose={closeComparison}
+          onOpenBranch={onOpenBranch}
         />
       ) : null}
-    </ReactFlow>
+    </>
   );
 }
 

@@ -8,11 +8,14 @@ import type {
 } from "@branchy/conversation-core";
 
 import {
+  branchToFocusBeforeFold,
   descendantCount,
   initialStreamState,
+  isBranchDescendant,
   isSupersededByActiveStream,
   isStreamActive,
   mergeRenderedMessage,
+  parentComparisonForBranch,
   removeStreamStateIfMatching,
   reduceStreamState,
   retainBranchRecords,
@@ -99,6 +102,81 @@ test("folded branches hide descendants without hiding siblings", () => {
   );
   assert.equal(descendantCount(snapshot(), "root"), 3);
   assert.equal(descendantCount(snapshot(), "child"), 1);
+});
+
+test("branch ancestry is cycle-safe and excludes the branch itself", () => {
+  const graph = snapshot();
+  assert.equal(isBranchDescendant(graph, "root", "grandchild"), true);
+  assert.equal(isBranchDescendant(graph, "child", "grandchild"), true);
+  assert.equal(isBranchDescendant(graph, "child", "sibling"), false);
+  assert.equal(isBranchDescendant(graph, "child", "child"), false);
+  assert.equal(isBranchDescendant(graph, "missing", "grandchild"), false);
+
+  graph.branches.root!.parentId = "grandchild";
+  assert.equal(isBranchDescendant(graph, "sibling", "grandchild"), false);
+});
+
+test("folding an active branch ancestor first focuses that ancestor", () => {
+  const graph = snapshot();
+  graph.canvas.nodes.child!.folded = false;
+
+  assert.equal(
+    branchToFocusBeforeFold(graph, "child", "grandchild"),
+    "child",
+  );
+  assert.equal(branchToFocusBeforeFold(graph, "root", "sibling"), "root");
+  assert.equal(branchToFocusBeforeFold(graph, "child", "sibling"), null);
+
+  graph.canvas.nodes.child!.folded = true;
+  assert.equal(
+    branchToFocusBeforeFold(graph, "child", "grandchild"),
+    null,
+  );
+});
+
+test("parent comparison resolves both rendered paths and the fork source", () => {
+  const graph = snapshot();
+  const parentMessage: Message = {
+    id: "parent-message",
+    branchId: "root",
+    role: "assistant",
+    content: "A parent answer",
+    createdAt: "2026-07-23T00:00:05.000Z",
+  };
+  const childMessage: Message = {
+    id: "child-message",
+    branchId: "child",
+    role: "user",
+    content: "Take this elsewhere",
+    createdAt: "2026-07-23T00:00:06.000Z",
+  };
+  graph.messages[parentMessage.id] = parentMessage;
+  graph.messages[childMessage.id] = childMessage;
+  graph.branches.root!.messageIds = [parentMessage.id];
+  graph.branches.child!.messageIds = [childMessage.id];
+  graph.branches.child!.createdFrom = {
+    messageId: parentMessage.id,
+    excerpt: "parent answer",
+    span: { start: 2, end: 15 },
+  };
+
+  const comparison = parentComparisonForBranch(graph, {}, "child");
+  assert.equal(comparison?.parent.branch.id, "root");
+  assert.deepEqual(
+    comparison?.parent.messages.map((message) => message.id),
+    ["parent-message"],
+  );
+  assert.deepEqual(
+    comparison?.child.messages.map((message) => message.id),
+    ["child-message"],
+  );
+  assert.equal(comparison?.sourceMessage?.content, "A parent answer");
+  assert.equal(
+    parentComparisonForBranch(graph, { root: [] }, "child")
+      ?.sourceMessage?.content,
+    "A parent answer",
+  );
+  assert.equal(parentComparisonForBranch(graph, {}, "root"), null);
 });
 
 test("stream state retains deltas through image progress and completion", () => {

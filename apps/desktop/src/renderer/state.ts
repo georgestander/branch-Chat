@@ -72,6 +72,44 @@ export function descendantCount(
   return visited.size;
 }
 
+export function isBranchDescendant(
+  snapshot: Pick<ConversationGraphSnapshot, "branches">,
+  ancestorBranchId: BranchId,
+  candidateBranchId: BranchId,
+): boolean {
+  if (
+    ancestorBranchId === candidateBranchId ||
+    !snapshot.branches[ancestorBranchId] ||
+    !snapshot.branches[candidateBranchId]
+  ) {
+    return false;
+  }
+
+  const visited = new Set<BranchId>();
+  let current = snapshot.branches[candidateBranchId];
+  while (current?.parentId && !visited.has(current.id)) {
+    visited.add(current.id);
+    if (current.parentId === ancestorBranchId) return true;
+    current = snapshot.branches[current.parentId];
+  }
+  return false;
+}
+
+/**
+ * Returns the branch that must become active before a fold hides the current
+ * branch. A null result means the fold/unfold can proceed without navigation.
+ */
+export function branchToFocusBeforeFold(
+  snapshot: ConversationGraphSnapshot,
+  foldingBranchId: BranchId,
+  activeBranchId: BranchId,
+): BranchId | null {
+  if (snapshot.canvas.nodes[foldingBranchId]?.folded === true) return null;
+  return isBranchDescendant(snapshot, foldingBranchId, activeBranchId)
+    ? foldingBranchId
+    : null;
+}
+
 export function messagesForBranch(
   snapshot: ConversationGraphSnapshot,
   messagesByBranch: Record<BranchId, RenderedMessage[]>,
@@ -83,6 +121,51 @@ export function messagesForBranch(
     .map((messageId) => snapshot.messages[messageId])
     .filter((message): message is Message => Boolean(message))
     .map(toRenderedMessage);
+}
+
+export type ParentBranchComparison = {
+  parent: {
+    branch: Branch;
+    messages: RenderedMessage[];
+  };
+  child: {
+    branch: Branch;
+    messages: RenderedMessage[];
+  };
+  sourceMessage: RenderedMessage | null;
+};
+
+export function parentComparisonForBranch(
+  snapshot: ConversationGraphSnapshot,
+  messagesByBranch: Record<BranchId, RenderedMessage[]>,
+  childBranchId: BranchId,
+): ParentBranchComparison | null {
+  const child = snapshot.branches[childBranchId];
+  if (!child?.parentId) return null;
+  const parent = snapshot.branches[child.parentId];
+  if (!parent) return null;
+
+  const parentMessages = messagesForBranch(
+    snapshot,
+    messagesByBranch,
+    parent.id,
+  );
+  const canonicalSourceMessage =
+    snapshot.messages[child.createdFrom.messageId];
+  return {
+    parent: { branch: parent, messages: parentMessages },
+    child: {
+      branch: child,
+      messages: messagesForBranch(snapshot, messagesByBranch, child.id),
+    },
+    sourceMessage:
+      parentMessages.find(
+        (message) => message.id === child.createdFrom.messageId,
+      ) ??
+      (canonicalSourceMessage
+        ? toRenderedMessage(canonicalSourceMessage)
+        : null),
+  };
 }
 
 export function toRenderedMessage(message: Message): RenderedMessage {
