@@ -14,11 +14,10 @@ Click the preview image to watch the YouTube demo.
 
 ## Documentation
 
+- Desktop setup, data, security, and packaging: [`apps/desktop/README.md`](apps/desktop/README.md)
 - Architecture: [`Docs/architecture.md`](Docs/architecture.md)
-- Local setup: [`Docs/setup.md`](Docs/setup.md)
-- Environment variables and bindings: [`Docs/env-vars.md`](Docs/env-vars.md)
+- Environment and release configuration: [`Docs/env-vars.md`](Docs/env-vars.md)
 - Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Security policy: [`SECURITY.md`](SECURITY.md)
 
 ## Native Quick Start
 
@@ -35,7 +34,11 @@ Click the preview image to watch the YouTube demo.
 
 Branchy keeps its database, assets, and Codex credentials under `~/Library/Application Support/Branchy Chat`. It does not reuse or modify `~/.codex` or the Codex desktop app’s account state.
 
-See [`apps/desktop/README.md`](apps/desktop/README.md) for development, testing, packaging, data, and release details.
+`desktop:package` produces an ad-hoc-signed app for local QA on the Mac that
+built it. `desktop:make` places that app in a local QA DMG; the DMG itself is
+not signed in QA mode. Neither path produces a Developer ID signed or notarized
+release. See [`apps/desktop/README.md`](apps/desktop/README.md) for development,
+testing, security, data, and release details.
 
 ## Scripts
 
@@ -45,7 +48,7 @@ See [`apps/desktop/README.md`](apps/desktop/README.md) for development, testing,
 - `pnpm types`: Run TypeScript type checking.
 - `npm run test`: Run Node's test runner (`node --test`).
 - `npm run lint`: Run TypeScript checks as the current lint gate.
-- `pnpm dev`: Start the retained RedwoodSDK runtime.
+- `pnpm dev`: Start the retained legacy RedwoodSDK runtime.
 
 ## License
 

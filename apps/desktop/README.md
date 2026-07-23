@@ -1,8 +1,19 @@
 # Branchy Chat Desktop
 
-Branchy Chat Desktop is the native macOS application in this workspace. It is Apple Silicon only.
+Branchy Chat Desktop is the current native macOS application in this
+workspace. It is Apple Silicon only and uses Electron, SQLite, and a pinned
+Codex app-server.
 
-## Run locally
+## Prerequisites
+
+- An Apple Silicon Mac
+- Current Node.js and pnpm
+- Current Xcode command-line tools when creating a DMG or release
+- Network access the first time the pinned Codex app-server must be fetched
+
+No OpenAI API key or `.dev.vars` file is required.
+
+## Local QA app
 
 From the repository root:
 
@@ -17,18 +28,31 @@ Open:
 apps/desktop/out/Branchy Chat-darwin-arm64/Branchy Chat.app
 ```
 
-The local QA build is ad-hoc signed with the hardened runtime and a narrowly
-scoped library-validation exception for Electron host processes. That
-exception lets the Team-ID-less app load its separately signed Electron
-framework. The build is intended only for the Mac that built it and is not
-notarized for distribution. Release builds still require a Developer ID
-identity and do not use the QA exception.
+To create a local QA DMG instead:
 
-To run with Vite development tooling:
+```bash
+pnpm desktop:make
+```
+
+The DMG is written under `apps/desktop/out/make/`.
+
+`desktop:package` produces an ad-hoc-signed app. `desktop:make` places that same
+app in a local QA DMG; the DMG itself is not signed in QA mode. The app uses
+the hardened runtime and a narrowly scoped library-validation exception so the
+Team-ID-less host can load its separately signed Electron framework. These
+artifacts are intended only for local QA on the Mac that built them. They are
+not a Developer ID signed, notarized, distributable release.
+
+## Development
+
+Run the Electron app with Vite development tooling:
 
 ```bash
 pnpm desktop:dev
 ```
+
+This command is the current desktop development path. The repository-root
+`pnpm dev` command starts the retained legacy RedwoodSDK app instead.
 
 ## ChatGPT sign-in
 
@@ -53,6 +77,21 @@ It contains:
 
 The utility-owned Codex app-server child receives a minimal allowlisted environment with `CODEX_HOME`, `HOME`, and XDG paths redirected into this directory. Branchy does not use `~/.codex`.
 
+## Security boundaries
+
+- The renderer runs with sandboxing and context isolation enabled, without Node
+  integration.
+- Preload exposes only validated, domain-specific IPC operations.
+- The Codex client and app-server run in a dedicated utility process over
+  stdio. No localhost auth or chat bridge is opened.
+- Packaged builds verify the pinned Codex binary before launch.
+- External navigation is denied by default and restricted to allowed HTTPS
+  destinations.
+
+The implementation sources of truth are `src/main/security.ts`,
+`src/main/main.ts`, `src/main/codex/runtime.ts`, and
+`scripts/release-macos.mjs`.
+
 ## Verification
 
 Run all repository gates before committing:
@@ -72,7 +111,9 @@ pnpm -C apps/desktop test
 
 ## Release packaging
 
-A distributable DMG must be signed with a Developer ID Application certificate and notarized. Store Apple credentials in the macOS Keychain, never in the repository.
+A distributable DMG is a separate release workflow. It must be signed with a
+Developer ID Application certificate and notarized. Store Apple credentials in
+the macOS Keychain, never in the repository.
 
 ```bash
 BRANCHY_RELEASE=1 \
@@ -82,3 +123,7 @@ pnpm -C apps/desktop release:mac
 ```
 
 Release mode fails closed when the signing identity, notary profile, Apple Silicon host, or notarization tools are unavailable. The signing configuration excludes the bundled Codex executable and verifies its pinned checksum and OpenAI Developer ID signature after packaging.
+
+The release workflow signs the app and DMG, submits the DMG for notarization,
+staples the result, and runs Gatekeeper and signature checks. A successful
+`desktop:make` command alone does not satisfy these release requirements.

@@ -46,3 +46,10 @@
 - Files changed: apps/desktop/src/renderer/MessageBubble.tsx, apps/desktop/src/renderer/styles.css, apps/desktop/scripts/package-contract.test.mjs.
 - Verification: pnpm types; npm run test 289/289; npm run lint; package contracts assert the neutral active boundary, absence of active-card shadow, visible hint, and keyboard/mouse/touch selection handlers.
 - Next: rebuild and inspect the packaged app, then complete deep-branch and real-speech dictation acceptance.
+
+2026-07-23 — Electron-first handoff documentation
+- Reference: Electron migration runnable-handoff and Redwood retirement gates.
+- Decisions: make Electron the documented current product path; label RedwoodSDK/Cloudflare as a retained legacy runtime; document Branchy's isolated device-code auth and local data; distinguish the ad-hoc-signed QA app, unsigned local QA DMG container, and Developer ID signed/notarized release.
+- Files changed: README.md, CONTRIBUTING.md, Docs/architecture.md, Docs/env-vars.md, apps/desktop/README.md.
+- Verification: all local Markdown links resolve; documented commands, environment variables, security boundaries, data paths, and release distinctions were checked against repository code; pnpm types; npm run test 294/294; npm run lint; git diff --check.
+- Next: land and execute the production-renderer branch-switch benchmark, then finish packaged visual, deep-branch, archive, and dictation acceptance.

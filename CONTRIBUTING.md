@@ -2,29 +2,43 @@
 
 Thanks for contributing to Branch Chat.
 
-## Development Setup
+## Desktop Development Setup
 
 1. Install dependencies:
    ```bash
    pnpm install
    ```
-2. Copy local environment file:
+2. Start the current Electron application:
    ```bash
-   cp .dev.vars.example .dev.vars
+   pnpm desktop:dev
    ```
-3. Add required values to `.dev.vars` (see `Docs/env-vars.md`).
-4. Start dev server:
+3. To test the packaged application, build the local QA app:
    ```bash
-   pnpm dev
+   pnpm desktop:package
    ```
+
+No OpenAI API key or `.dev.vars` file is required for desktop development.
+Connect ChatGPT through the in-app device-code flow. See
+`apps/desktop/README.md` for the isolated runtime, local data, security, and
+packaging details.
 
 ## Architecture Rules
 
-- Keep the app server-first: branch logic, persistence, and OpenAI calls stay on the server.
-- Use RedwoodSDK routing and server functions instead of custom REST endpoints.
-- Durable Objects are the source of truth for conversation state.
-- Do not introduce D1 for this project.
-- Keep client components thin and interaction-focused.
+- Keep the sandboxed renderer behind the typed preload and IPC boundaries.
+- Keep persistence, assets, Codex orchestration, and ChatGPT credentials out of
+  the renderer.
+- Preserve Branchy’s isolated application data and Codex home. Do not reuse
+  `~/.codex`.
+- Keep branch behavior shared through `@branchy/conversation-core` where the
+  desktop and retained web implementations require the same domain rule.
+
+## Retained Legacy Web Runtime
+
+The repository-root `pnpm dev` command starts `@branchy/web-legacy`, the former
+RedwoodSDK/Cloudflare application retained during native parity work. Use it
+only when intentionally changing the legacy web runtime. Its `.dev.vars` and
+Cloudflare bindings are documented in the legacy section of
+`Docs/env-vars.md`.
 
 ## Change Scope
 
