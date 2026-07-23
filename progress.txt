@@ -32,3 +32,10 @@
 - Files changed: apps/desktop/src/main/codex/chatgpt-transcription.ts, apps/desktop/src/main/codex/client.ts, apps/desktop/src/main/codex/client.test.ts, apps/desktop/src/main/codex/utility-contracts.ts, apps/desktop/src/main/codex/utility-contracts.test.ts, apps/desktop/src/main/codex/utility-gateway.test.ts, apps/desktop/src/main/main.ts.
 - Verification: focused Codex client and utility tests 32/32; pnpm types; npm run test 289/289; npm run lint; git diff --check; ad-hoc package build and codesign verification passed.
 - Next: complete the packaged microphone smoke with real speech once macOS computer use is unlocked.
+
+2026-07-23 — Packaged Electron end-to-end QA evidence
+- Reference: Electron migration retirement gates for packaged launch, isolated sign-in, chat, attachments, cancellation, reload, image lifecycle, download, retry, and archive portability.
+- Decisions: exercise the final packaged app against Branchy's own persistent profile and real ChatGPT device-code account; retain the QA conversation and content-addressed assets as local evidence; compare the global Codex and Branchy auth-file hashes without reading credential contents.
+- Evidence: the packaged app launched and signed in; a text attachment returned its exact sentinel; chat, cancellation, reload persistence, and archive validation passed; image progress survived reload and completed in place; Edit prompt & retry restored editable text without sending; `/tmp/branchy-e2e-image.png` is byte-identical to the stored generated-image object with SHA-256 `36e77ebe94e81a44ea42ca81ff0885a0c996211809b181ae5861df83d6da581c`; the global `~/.codex/auth.json` checksum stayed unchanged.
+- Verification: current SQLite state retains `Branchy E2E QA 2026-07-23`, the attachment record, completed image-generation invocation, and generated asset; the final package passes deep strict codesign verification; Branchy application data and isolated auth paths are mode `0700`/`0600`.
+- Next: finish the real-speech packaged dictation smoke and final visual inspection after macOS is unlocked.
