@@ -92,6 +92,8 @@ export function createBranchyDesktopApi(
       invoke(IPC_CHANNELS.createAttachment, input),
     removeAttachment: (input) =>
       invoke(IPC_CHANNELS.removeAttachment, input),
+    requestMicrophonePermission: () =>
+      invoke(IPC_CHANNELS.requestMicrophonePermission, {}),
     transcribeAudio: (input) =>
       invoke(IPC_CHANNELS.transcribeAudio, input),
     getGeneratedImageUrl: (input) =>

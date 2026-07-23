@@ -30,6 +30,11 @@ import {
   mergeDictationTranscript,
   type DictationState,
 } from "./dictation.ts";
+import {
+  hasAudioInputDevice,
+  microphonePermissionRecoveryMessage,
+  withMicrophoneRequestTimeout,
+} from "./microphone.ts";
 import { Icon } from "./icons.tsx";
 import type { AttachmentDraft } from "./types.ts";
 import "./Composer.css";
@@ -263,13 +268,42 @@ export function Composer({
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Microphone recording is unavailable on this Mac.");
       }
-      requestedStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
+      const permission = await withMicrophoneRequestTimeout(
+        window.branchy.requestMicrophonePermission(),
+      );
+      if (!permission.granted) {
+        throw new Error(
+          microphonePermissionRecoveryMessage(permission.status),
+        );
+      }
+      if (
+        !hasAudioInputDevice(
+          await withMicrophoneRequestTimeout(
+            navigator.mediaDevices.enumerateDevices(),
+          ),
+        )
+      ) {
+        throw new DOMException(
+          "No microphone input device is available.",
+          "NotFoundError",
+        );
+      }
+      requestedStream = await withMicrophoneRequestTimeout(
+        navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        }),
+        {
+          onLateResult: (stream) => {
+            for (const track of stream.getTracks()) {
+              track.stop();
+            }
+          },
         },
-      });
+      );
       if (attemptId !== dictationAttemptRef.current) {
         for (const track of requestedStream.getTracks()) track.stop();
         return;
@@ -337,7 +371,9 @@ export function Composer({
       setDictationState("error");
       setDictationError(
         error instanceof DOMException && error.name === "NotAllowedError"
-          ? "Microphone access is off. Enable it in System Settings, then try again."
+          ? microphonePermissionRecoveryMessage("denied")
+          : error instanceof DOMException && error.name === "NotFoundError"
+            ? "No microphone was detected. Connect one, then try again."
           : error instanceof Error
             ? error.message
             : "Branchy could not open the microphone.",

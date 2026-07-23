@@ -1732,6 +1732,7 @@ export const IPC_PAYLOAD_VALIDATORS = {
   [IPC_CHANNELS.getAttachmentConstraints]: validateEmptyPayload,
   [IPC_CHANNELS.createAttachment]: validateCreateAttachmentInput,
   [IPC_CHANNELS.removeAttachment]: validateRemoveAttachmentInput,
+  [IPC_CHANNELS.requestMicrophonePermission]: validateEmptyPayload,
   [IPC_CHANNELS.transcribeAudio]: validateTranscribeAudioInput,
   [IPC_CHANNELS.getGeneratedImageUrl]:
     validateGeneratedImageIdentityInput,

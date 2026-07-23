@@ -67,3 +67,10 @@
 - Files changed: apps/desktop/src/renderer/BranchCanvas.tsx, apps/desktop/src/renderer/styles.css, apps/desktop/scripts/package-contract.test.mjs.
 - Verification: package contract tests assert that the MiniMap cannot return; final packaged screenshot and visual verdict follow after rebuild.
 - Next: run the full feedback gates, commit the visual fix, rebuild the packaged app, and verify the composer is unobstructed.
+
+2026-07-23 — Bounded native microphone permission handshake
+- Reference: Electron migration real-speech dictation acceptance; live packaged repro stuck on “Requesting microphone access…” with no CoreAudio devices exposed by the host.
+- Decisions: request macOS microphone consent through Electron only after the user presses dictation; preserve the existing trusted-renderer/audio-only session gate; distinguish denied and restricted recovery; detect a missing input device; bound permission, enumeration, and stream acquisition to 30 seconds; stop any stream that arrives after timeout.
+- Files changed: apps/desktop/src/main/microphone-permission.ts, apps/desktop/src/main/microphone-permission.test.ts, apps/desktop/src/main/main.ts, apps/desktop/src/shared/contracts.ts, apps/desktop/src/shared/validators.ts, apps/desktop/src/preload-api.ts, apps/desktop/src/preload-api.test.ts, apps/desktop/src/renderer/Composer.tsx, apps/desktop/src/renderer/microphone.ts, apps/desktop/src/renderer/microphone.test.ts.
+- Verification: focused microphone/security/IPC tests 37/37; pnpm types; npm run test; npm run lint; independent review finding about denied versus restricted recovery was fixed.
+- Next: rebuild the packaged app and verify either recording with a connected input or the explicit no-microphone recovery state; then complete the real-speech transcript smoke on a host exposing an input device.

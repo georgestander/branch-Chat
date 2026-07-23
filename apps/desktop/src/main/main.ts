@@ -11,6 +11,7 @@ import {
   protocol,
   session,
   shell,
+  systemPreferences,
   utilityProcess,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -33,6 +34,7 @@ import {
   createQuitCoordinator,
   shouldReportRendererLoadFailure,
 } from "./lifecycle.ts";
+import { ensureMicrophonePermission } from "./microphone-permission.ts";
 import { ConversationRepository } from "./persistence/index.ts";
 import {
   appProtocol,
@@ -445,6 +447,15 @@ function registerIpc(): void {
       input.conversationId,
       input.attachmentId,
     ),
+  );
+  registerInvoke(IPC_CHANNELS.requestMicrophonePermission, () =>
+    ensureMicrophonePermission({
+      platform: process.platform,
+      getStatus: () =>
+        systemPreferences.getMediaAccessStatus("microphone"),
+      request: () =>
+        systemPreferences.askForMediaAccess("microphone"),
+    }),
   );
   registerInvoke(IPC_CHANNELS.transcribeAudio, (input) =>
     requireApplication().transcribeAudio(new Uint8Array(input.bytes)),

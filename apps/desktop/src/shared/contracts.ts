@@ -38,6 +38,8 @@ export const IPC_CHANNELS = {
   getAttachmentConstraints: "branchy:attachment:constraints",
   createAttachment: "branchy:attachment:create",
   removeAttachment: "branchy:attachment:remove",
+  requestMicrophonePermission:
+    "branchy:dictation:microphone:request",
   transcribeAudio: "branchy:dictation:transcribe",
   getGeneratedImageUrl: "branchy:image:url",
   saveGeneratedImage: "branchy:image:save",
@@ -296,6 +298,16 @@ export interface TranscribeAudioInput {
   bytes: Uint8Array | ArrayBuffer;
 }
 
+export type MicrophonePermissionResult =
+  | {
+      granted: true;
+      status: "not-applicable" | "granted";
+    }
+  | {
+      granted: false;
+      status: "denied" | "restricted";
+    };
+
 export interface TranscriptionResult {
   transcript: string;
 }
@@ -476,6 +488,7 @@ export interface BranchyDesktopApi {
   removeAttachment(
     input: RemoveAttachmentInput,
   ): Promise<PendingAttachment | null>;
+  requestMicrophonePermission(): Promise<MicrophonePermissionResult>;
   transcribeAudio(input: TranscribeAudioInput): Promise<TranscriptionResult>;
   getGeneratedImageUrl(input: GeneratedImageIdentityInput): Promise<string>;
   saveGeneratedImage(input: SaveGeneratedImageInput): Promise<SaveFileResult>;
@@ -514,6 +527,7 @@ export type DesktopCommandRequestMap = {
   [IPC_CHANNELS.getAttachmentConstraints]: EmptyPayload;
   [IPC_CHANNELS.createAttachment]: CreateAttachmentInput;
   [IPC_CHANNELS.removeAttachment]: RemoveAttachmentInput;
+  [IPC_CHANNELS.requestMicrophonePermission]: EmptyPayload;
   [IPC_CHANNELS.transcribeAudio]: TranscribeAudioInput;
   [IPC_CHANNELS.getGeneratedImageUrl]: GeneratedImageIdentityInput;
   [IPC_CHANNELS.saveGeneratedImage]: SaveGeneratedImageInput;
@@ -551,6 +565,7 @@ export type DesktopCommandResponseMap = {
   [IPC_CHANNELS.getAttachmentConstraints]: AttachmentConstraints;
   [IPC_CHANNELS.createAttachment]: PendingAttachment;
   [IPC_CHANNELS.removeAttachment]: PendingAttachment | null;
+  [IPC_CHANNELS.requestMicrophonePermission]: MicrophonePermissionResult;
   [IPC_CHANNELS.transcribeAudio]: TranscriptionResult;
   [IPC_CHANNELS.getGeneratedImageUrl]: string;
   [IPC_CHANNELS.saveGeneratedImage]: SaveFileResult;

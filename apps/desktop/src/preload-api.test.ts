@@ -46,6 +46,7 @@ test("exposes exact command methods over their allowlisted channels", async () =
     content: "Keep this",
   });
   await harness.api.getAccountState();
+  await harness.api.requestMicrophonePermission();
 
   assert.deepEqual(harness.invocations, [
     {
@@ -62,6 +63,10 @@ test("exposes exact command methods over their allowlisted channels", async () =
     },
     {
       channel: IPC_CHANNELS.getAccountState,
+      payload: {},
+    },
+    {
+      channel: IPC_CHANNELS.requestMicrophonePermission,
       payload: {},
     },
   ]);
