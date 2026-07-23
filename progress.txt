@@ -11,3 +11,17 @@
 - Files changed: apps/desktop/src/renderer/App.tsx, apps/desktop/src/renderer/state.ts, apps/desktop/src/renderer/state.test.ts, apps/desktop/src/main/codex/client.test.ts.
 - Verification: pnpm types; npm run test 276/276; npm run lint; focused renderer and Codex client suites passed.
 - Next: rebuild the packaged app and run live image progress, reload, download, and editable-retry QA after macOS is unlocked.
+
+2026-07-23 — Packaged microphone entitlement and permission boundary
+- Reference: Electron migration one-way dictation acceptance criteria; Apple hardened-runtime audio input requirements; Electron complete permission handling.
+- Decisions: grant audio input only to the top-level Branchy app and Renderer helper; preserve the QA-only library-validation exception without carrying it into Developer ID release signing; route both Electron permission handlers through one fail-closed policy that accepts exactly one audio media type from the trusted Branchy renderer.
+- Files changed: apps/desktop/resources/entitlements/*, apps/desktop/scripts/package-contract.test.mjs, apps/desktop/scripts/release-macos.mjs, apps/desktop/scripts/release-macos.test.mjs, apps/desktop/src/main/main.ts, apps/desktop/src/main/security.ts, apps/desktop/src/main/security.test.ts.
+- Verification: entitlement plists pass plutil; focused desktop package/release tests 17/17; desktop tests 170/170; pnpm types; npm run test 284/284; npm run lint; independent code review found no actionable issue.
+- Next: rebuild the ad-hoc-signed app, verify the emitted app and Renderer helper entitlements, and exercise the native microphone permission flow.
+
+2026-07-23 — Dictation draft ownership and accessible progress
+- Reference: Electron migration speak-to-transcript, review-before-send, reload-safe composer behavior.
+- Decisions: lock the draft and send/save actions while dictation owns it; invalidate stale transcription attempts; never merge a delayed transcript over changed or already-sent text; expose requesting, recording, and transcribing as explicit live states while preserving retry and review-before-send.
+- Files changed: apps/desktop/src/renderer/Composer.tsx, apps/desktop/src/renderer/dictation.ts, apps/desktop/src/renderer/dictation.test.ts.
+- Verification: focused dictation tests 4/4; desktop tests 170/170; pnpm types; npm run test 284/284; npm run lint; independent code review found no actionable issue.
+- Next: run a packaged microphone smoke with real speech and verify the transcript remains editable without auto-send.
