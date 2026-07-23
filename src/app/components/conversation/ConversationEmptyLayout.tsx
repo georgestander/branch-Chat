@@ -8,6 +8,7 @@ import {
   createConversation,
   type CreateConversationResponse,
 } from "@/app/pages/conversation/functions";
+import { BrandMark } from "@/app/components/ui/BrandMark";
 import {
   DEFAULT_CONVERSATION_MODEL,
   type ComposerPreset,
@@ -360,7 +361,10 @@ export function ConversationEmptyLayout({
       <aside className="panel-surface panel-edge flex w-72 flex-col justify-between border-r border-foreground/15 bg-background/70 p-6 backdrop-blur">
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">Branch-Chat</h2>
+            <h2 className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight">
+              <BrandMark className="h-7 w-7" size={28} />
+              Branchy Chat
+            </h2>
             <button
               type="button"
               onClick={() => handleStartConversation()}

@@ -33,7 +33,11 @@ export const Document: React.FC<DocumentProps> = ({ children, rw }) => (
     <head>
       <meta charSet="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Branch-Chat</title>
+      <meta name="theme-color" content="#ffffff" />
+      <title>Branchy Chat</title>
+      <link rel="icon" href="/favicon.ico" sizes="any" />
+      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      <link rel="manifest" href="/site.webmanifest" />
       <script
         nonce={rw.nonce}
         dangerouslySetInnerHTML={{ __html: themeBootstrapScript }}

@@ -1,5 +1,6 @@
 import type { AppRequestInfo } from "@/worker";
 
+import { BrandMark } from "@/app/components/ui/BrandMark";
 import {
   isAuthOptionEnabled,
   isAuthRequiredEnabled,
@@ -82,9 +83,10 @@ export async function SignInPage({ request, response, ctx }: AppRequestInfo) {
     <div className="app-shell flex min-h-screen items-center justify-center px-5 py-10 text-foreground">
       <main className="panel-surface panel-edge w-full max-w-md rounded px-6 py-6">
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            Branch Chat Beta
-          </p>
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <BrandMark className="h-7 w-7" size={28} />
+            <span>Branchy Chat Beta</span>
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">Sign in to continue</h1>
           <p className="text-sm text-muted-foreground">
             Use your account identifier to continue into Branch Chat.

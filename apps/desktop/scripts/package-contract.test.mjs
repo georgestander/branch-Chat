@@ -23,6 +23,14 @@ const mainSource = await readFile(
   new URL("../src/main/main.ts", import.meta.url),
   "utf8",
 );
+const rendererHtml = await readFile(
+  new URL("../src/renderer/index.html", import.meta.url),
+  "utf8",
+);
+const desktopIconUrl = new URL(
+  "../resources/icons/BranchyChat.icns",
+  import.meta.url,
+);
 
 test("Electron runtime bundles use explicit CommonJS extensions", () => {
   assert.equal(packageJson.type, "module");
@@ -41,6 +49,27 @@ test("the renderer bundle is emitted into Forge's packaged .vite tree", () => {
   assert.equal(
     rendererConfig.build?.outDir,
     fileURLToPath(new URL("../.vite/renderer/main_window", import.meta.url)),
+  );
+});
+
+test("desktop packaging and runtime surfaces use the supplied Branchy icon", async () => {
+  assert.equal(
+    forgeConfig.packagerConfig.icon,
+    fileURLToPath(desktopIconUrl),
+  );
+  assert.match(rendererHtml, /rel="icon" href="\/favicon\.ico"/u);
+  assert.match(
+    mainSource,
+    /resources\/icons\/branchy-chat-app-icon\.png/u,
+  );
+  assert.deepEqual(
+    await readFile(desktopIconUrl),
+    await readFile(
+      new URL(
+        "../../../designs/branchy-chat-icons/BranchyChat.icns",
+        import.meta.url,
+      ),
+    ),
   );
 });
 

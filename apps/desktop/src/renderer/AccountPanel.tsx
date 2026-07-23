@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import { BrandMark } from "./BrandMark.tsx";
 import { Icon } from "./icons.tsx";
 import type { AccountState } from "./types.ts";
 
@@ -142,9 +143,7 @@ export function AccountPanel({
         ) : (
           <div className="account-panel__body">
             <div className="account-intro">
-              <span className="account-intro__mark">
-                <Icon name="spark" size={24} />
-              </span>
+              <BrandMark className="account-intro__mark" size={46} />
               <h3>Use Branchy with your ChatGPT account</h3>
               <p>
                 Sign in once to stream replies, create images, search the web,

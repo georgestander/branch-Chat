@@ -46,6 +46,7 @@ export default {
   packagerConfig: {
     asar: true,
     appBundleId: "com.georgestander.branchychat",
+    icon: resolve(desktopRoot, "resources/icons/BranchyChat.icns"),
     ...(electronCacheRoot
       ? { download: { cacheRoot: electronCacheRoot } }
       : {}),

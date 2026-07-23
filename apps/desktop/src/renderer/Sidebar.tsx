@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { BrandMark } from "./BrandMark.tsx";
 import { Icon } from "./icons.tsx";
 import type {
   AccountState,
@@ -136,9 +137,7 @@ export function Sidebar({
       <header className="sidebar__header">
         <div className="sidebar__traffic-spacer" />
         <div className="brand">
-          <span className="brand__mark">
-            <Icon name="branch" size={16} />
-          </span>
+          <BrandMark size={27} />
           <span>Branchy Chat</span>
         </div>
         {!hideToggle ? (

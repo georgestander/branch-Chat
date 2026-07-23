@@ -57,6 +57,7 @@ import {
   emitByokStatusChanged,
   type ByokStatusChangedDetail,
 } from "@/app/components/conversation/byokEvents";
+import { BrandMark } from "@/app/components/ui/BrandMark";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 
 interface ConversationSidebarProps {
@@ -808,8 +809,9 @@ export function ConversationSidebar({
     >
       <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="min-w-0 whitespace-nowrap text-sm font-semibold tracking-tight text-foreground">
-            Branch-Chat
+          <h2 className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap text-sm font-semibold tracking-tight text-foreground">
+            <BrandMark className="h-5 w-5" size={20} />
+            Branchy Chat
           </h2>
           <div className="flex items-center gap-1">
             <ThemeToggle compact className="h-8 w-8 rounded-md" />

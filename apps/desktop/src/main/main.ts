@@ -293,6 +293,18 @@ function createWindow(): BrowserWindow | null {
   return window;
 }
 
+function setDevelopmentDockIcon(): void {
+  if (app.isPackaged || process.platform !== "darwin") {
+    return;
+  }
+  app.dock?.setIcon(
+    resolve(
+      app.getAppPath(),
+      "resources/icons/branchy-chat-app-icon.png",
+    ),
+  );
+}
+
 function registerInvoke<
   Channel extends Exclude<
     keyof DesktopCommandRequestMap,
@@ -650,6 +662,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     developmentServerUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL;
+    setDevelopmentDockIcon();
     configureSession();
     await initializeApplication();
     registerIpc();

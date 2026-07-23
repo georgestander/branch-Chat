@@ -1,5 +1,6 @@
 import { LandingTrackedLink } from "@/app/components/landing/LandingTrackedLink";
 import type { LandingLinks } from "@/app/components/landing/types";
+import { BrandMark } from "@/app/components/ui/BrandMark";
 
 interface LandingFooterProps {
   links: LandingLinks;
@@ -10,7 +11,10 @@ export function LandingFooter({ links }: LandingFooterProps) {
     <footer className="mx-auto w-full max-w-6xl border border-t-0 border-border bg-background px-4 py-5 md:px-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground">Branch-Chat</p>
+          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-foreground">
+            <BrandMark className="h-5 w-5" size={20} />
+            Branchy Chat
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">Open source non-linear chat UI for branching workflows.</p>
         </div>
 

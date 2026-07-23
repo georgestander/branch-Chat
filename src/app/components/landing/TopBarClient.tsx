@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { LandingTrackedLink } from "@/app/components/landing/LandingTrackedLink";
 import type { LandingLinks } from "@/app/components/landing/types";
+import { BrandMark } from "@/app/components/ui/BrandMark";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 
@@ -46,8 +47,8 @@ export function TopBarClient({ links }: TopBarClientProps) {
           href="/"
           className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-foreground"
         >
-          <span className="inline-flex h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
-          Branch-Chat
+          <BrandMark className="h-5 w-5" size={20} />
+          Branchy Chat
         </a>
 
         <nav className="flex items-center gap-2" aria-label="Primary">
