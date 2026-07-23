@@ -3,3 +3,9 @@
 - Files: apps/desktop/package.json, pnpm-lock.yaml.
 - Verification: pnpm types; npm run test (265 passed); npm run lint.
 - Next: commit the restored rich message presentation and connected canvas interactions.
+
+2026-07-23 — Rich desktop message presentation (feat/canvas-chat parity)
+- Decision: render sanitized GFM, math, tables, and highlighted code locally; preserve exact source spans and branch-tone lineage marks without trusting provider HTML.
+- Files: apps/desktop/src/renderer/MessageBubble.tsx, MarkdownContent.tsx, markdown.ts, markdown.test.ts, styles.css.
+- Verification: pnpm types; npm run test (265 passed); npm run lint.
+- Next: commit the connected branch canvas, composer controls, and canvas-first shell.

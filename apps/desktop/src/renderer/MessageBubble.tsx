@@ -3,12 +3,13 @@ import {
   useCallback,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { branchToneByKey } from "@branchy/conversation-core";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
 import { Icon } from "./icons.tsx";
+import { trimSelectionRange } from "./markdown.ts";
+import { MarkdownContent } from "./MarkdownContent.tsx";
 import { sourceSelectionOffsets } from "./state.ts";
 import {
   generatedImageDisplayState,
@@ -16,13 +17,6 @@ import {
   toolLabel,
   type BranchSelectionDraft,
 } from "./types.ts";
-
-type SelectionAction = {
-  excerpt: string;
-  span: { start: number; end: number };
-  top: number;
-  left: number;
-};
 
 type MessageBubbleProps = {
   message: RenderedMessage;
@@ -44,41 +38,6 @@ type MessageBubbleProps = {
   ) => string | null;
 };
 
-const URL_PATTERN = /(https?:\/\/[^\s<>()]+)/g;
-
-function TextWithLinks({
-  text,
-  onOpenExternal,
-}: {
-  text: string;
-  onOpenExternal: (url: string) => void;
-}): React.JSX.Element {
-  const parts = text.split(URL_PATTERN);
-  return (
-    <>
-      {parts.map((part, index) =>
-        /^https?:\/\//.test(part) ? (
-          <a
-            className="message-link"
-            href={part}
-            key={`${part}-${index}`}
-            onClick={(event) => {
-              event.preventDefault();
-              onOpenExternal(part);
-            }}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {part}
-          </a>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
-}
-
 export const MessageBubble = memo(function MessageBubble({
   message,
   branchId,
@@ -91,11 +50,17 @@ export const MessageBubble = memo(function MessageBubble({
   resolveImageUrl,
 }: MessageBubbleProps): React.JSX.Element {
   const contentRef = useRef<HTMLDivElement>(null);
-  const [selection, setSelection] = useState<SelectionAction | null>(null);
+  const [userMessageExpanded, setUserMessageExpanded] = useState(false);
   const images = generatedImagesForMessage(message);
   const tools = (message.toolInvocations ?? []).filter(
     (invocation) => invocation.toolType !== "image_generation",
   );
+  const longUserMessage =
+    message.role === "user" && message.content.length > 720;
+  const visibleContent =
+    longUserMessage && !userMessageExpanded
+      ? `${message.content.slice(0, 680).trimEnd()}…`
+      : message.content;
 
   const captureSelection = useCallback(() => {
     if (message.role !== "assistant" || !contentRef.current) return;
@@ -105,7 +70,6 @@ export const MessageBubble = memo(function MessageBubble({
       browserSelection.isCollapsed ||
       browserSelection.rangeCount === 0
     ) {
-      setSelection(null);
       return;
     }
     const range = browserSelection.getRangeAt(0);
@@ -114,39 +78,21 @@ export const MessageBubble = memo(function MessageBubble({
       !root.contains(range.startContainer) ||
       !root.contains(range.endContainer)
     ) {
-      setSelection(null);
       return;
     }
-    const excerpt = range.toString().trim();
-    if (!excerpt) {
-      setSelection(null);
-      return;
-    }
-    const rect = range.getBoundingClientRect();
-    const rootRect = root.getBoundingClientRect();
-    setSelection({
-      excerpt,
-      span: sourceSelectionOffsets(root, range),
-      top: rect.bottom - rootRect.top + 8,
-      left: Math.max(8, Math.min(rect.left - rootRect.left, rootRect.width - 150)),
+    const trimmedSelection = trimSelectionRange(
+      range.toString(),
+      sourceSelectionOffsets(root, range),
+    );
+    if (!trimmedSelection) return;
+    onCreateBranch({
+      parentBranchId: branchId,
+      messageId: message.id,
+      excerpt: trimmedSelection.excerpt,
+      span: trimmedSelection.span,
     });
-  }, [message.role]);
-
-  const createBranch = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      if (!selection) return;
-      onCreateBranch({
-        parentBranchId: branchId,
-        messageId: message.id,
-        excerpt: selection.excerpt,
-        span: selection.span,
-      });
-      setSelection(null);
-      window.getSelection()?.removeAllRanges();
-    },
-    [branchId, message.id, onCreateBranch, selection],
-  );
+    browserSelection.removeAllRanges();
+  }, [branchId, message.id, message.role, onCreateBranch]);
 
   return (
     <article
@@ -158,29 +104,41 @@ export const MessageBubble = memo(function MessageBubble({
       </div>
       <div
         className="message__body"
-        ref={contentRef}
         onMouseUp={captureSelection}
       >
-        {message.content ? (
-          <div className="message__text">
-            <TextWithLinks
-              text={message.content}
-              onOpenExternal={onOpenExternal}
-            />
-          </div>
+        {visibleContent ? (
+          <MarkdownContent
+            branchAnchors={message.branchAnchors}
+            markdown={visibleContent}
+            messageId={message.id}
+            onOpenExternal={onOpenExternal}
+            ref={contentRef}
+          />
+        ) : null}
+        {longUserMessage ? (
+          <button
+            className="message__expand"
+            type="button"
+            onClick={() =>
+              setUserMessageExpanded((current) => !current)
+            }
+          >
+            {userMessageExpanded ? "Show less" : "Show full prompt"}
+          </button>
         ) : null}
 
-        {selection ? (
-          <button
-            className="selection-action"
-            style={{ left: selection.left, top: selection.top }}
-            type="button"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={createBranch}
-          >
-            <Icon name="branch" size={14} />
-            Branch from selection
-          </button>
+        {(message.attachments?.length ?? 0) > 0 ? (
+          <div className="message-attachments" aria-label="Sent attachments">
+            {message.attachments!.map((attachment) => (
+              <div className="message-attachment" key={attachment.id}>
+                <Icon name="file" size={15} />
+                <span>
+                  <strong>{attachment.name}</strong>
+                  <small>{formatAttachmentSize(attachment.size)}</small>
+                </span>
+              </div>
+            ))}
+          </div>
         ) : null}
 
         {tools.length > 0 ? (
@@ -302,3 +260,9 @@ export const MessageBubble = memo(function MessageBubble({
     </article>
   );
 });
+
+function formatAttachmentSize(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_048_576) return `${Math.round(bytes / 1_024)} KB`;
+  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
