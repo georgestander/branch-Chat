@@ -187,7 +187,10 @@ function configureSession(): void {
 }
 
 function createWindow(): BrowserWindow {
-  const preloadPath = join(dirname(fileURLToPath(import.meta.url)), "preload.js");
+  const preloadPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "preload.cjs",
+  );
   const window = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -220,11 +223,17 @@ function createWindow(): BrowserWindow {
       event.preventDefault();
     }
   });
-  if (developmentServerUrl) {
-    void window.loadURL(developmentServerUrl);
-  } else {
-    void window.loadURL(`${appProtocol}://renderer/index.html`);
-  }
+  const rendererUrl =
+    developmentServerUrl ?? `${appProtocol}://renderer/index.html`;
+  void window.loadURL(rendererUrl).catch((error: unknown) => {
+    const detail =
+      error instanceof Error ? error.message : "Unknown renderer load error";
+    console.error("[TRACE] renderer load failed", detail);
+    dialog.showErrorBox(
+      "Branchy Chat could not open",
+      `The desktop interface could not be loaded.\n\n${detail}`,
+    );
+  });
   return window;
 }
 

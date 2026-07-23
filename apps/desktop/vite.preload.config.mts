@@ -4,6 +4,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: [/^node:/, "electron"],
+      output: {
+        entryFileNames: "[name].cjs",
+      },
     },
   },
 });
