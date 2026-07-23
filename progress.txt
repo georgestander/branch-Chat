@@ -60,3 +60,10 @@
 - Files changed: apps/desktop/src/renderer/branch-switch-performance.ts, apps/desktop/src/renderer/branch-switch-performance.test.ts, apps/desktop/src/renderer/App.tsx, apps/desktop/src/renderer/BranchCanvas.tsx, apps/desktop/scripts/branch-switch-performance.mjs, apps/desktop/scripts/branch-switch-performance-preload.cjs, apps/desktop/package.json, apps/desktop/README.md.
 - Verification: recorder and percentile tests 5/5; pnpm types; npm run test 294/294; npm run lint; production renderer build and benchmark-script syntax checks pass; instrumentation is lazy and does not evaluate metadata outside the explicit benchmark flag.
 - Next: run `pnpm -C apps/desktop benchmark:branch-switch` in an unlocked foreground session, record p50/p95, and require p95 below 120 ms.
+
+2026-07-23 — Unobstructed branch composer
+- Reference: Electron migration final visual audit; packaged screenshot showing the canvas MiniMap covering the active branch composer.
+- Decisions: remove the always-on React Flow MiniMap instead of relocating another persistent overlay; retain the focused navigation controls for tidy, jump-to-root, compare, zoom, and fit-view.
+- Files changed: apps/desktop/src/renderer/BranchCanvas.tsx, apps/desktop/src/renderer/styles.css, apps/desktop/scripts/package-contract.test.mjs.
+- Verification: package contract tests assert that the MiniMap cannot return; final packaged screenshot and visual verdict follow after rebuild.
+- Next: run the full feedback gates, commit the visual fix, rebuild the packaged app, and verify the composer is unobstructed.

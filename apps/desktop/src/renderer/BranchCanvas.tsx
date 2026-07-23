@@ -12,7 +12,6 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
-  MiniMap,
   NodeResizer,
   Panel,
   Position,
@@ -1574,14 +1573,6 @@ function BranchCanvasInner({
           position="bottom-left"
           showInteractive={false}
           aria-label="Canvas controls"
-        />
-        <MiniMap
-          position="bottom-right"
-          pannable
-          zoomable
-          nodeStrokeWidth={2}
-          nodeColor={() => "var(--border-strong)"}
-          maskColor="color-mix(in srgb, var(--background) 74%, transparent)"
         />
       </ReactFlow>
       {comparison ? (

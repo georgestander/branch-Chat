@@ -143,6 +143,11 @@ test("branch creation chrome stays neutral without colored rails or shadows", ()
     messageBubbleSource,
     /Highlight text to start a focused child branch\./u,
   );
+  assert.doesNotMatch(
+    branchCanvasSource,
+    /\bMiniMap\b/u,
+    "The always-on MiniMap must not cover an active branch composer",
+  );
 });
 
 test("the production renderer bundles exactly one React runtime", async () => {

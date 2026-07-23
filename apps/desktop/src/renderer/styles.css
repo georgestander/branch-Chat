@@ -1156,14 +1156,6 @@ button.account-avatar:hover {
   background: var(--muted) !important;
 }
 
-.react-flow__minimap {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--background) !important;
-  box-shadow: none !important;
-}
-
 .canvas-navigation {
   display: flex;
   overflow: hidden;
