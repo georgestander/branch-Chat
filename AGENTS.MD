@@ -165,11 +165,6 @@
 - Stage only files belonging to the logical change. Preserve unrelated user or agent work.
 - Break large work into architectural decisions, integration points, risky spikes, standard implementation, then polish—in that order.
 - Prefer the smallest safe change that solves the real problem. Avoid speculative frameworks, dependencies, schema changes, auth changes, and global mutable state.
-- After each completed task, append a concise entry to `progress.txt` with:
-  - task and PRD/reference;
-  - key decisions and why;
-  - files changed;
-  - blockers or the next manual check.
 
 ## Deployment and Local Runtime
 - Keep secrets in Cloudflare bindings or local uncommitted runtime configuration; never hard-code them.
