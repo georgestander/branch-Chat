@@ -4,3 +4,10 @@
 - Files changed: apps/desktop/src/main/application/service.ts, apps/desktop/src/main/application/service.test.ts, apps/desktop/src/main/codex/client.test.ts, apps/desktop/src/renderer/styles.css, apps/desktop/scripts/package-contract.test.mjs.
 - Verification: focused service/client tests 36/36; package contracts 6/6; pnpm types; npm run test 274/274; npm run lint; packaged macOS computer-use flow highlighted “Booleans — truth values: true / false” and returned a BOOLEAN FOCUS response limited to booleans; visual inspection confirmed neutral draft/card/connector chrome.
 - Next: resume the remaining packaged Electron end-to-end audit, especially image generation lifecycle and dictation.
+
+2026-07-23 — Image reload recovery and Codex event-order contract
+- Reference: Electron migration image-generation lifecycle acceptance criteria.
+- Decisions: discard only transient failed/loading private-image URL cache entries on canonical reload so persisted successful images are resolved again; preserve already resolved asset URLs; lock the Codex image lifecycle to running progress, saved image readiness, then terminal completion.
+- Files changed: apps/desktop/src/renderer/App.tsx, apps/desktop/src/renderer/state.ts, apps/desktop/src/renderer/state.test.ts, apps/desktop/src/main/codex/client.test.ts.
+- Verification: pnpm types; npm run test 276/276; npm run lint; focused renderer and Codex client suites passed.
+- Next: rebuild the packaged app and run live image progress, reload, download, and editable-retry QA after macOS is unlocked.
