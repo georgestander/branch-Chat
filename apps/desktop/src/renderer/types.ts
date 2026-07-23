@@ -106,6 +106,16 @@ export type GeneratedImageView = {
   error: string | null;
 };
 
+export function generatedImageDisplayState(
+  status: GeneratedImageView["status"],
+  source: string | null,
+): "running" | "resolving" | "ready" | "failed" {
+  if (status === "pending" || status === "running") return "running";
+  if (status !== "succeeded" || source === "__unavailable__") return "failed";
+  if (!source || source === "__loading__") return "resolving";
+  return "ready";
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)

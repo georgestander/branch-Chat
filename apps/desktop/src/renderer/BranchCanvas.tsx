@@ -638,7 +638,7 @@ function BranchCanvasInner({
 
 export function BranchCanvas(props: BranchCanvasProps): React.JSX.Element {
   return (
-    <ReactFlowProvider>
+    <ReactFlowProvider key={props.snapshot.conversation.id}>
       <BranchCanvasInner {...props} />
     </ReactFlowProvider>
   );

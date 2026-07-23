@@ -35,11 +35,14 @@ import {
   type ToastMessage,
 } from "./Overlays.tsx";
 import { Sidebar } from "./Sidebar.tsx";
+import { PendingUploadRegistry } from "./pending-uploads.ts";
 import {
   initialStreamState,
   isStreamActive,
   mergeRenderedMessage,
+  removeStreamStateIfMatching,
   reduceStreamState,
+  retainBranchRecords,
   toRenderedMessage,
 } from "./state.ts";
 import {
@@ -340,6 +343,8 @@ export function App(): React.JSX.Element {
     {},
   );
   const loginIdRef = useRef<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const pendingUploadsRef = useRef(new PendingUploadRegistry());
   const subscriptionsRef = useRef(new Map<string, () => void>());
   const streamBranchesRef = useRef(new Map<string, BranchId>());
   const toastIdRef = useRef(0);
@@ -363,6 +368,20 @@ export function App(): React.JSX.Element {
       subscriptionsRef.current.clear();
       streamBranchesRef.current.clear();
       const bootstrap = await window.branchy.bootstrap(input);
+      const nextConversationId =
+        bootstrap.kind === "ready" ? bootstrap.conversationId : null;
+      const sameConversation =
+        nextConversationId !== null &&
+        nextConversationId === activeConversationIdRef.current;
+      activeConversationIdRef.current = nextConversationId;
+      pendingUploadsRef.current.reconcile(
+        nextConversationId,
+        new Set(
+          bootstrap.kind === "ready"
+            ? Object.keys(bootstrap.snapshot.branches)
+            : [],
+        ),
+      );
       setScreen((current) =>
         screenFromBootstrap(
           bootstrap,
@@ -375,9 +394,21 @@ export function App(): React.JSX.Element {
       setStreamsToResume(
         bootstrap.kind === "ready" ? bootstrap.activeStreams : [],
       );
-      setDraftsByBranch({});
-      setAttachmentsByBranch({});
-      setRetryByBranch({});
+      if (sameConversation && bootstrap.kind === "ready") {
+        setDraftsByBranch((current) =>
+          retainBranchRecords(current, bootstrap.snapshot.branches),
+        );
+        setAttachmentsByBranch((current) =>
+          retainBranchRecords(current, bootstrap.snapshot.branches),
+        );
+        setRetryByBranch((current) =>
+          retainBranchRecords(current, bootstrap.snapshot.branches),
+        );
+      } else {
+        setDraftsByBranch({});
+        setAttachmentsByBranch({});
+        setRetryByBranch({});
+      }
       return bootstrap;
     },
     [],
@@ -397,6 +428,8 @@ export function App(): React.JSX.Element {
       .bootstrap()
       .then((bootstrap) => {
         if (!cancelled) {
+          activeConversationIdRef.current =
+            bootstrap.kind === "ready" ? bootstrap.conversationId : null;
           setScreen(screenFromBootstrap(bootstrap));
           setStreamsToResume(
             bootstrap.kind === "ready" ? bootstrap.activeStreams : [],
@@ -775,11 +808,13 @@ export function App(): React.JSX.Element {
             };
           });
           window.setTimeout(() => {
-            setStreamsByBranch((current) => {
-              const next = { ...current };
-              delete next[canonical.branchId];
-              return next;
-            });
+            setStreamsByBranch((current) =>
+              removeStreamStateIfMatching(
+                current,
+                canonical.branchId,
+                streamId,
+              ),
+            );
           }, 200);
         }
         if (
@@ -792,11 +827,13 @@ export function App(): React.JSX.Element {
               conversationId,
               branchId: currentBranchId,
             }).catch(() => {
-              setStreamsByBranch((current) => {
-                const next = { ...current };
-                delete next[currentBranchId];
-                return next;
-              });
+              setStreamsByBranch((current) =>
+                removeStreamStateIfMatching(
+                  current,
+                  currentBranchId,
+                  streamId,
+                ),
+              );
             });
           }
           window.queueMicrotask(() => {
@@ -1200,17 +1237,41 @@ export function App(): React.JSX.Element {
           }));
           continue;
         }
+        const uploadConversationId = ready.conversationId;
+        pendingUploadsRef.current.begin(
+          localId,
+          uploadConversationId,
+          branchId,
+        );
         void file
           .arrayBuffer()
           .then((bytes) =>
             window.branchy.createAttachment({
-              conversationId: ready.conversationId,
+              conversationId: uploadConversationId,
               fileName: file.name,
               contentType: file.type || "application/octet-stream",
               bytes,
             }),
           )
           .then((attachment) => {
+            const pending = pendingUploadsRef.current.settle(localId);
+            if (!pending || pending.discarded) {
+              return window.branchy
+                .removeAttachment({
+                  conversationId:
+                    pending?.conversationId ?? uploadConversationId,
+                  attachmentId: attachment.id,
+                })
+                .catch((error: unknown) => {
+                  notify(
+                    errorMessage(
+                      error,
+                      "A cancelled upload could not be cleaned up.",
+                    ),
+                    "error",
+                  );
+                });
+            }
             setAttachmentsByBranch((current) => ({
               ...current,
               [branchId]: (current[branchId] ?? []).map((candidate) =>
@@ -1225,6 +1286,7 @@ export function App(): React.JSX.Element {
             }));
           })
           .catch((error: unknown) => {
+            pendingUploadsRef.current.settle(localId);
             setAttachmentsByBranch((current) => ({
               ...current,
               [branchId]: (current[branchId] ?? []).map((candidate) =>
@@ -1252,7 +1314,9 @@ export function App(): React.JSX.Element {
           (attachment) => attachment.id !== attachmentId,
         ),
       }));
-      if (!attachmentId.startsWith("upload-")) {
+      if (attachmentId.startsWith("upload-")) {
+        pendingUploadsRef.current.discard(attachmentId);
+      } else {
         void window.branchy
           .removeAttachment({
             conversationId: ready.conversationId,
@@ -1375,15 +1439,35 @@ export function App(): React.JSX.Element {
           conversationId: ready.conversationId,
           branchId: deleteTarget.id,
         });
+        const survivingBranchIds = new Set(
+          Object.keys(result.snapshot.branches),
+        );
+        pendingUploadsRef.current.reconcile(
+          ready.conversationId,
+          survivingBranchIds,
+        );
+        setDraftsByBranch((current) =>
+          retainBranchRecords(current, result.snapshot.branches),
+        );
+        setAttachmentsByBranch((current) =>
+          retainBranchRecords(current, result.snapshot.branches),
+        );
+        setRetryByBranch((current) =>
+          retainBranchRecords(current, result.snapshot.branches),
+        );
+        setFocusTokensByBranch((current) =>
+          retainBranchRecords(current, result.snapshot.branches),
+        );
         setScreen((current) => {
           if (current.kind !== "ready") return current;
-          const nextMessages = { ...current.messagesByBranch };
-          delete nextMessages[deleteTarget.id];
           return {
             ...current,
             snapshot: result.snapshot,
             activeBranchId: result.parentBranchId,
-            messagesByBranch: nextMessages,
+            messagesByBranch: retainBranchRecords(
+              current.messagesByBranch,
+              result.snapshot.branches,
+            ),
           };
         });
         setDeleteTarget(null);
@@ -1517,7 +1601,7 @@ export function App(): React.JSX.Element {
   const resolveImageUrl = useCallback(
     (messageId: string, imageId: string, fallback: string | null) => {
       const cached = imageUrls[`${messageId}:${imageId}`];
-      return fallback ?? (cached?.startsWith("__") ? null : cached) ?? null;
+      return fallback ?? cached ?? null;
     },
     [imageUrls],
   );

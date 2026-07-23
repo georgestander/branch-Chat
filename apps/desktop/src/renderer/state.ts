@@ -11,6 +11,15 @@ import type {
   StreamState,
 } from "./types.ts";
 
+export function retainBranchRecords<T>(
+  current: Record<BranchId, T>,
+  branches: Pick<ConversationGraphSnapshot, "branches">["branches"],
+): Record<BranchId, T> {
+  return Object.fromEntries(
+    Object.entries(current).filter(([branchId]) => branchId in branches),
+  );
+}
+
 export function branchChildren(
   snapshot: Pick<ConversationGraphSnapshot, "branches">,
 ): Map<BranchId, Branch[]> {
@@ -124,6 +133,19 @@ export function isStreamActive(
       stream.status !== "cancelled" &&
       stream.status !== "error",
   );
+}
+
+export function removeStreamStateIfMatching(
+  current: Record<BranchId, StreamState | undefined>,
+  branchId: BranchId,
+  streamId: string,
+): Record<BranchId, StreamState | undefined> {
+  if (current[branchId]?.streamId !== streamId) {
+    return current;
+  }
+  const next = { ...current };
+  delete next[branchId];
+  return next;
 }
 
 export function reduceStreamState(

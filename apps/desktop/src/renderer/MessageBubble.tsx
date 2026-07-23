@@ -11,6 +11,7 @@ import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 import { Icon } from "./icons.tsx";
 import { sourceSelectionOffsets } from "./state.ts";
 import {
+  generatedImageDisplayState,
   generatedImagesForMessage,
   toolLabel,
   type BranchSelectionDraft,
@@ -199,11 +200,13 @@ export const MessageBubble = memo(function MessageBubble({
 
         {images.map((image) => {
           const source = resolveImageUrl(message.id, image.id, image.url);
-          const running =
-            image.status === "pending" || image.status === "running";
+          const displayState = generatedImageDisplayState(
+            image.status,
+            source,
+          );
           return (
             <section className="generated-image" key={image.id}>
-              {running ? (
+              {displayState === "running" ? (
                 <div className="image-progress" role="status">
                   <div className="image-progress__wash" />
                   <div className="image-progress__content">
@@ -215,7 +218,19 @@ export const MessageBubble = memo(function MessageBubble({
                     <span>You can keep exploring this canvas.</span>
                   </div>
                 </div>
-              ) : image.status === "succeeded" && source ? (
+              ) : displayState === "resolving" ? (
+                <div className="image-progress" role="status">
+                  <div className="image-progress__wash" />
+                  <div className="image-progress__content">
+                    <span className="image-progress__icon">
+                      <Icon name="image" size={23} />
+                      <span className="spinner spinner--large" />
+                    </span>
+                    <strong>Loading your image…</strong>
+                    <span>Restoring the saved result.</span>
+                  </div>
+                </div>
+              ) : displayState === "ready" && source ? (
                 <img src={source} alt={image.prompt ?? "Generated image"} />
               ) : (
                 <div className="image-error" role="alert">
@@ -227,7 +242,7 @@ export const MessageBubble = memo(function MessageBubble({
                 </div>
               )}
 
-              {!running ? (
+              {displayState !== "running" ? (
                 <div className="generated-image__actions">
                   {image.status === "succeeded" ? (
                     <button

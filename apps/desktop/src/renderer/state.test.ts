@@ -12,7 +12,9 @@ import {
   initialStreamState,
   isStreamActive,
   mergeRenderedMessage,
+  removeStreamStateIfMatching,
   reduceStreamState,
+  retainBranchRecords,
   visibleBranchIds,
 } from "./state.ts";
 
@@ -137,6 +139,31 @@ test("terminal streams allow a retry while active streams block it", () => {
   assert.equal(isStreamActive({ ...starting, status: "cancelled" }), false);
   assert.equal(isStreamActive({ ...starting, status: "complete" }), false);
   assert.equal(isStreamActive(undefined), false);
+});
+
+test("late completion cleanup cannot remove a newer branch stream", () => {
+  const oldStream = initialStreamState("old-stream", "root");
+  const newStream = initialStreamState("new-stream", "root");
+
+  assert.equal(
+    removeStreamStateIfMatching({ root: newStream }, "root", "old-stream")
+      .root,
+    newStream,
+  );
+  assert.deepEqual(
+    removeStreamStateIfMatching({ root: oldStream }, "root", "old-stream"),
+    {},
+  );
+});
+
+test("same-conversation reloads retain only live branch composer state", () => {
+  assert.deepEqual(
+    retainBranchRecords(
+      { root: "root draft", child: "child draft", removed: "stale" },
+      snapshot().branches,
+    ),
+    { root: "root draft", child: "child draft" },
+  );
 });
 
 test("canonical completion messages replace optimistic entries", () => {

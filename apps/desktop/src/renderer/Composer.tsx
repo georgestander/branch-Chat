@@ -203,6 +203,12 @@ export function Composer({
     }
   }, [dictationState, onChange, onTranscribe, stopRecording, value]);
 
+  const pendingAttachment = attachments.some(
+    (attachment) => attachment.status === "uploading",
+  );
+  const canSend =
+    !disabled && !streaming && !pendingAttachment && value.trim().length > 0;
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (
@@ -211,10 +217,10 @@ export function Composer({
         !event.nativeEvent.isComposing
       ) {
         event.preventDefault();
-        if (!disabled && !streaming && value.trim()) onSend();
+        if (canSend) onSend();
       }
     },
-    [disabled, onSend, streaming, value],
+    [canSend, onSend],
   );
 
   const chooseFiles = useCallback(
@@ -225,12 +231,6 @@ export function Composer({
     },
     [onChooseFiles],
   );
-
-  const pendingAttachment = attachments.some(
-    (attachment) => attachment.status === "uploading",
-  );
-  const canSend =
-    !disabled && !streaming && !pendingAttachment && value.trim().length > 0;
 
   return (
     <section className="composer" aria-label={`Message ${branchTitle}`}>
