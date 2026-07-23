@@ -367,6 +367,96 @@ test("persists streamed image progress, completion, and native fork context", as
   });
 });
 
+test("retries a failed image invocation without treating it as downloadable", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation({
+    title: "Retry failed image",
+  });
+  const branchId = created.snapshot.conversation.rootBranchId;
+  const sent = await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId,
+    content: "Generate a glass lighthouse",
+    streamId: "stream-image-failure",
+  });
+  const turn = harness.codex.turn("stream-image-failure");
+  harness.codex.emit("stream-image-failure", {
+    type: "tool_progress",
+    streamId: "stream-image-failure",
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    tool: "image_generation",
+    callId: "failed-image-call",
+    status: "failed",
+  });
+  harness.codex.emit("stream-image-failure", {
+    type: "complete",
+    streamId: "stream-image-failure",
+    threadId: turn.threadId,
+    turnId: turn.turnId,
+    content: "The image could not be generated.",
+    reasoningSummary: null,
+    promptTokens: 4,
+    completionTokens: 3,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+  await waitFor(
+    () =>
+      harness.application.loadConversation(created.conversationId).activeStreams
+        .length === 0,
+  );
+
+  const failed = harness.repository.require(created.conversationId).messages[
+    sent.pendingAssistantMessage.id
+  ]?.toolInvocations?.[0];
+  assert.equal(failed?.id, "failed-image-call");
+  assert.equal(failed?.status, "failed");
+  assert.throws(
+    () =>
+      harness.application.generatedImageUrl(
+        created.conversationId,
+        sent.pendingAssistantMessage.id,
+        "failed-image-call",
+      ),
+    /Generated image was not found/u,
+  );
+  await assert.rejects(
+    harness.application.generatedImageFile(
+      created.conversationId,
+      sent.pendingAssistantMessage.id,
+      "failed-image-call",
+    ),
+    /Generated image was not found/u,
+  );
+
+  const retry = await harness.application.retryGeneratedImage({
+    conversationId: created.conversationId,
+    branchId,
+    messageId: sent.pendingAssistantMessage.id,
+    imageId: "failed-image-call",
+    prompt: "A glass lighthouse at blue hour",
+    streamId: "stream-image-retry",
+  });
+  assert.equal(
+    harness.codex.inputs[1]?.content,
+    "Generate an image using this prompt:\n\nA glass lighthouse at blue hour",
+  );
+  assert.equal(
+    retry.optimisticUserMessage.content,
+    "A glass lighthouse at blue hour",
+  );
+
+  const retryTurn = harness.codex.turn("stream-image-retry");
+  harness.codex.emit("stream-image-retry", {
+    type: "cancelled",
+    streamId: "stream-image-retry",
+    threadId: retryTurn.threadId,
+    turnId: retryTurn.turnId,
+  });
+});
+
 test("sends text documents as untrusted context and images as localImage", async (t) => {
   const harness = await setup(t);
   const created = harness.application.createConversation({

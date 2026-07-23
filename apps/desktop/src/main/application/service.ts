@@ -629,7 +629,7 @@ export class BranchyApplication {
   async retryGeneratedImage(
     input: RetryGeneratedImageInput,
   ): Promise<SendMessageResult> {
-    this.requireGeneratedImage(
+    this.requireImageGenerationInvocation(
       input.conversationId,
       input.messageId,
       input.imageId,
@@ -1616,24 +1616,53 @@ export class BranchyApplication {
     messageId: string,
     imageId: string,
   ): string {
+    const invocation = this.requireImageGenerationInvocation(
+      conversationId,
+      messageId,
+      imageId,
+    );
+    if (
+      invocation.status !== "succeeded" ||
+      !invocation.output ||
+      typeof invocation.output !== "object"
+    ) {
+      throw new Error("Generated image was not found.");
+    }
+    const output = invocation.output as Record<string, unknown>;
+    if (
+      typeof output.storageKey === "string" &&
+      output.storageKey.length > 0
+    ) {
+      return output.storageKey;
+    }
+    throw new Error("Generated image was not found.");
+  }
+
+  private requireImageGenerationInvocation(
+    conversationId: string,
+    messageId: string,
+    imageId: string,
+  ): ToolInvocation {
     const message = this.repository.require(conversationId).messages[messageId];
     if (!message) {
       throw new Error("Generated image message was not found.");
     }
     for (const invocation of message.toolInvocations ?? []) {
-      if (
-        invocation.toolType !== "image_generation" ||
-        !invocation.output ||
-        typeof invocation.output !== "object"
-      ) {
+      if (invocation.toolType !== "image_generation") {
         continue;
       }
-      const output = invocation.output as Record<string, unknown>;
+      const output =
+        invocation.output && typeof invocation.output === "object"
+          ? (invocation.output as Record<string, unknown>)
+          : null;
       if (
-        output.imageId === imageId &&
-        typeof output.storageKey === "string"
+        invocation.id === imageId ||
+        invocation.callId === imageId ||
+        output?.imageId === imageId ||
+        output?.id === imageId ||
+        output?.assetId === imageId
       ) {
-        return output.storageKey;
+        return invocation;
       }
     }
     throw new Error("Generated image was not found.");
