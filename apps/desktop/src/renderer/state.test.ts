@@ -10,6 +10,7 @@ import type {
 import {
   descendantCount,
   initialStreamState,
+  isSupersededByActiveStream,
   isStreamActive,
   mergeRenderedMessage,
   removeStreamStateIfMatching,
@@ -139,6 +140,32 @@ test("terminal streams allow a retry while active streams block it", () => {
   assert.equal(isStreamActive({ ...starting, status: "cancelled" }), false);
   assert.equal(isStreamActive({ ...starting, status: "complete" }), false);
   assert.equal(isStreamActive(undefined), false);
+});
+
+test("active bootstrap streams suppress only their blank assistant placeholder", () => {
+  const stream = initialStreamState("stream", "root", "assistant-1");
+  const userMessage: Message = {
+    id: "user-1",
+    branchId: "root",
+    role: "user",
+    content: "Prompt",
+    createdAt: "2026-07-23T00:00:00.000Z",
+  };
+  const blankAssistant: Message = {
+    id: "assistant-1",
+    branchId: "root",
+    role: "assistant",
+    content: "",
+    createdAt: "2026-07-23T00:00:01.000Z",
+  };
+  const completeAssistant: Message = {
+    ...blankAssistant,
+    content: "Done",
+  };
+
+  assert.equal(isSupersededByActiveStream(userMessage, stream), false);
+  assert.equal(isSupersededByActiveStream(blankAssistant, stream), true);
+  assert.equal(isSupersededByActiveStream(completeAssistant, stream), false);
 });
 
 test("late completion cleanup cannot remove a newer branch stream", () => {

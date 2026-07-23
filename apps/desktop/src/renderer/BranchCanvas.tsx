@@ -35,6 +35,7 @@ import { Icon } from "./icons.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
 import {
   descendantCount,
+  isSupersededByActiveStream,
   messagesForBranch,
   visibleBranchIds,
 } from "./state.ts";
@@ -178,6 +179,9 @@ const BranchCard = memo(function BranchCard({
   const threadRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const title = branch.title || "Untitled branch";
+  const visibleMessages = messages.filter(
+    (message) => !isSupersededByActiveStream(message, stream),
+  );
   const sourceExcerpt = branch.createdFrom.excerpt?.trim();
   const parentTitle = branch.parentId
     ? data.snapshot.branches[branch.parentId]?.title ?? "Parent branch"
@@ -303,7 +307,7 @@ const BranchCard = memo(function BranchCard({
       {expanded ? (
         <>
           <div className="branch-thread nowheel nodrag" ref={threadRef}>
-            {messages.length === 0 && !stream ? (
+            {visibleMessages.length === 0 && !stream ? (
               <div className="branch-empty">
                 <span className="branch-empty__mark">
                   <Icon name="branch" size={22} />
@@ -312,7 +316,7 @@ const BranchCard = memo(function BranchCard({
                 <span>Every path keeps its own context.</span>
               </div>
             ) : (
-              messages.map((message) => (
+              visibleMessages.map((message) => (
                 <MessageBubble
                   key={message.id}
                   message={message}
@@ -370,10 +374,11 @@ const BranchCard = memo(function BranchCard({
           type="button"
           onClick={() => data.onOpen(branch.id)}
         >
-          <p>{latestPreview(messages)}</p>
+          <p>{latestPreview(visibleMessages)}</p>
           <footer>
             <span>
-              {messages.length} {messages.length === 1 ? "message" : "messages"}
+              {visibleMessages.length}{" "}
+              {visibleMessages.length === 1 ? "message" : "messages"}
             </span>
             {stream ? (
               <span className="branch-card__live">

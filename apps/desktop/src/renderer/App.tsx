@@ -134,7 +134,12 @@ function accountView(
         email: null,
         plan: null,
         error: null,
-        login: previous?.login ?? null,
+        login: {
+          loginId: state.login.loginId,
+          verificationUrl: state.login.verificationUrl,
+          userCode: state.login.userCode,
+          expiresAt: state.login.expiresAt,
+        },
       };
     case "error":
       return {
@@ -345,7 +350,6 @@ export function App(): React.JSX.Element {
   const [imageUrls, setImageUrls] = useState<Record<string, string | undefined>>(
     {},
   );
-  const loginIdRef = useRef<string | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const attachmentsByBranchRef = useRef<
     Record<BranchId, AttachmentDraft[] | undefined>
@@ -560,7 +564,7 @@ export function App(): React.JSX.Element {
     if (
       (screen.kind !== "ready" && screen.kind !== "empty") ||
       screen.account.status !== "signing_in" ||
-      !loginIdRef.current
+      !screen.account.login?.loginId
     ) {
       return;
     }
@@ -577,7 +581,6 @@ export function App(): React.JSX.Element {
               : current,
           );
           if (next.status === "signed_in") {
-            loginIdRef.current = null;
             window.clearInterval(poll);
             notify("ChatGPT connected to Branchy.", "success");
           }
@@ -798,11 +801,16 @@ export function App(): React.JSX.Element {
       streamId: string,
       branchId: BranchId,
       conversationId: string,
+      assistantMessageId?: string,
     ) => {
       streamBranchesRef.current.set(streamId, branchId);
       setStreamsByBranch((current) => ({
         ...current,
-        [branchId]: initialStreamState(streamId, branchId),
+        [branchId]: initialStreamState(
+          streamId,
+          branchId,
+          assistantMessageId,
+        ),
       }));
       const unsubscribe = window.branchy.subscribeStream(streamId, (event) => {
         const currentBranchId =
@@ -810,7 +818,11 @@ export function App(): React.JSX.Element {
         setStreamsByBranch((current) => {
           const existing =
             current[currentBranchId] ??
-            initialStreamState(streamId, currentBranchId);
+            initialStreamState(
+              streamId,
+              currentBranchId,
+              assistantMessageId,
+            );
           return {
             ...current,
             [currentBranchId]: reduceStreamState(
@@ -924,6 +936,7 @@ export function App(): React.JSX.Element {
           stream.streamId,
           stream.branchId,
           ready.conversationId,
+          stream.assistantMessageId,
         );
       }
     }
@@ -1561,7 +1574,6 @@ export function App(): React.JSX.Element {
     setBusyAction("login");
     try {
       const challenge = await window.branchy.startChatGptLogin();
-      loginIdRef.current = challenge.loginId;
       setScreen((current) =>
         current.kind === "ready" || current.kind === "empty"
           ? {
@@ -1572,6 +1584,7 @@ export function App(): React.JSX.Element {
                 plan: null,
                 error: null,
                 login: {
+                  loginId: challenge.loginId,
                   verificationUrl: challenge.verificationUrl,
                   userCode: challenge.userCode,
                   expiresAt: challenge.expiresAt,
@@ -1599,12 +1612,11 @@ export function App(): React.JSX.Element {
   }, []);
 
   const cancelLogin = useCallback(async () => {
-    const loginId = loginIdRef.current;
+    const loginId = account.login?.loginId;
     if (!loginId) return;
     setBusyAction("cancel-login");
     try {
       await window.branchy.cancelChatGptLogin({ loginId });
-      loginIdRef.current = null;
       setScreen((current) =>
         current.kind === "ready" || current.kind === "empty"
           ? { ...current, account: { ...FALLBACK_ACCOUNT } }
@@ -1613,7 +1625,7 @@ export function App(): React.JSX.Element {
     } finally {
       setBusyAction(null);
     }
-  }, []);
+  }, [account.login?.loginId]);
 
   const logout = useCallback(async () => {
     setBusyAction("logout");

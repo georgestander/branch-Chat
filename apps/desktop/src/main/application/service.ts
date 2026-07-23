@@ -80,6 +80,7 @@ import {
   renderMessage,
   renderMessagesByBranch,
 } from "./presentation.ts";
+import { isAllowedChatGptDeviceVerificationUrl } from "../security.ts";
 
 const MAX_ATTACHMENTS_PER_MESSAGE = 8;
 const MAX_PENDING_ATTACHMENTS_PER_CONVERSATION = 64;
@@ -283,6 +284,7 @@ export class BranchyApplication {
   private readonly activeTurns = new Map<string, ActiveTurn>();
   private readonly activeBranchStreams = new Map<string, string>();
   private readonly loginSessions = new Map<string, DeviceCodeLoginSession>();
+  private readonly loginExpiryById = new Map<string, string>();
   private readonly pendingAttachments = new Map<
     string,
     Map<string, PendingAttachment>
@@ -325,14 +327,17 @@ export class BranchyApplication {
         ? input.branchId
         : snapshot.canvas.focusedBranchId) ??
       snapshot.conversation.rootBranchId;
+    const activeStreams = this.activeStreamsFor(snapshot.conversation.id);
     return {
       kind: "ready",
       conversationId: snapshot.conversation.id,
       snapshot,
       conversation: snapshot.conversation,
       initialActiveBranchId: activeBranchId,
-      initialMessagesByBranch: renderMessagesByBranch(snapshot),
-      activeStreams: this.activeStreamsFor(snapshot.conversation.id),
+      initialMessagesByBranch: renderMessagesByBranch(snapshot, {
+        activeStreams,
+      }),
+      activeStreams,
       conversations,
       account,
     };
@@ -781,7 +786,19 @@ export class BranchyApplication {
 
   async getAccountState(): Promise<DesktopAccountState> {
     if (this.loginSessions.size > 0) {
-      return { status: "signing-in" };
+      const [session] = this.loginSessions.values();
+      if (session) {
+        return {
+          status: "signing-in",
+          login: {
+            loginId: session.loginId,
+            verificationUrl: session.verificationUrl,
+            userCode: session.userCode,
+            expiresAt:
+              this.loginExpiryById.get(session.loginId) ?? null,
+          },
+        };
+      }
     }
     try {
       return accountState(await this.codex.readAccount());
@@ -798,18 +815,31 @@ export class BranchyApplication {
 
   async startChatGptLogin(): Promise<StartChatGptLoginResult> {
     const session = await this.codex.startDeviceCodeLogin();
+    if (!isAllowedChatGptDeviceVerificationUrl(session.verificationUrl)) {
+      try {
+        await session.cancel();
+      } catch {
+        // Preserve the verification URL failure as the user-facing error.
+      }
+      throw new Error(
+        "Codex returned an unexpected ChatGPT verification URL.",
+      );
+    }
     this.loginSessions.set(session.loginId, session);
+    const expiresAt = new Date(
+      this.now().getTime() + LOGIN_LIFETIME_MILLISECONDS,
+    ).toISOString();
+    this.loginExpiryById.set(session.loginId, expiresAt);
     void session.completion.finally(() => {
       this.loginSessions.delete(session.loginId);
+      this.loginExpiryById.delete(session.loginId);
     });
     return {
       status: "challenge",
       loginId: session.loginId,
       verificationUrl: session.verificationUrl,
       userCode: session.userCode,
-      expiresAt: new Date(
-        this.now().getTime() + LOGIN_LIFETIME_MILLISECONDS,
-      ).toISOString(),
+      expiresAt,
     };
   }
 
@@ -821,10 +851,12 @@ export class BranchyApplication {
       await this.codex.cancelDeviceCodeLogin(loginId);
     }
     this.loginSessions.delete(loginId);
+    this.loginExpiryById.delete(loginId);
   }
 
   async logoutChatGpt(): Promise<DesktopAccountState> {
     this.loginSessions.clear();
+    this.loginExpiryById.clear();
     return accountState(await this.codex.logoutChatGpt());
   }
 
@@ -968,6 +1000,7 @@ export class BranchyApplication {
       await session.cancel().catch(() => undefined);
     }
     this.loginSessions.clear();
+    this.loginExpiryById.clear();
     await this.codex.stop();
     this.repository.close();
   }

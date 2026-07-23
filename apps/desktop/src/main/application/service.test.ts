@@ -41,6 +41,8 @@ interface FakeTurn {
 class FakeCodex implements BranchyCodexGateway {
   readonly inputs: StartCodexTurnInput[] = [];
   readonly deletedThreads: string[][] = [];
+  deviceLoginCancelCount = 0;
+  deviceVerificationUrl = "https://auth.openai.com/codex/device";
   failNextStartMessage: string | null = null;
   deleteFailureMessage: string | null = null;
   private readonly turns = new Map<string, FakeTurn>();
@@ -179,10 +181,13 @@ class FakeCodex implements BranchyCodexGateway {
   async startDeviceCodeLogin(): Promise<DeviceCodeLoginSession> {
     return {
       loginId: "login-1",
-      verificationUrl: "https://auth.openai.test/device",
+      verificationUrl: this.deviceVerificationUrl,
       userCode: "BRANCH-Y",
       completion: new Promise(() => {}),
-      cancel: async () => true,
+      cancel: async () => {
+        this.deviceLoginCancelCount += 1;
+        return true;
+      },
     };
   }
 
@@ -455,6 +460,56 @@ test("retries a failed image invocation without treating it as downloadable", as
     threadId: retryTurn.threadId,
     turnId: retryTurn.turnId,
   });
+});
+
+test("startChatGptLogin accepts only the official verification URL", async (t) => {
+  const harness = await setup(t);
+  const result = await harness.application.startChatGptLogin();
+
+  assert.equal(result.status, "challenge");
+  assert.equal(
+    result.verificationUrl,
+    "https://auth.openai.com/codex/device",
+  );
+  assert.equal(harness.codex.deviceLoginCancelCount, 0);
+});
+
+test("startChatGptLogin rejects and cancels unexpected verification URLs", async (t) => {
+  const harness = await setup(t);
+  harness.codex.deviceVerificationUrl = "https://auth.openai.test/device";
+
+  await assert.rejects(
+    harness.application.startChatGptLogin(),
+    /unexpected ChatGPT verification URL/u,
+  );
+  assert.equal(harness.codex.deviceLoginCancelCount, 1);
+});
+
+test("pending device-code login survives bootstrap and account reads", async (t) => {
+  const harness = await setup(t);
+
+  const challenge = await harness.application.startChatGptLogin();
+  const account = await harness.application.getAccountState();
+  const bootstrap = await harness.application.bootstrap();
+
+  assert.deepEqual(account, {
+    status: "signing-in",
+    login: {
+      loginId: challenge.loginId,
+      verificationUrl: challenge.verificationUrl,
+      userCode: challenge.userCode,
+      expiresAt: challenge.expiresAt,
+    },
+  });
+  assert.equal(bootstrap.account.status, "signing-in");
+  if (bootstrap.account.status === "signing-in") {
+    assert.deepEqual(bootstrap.account.login, {
+      loginId: challenge.loginId,
+      verificationUrl: challenge.verificationUrl,
+      userCode: challenge.userCode,
+      expiresAt: challenge.expiresAt,
+    });
+  }
 });
 
 test("sends text documents as untrusted context and images as localImage", async (t) => {

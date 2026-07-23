@@ -3,6 +3,8 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const APP_HOST = "renderer";
 const APP_PROTOCOL = "branchy:";
+export const CHATGPT_DEVICE_VERIFICATION_URL =
+  "https://auth.openai.com/codex/device";
 
 function isInside(root: string, candidate: string): boolean {
   const relativePath = relative(root, candidate);
@@ -24,6 +26,12 @@ export function isAllowedExternalUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isAllowedChatGptDeviceVerificationUrl(
+  value: string,
+): boolean {
+  return value === CHATGPT_DEVICE_VERIFICATION_URL;
 }
 
 export function isTrustedRendererUrl(

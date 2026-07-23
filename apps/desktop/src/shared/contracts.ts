@@ -73,9 +73,16 @@ export interface ConnectedChatGptAccount {
   planType: string | null;
 }
 
+export interface PendingChatGptLogin {
+  loginId: string;
+  verificationUrl: string;
+  userCode: string;
+  expiresAt: string | null;
+}
+
 export type DesktopAccountState =
   | { status: "signed-out" }
-  | { status: "signing-in" }
+  | { status: "signing-in"; login: PendingChatGptLogin }
   | { status: "connected"; account: ConnectedChatGptAccount }
   | { status: "error"; message: string };
 

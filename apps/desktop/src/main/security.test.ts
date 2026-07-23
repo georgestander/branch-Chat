@@ -11,6 +11,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  CHATGPT_DEVICE_VERIFICATION_URL,
+  isAllowedChatGptDeviceVerificationUrl,
   isAllowedExternalUrl,
   isTrustedRendererUrl,
   resolveRendererAsset,
@@ -22,6 +24,35 @@ test("external links allow HTTPS only", () => {
   assert.equal(isAllowedExternalUrl("file:///tmp/private"), false);
   assert.equal(isAllowedExternalUrl("javascript:alert(1)"), false);
   assert.equal(isAllowedExternalUrl(" https://example.com"), false);
+});
+
+test("ChatGPT device verification allows only the official exact URL", () => {
+  assert.equal(
+    isAllowedChatGptDeviceVerificationUrl(CHATGPT_DEVICE_VERIFICATION_URL),
+    true,
+  );
+  assert.equal(
+    isAllowedChatGptDeviceVerificationUrl(
+      "https://auth.openai.com/codex/device?utm_source=branchy",
+    ),
+    false,
+  );
+  assert.equal(
+    isAllowedChatGptDeviceVerificationUrl(
+      "https://auth.openai.com/codex/device/",
+    ),
+    false,
+  );
+  assert.equal(
+    isAllowedChatGptDeviceVerificationUrl("https://auth.openai.com/device"),
+    false,
+  );
+  assert.equal(
+    isAllowedChatGptDeviceVerificationUrl(
+      "https://example.com/codex/device",
+    ),
+    false,
+  );
 });
 
 test("trusted renderer URLs are bound to the app or exact dev origin", () => {

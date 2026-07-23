@@ -20,6 +20,7 @@ export type AccountState = {
   plan: string | null;
   error: string | null;
   login?: {
+    loginId: string;
     verificationUrl: string;
     userCode: string;
     expiresAt: string | null;
@@ -64,6 +65,7 @@ export type StreamStatus =
 export type StreamState = {
   streamId: string;
   branchId: BranchId;
+  assistantMessageId?: string | null;
   status: StreamStatus;
   text: string;
   reasoningSummary: string | null;

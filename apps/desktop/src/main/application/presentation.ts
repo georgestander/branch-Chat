@@ -4,6 +4,7 @@ import {
   type ConversationGraphSnapshot,
   type Message,
 } from "@branchy/conversation-core";
+import type { ActiveConversationStream } from "../../shared/contracts.ts";
 import type {
   RenderedBranchAnchor,
   RenderedMessage,
@@ -49,14 +50,31 @@ export function renderMessage(
 
 export function renderMessagesByBranch(
   snapshot: ConversationGraphSnapshot,
+  options: {
+    activeStreams?: readonly ActiveConversationStream[];
+  } = {},
 ): Record<BranchId, RenderedMessage[]> {
   const anchors = anchorsByMessage(snapshot);
+  const suppressedAssistantMessageIds = new Set(
+    (options.activeStreams ?? [])
+      .map((stream) => snapshot.messages[stream.assistantMessageId])
+      .filter(
+        (message): message is Message =>
+          Boolean(
+            message &&
+              message.role === "assistant" &&
+              message.content.trim().length === 0,
+          ),
+      )
+      .map((message) => message.id),
+  );
   return Object.fromEntries(
     Object.values(snapshot.branches).map((branch) => [
       branch.id,
       branch.messageIds
         .map((messageId) => snapshot.messages[messageId])
         .filter((message): message is Message => Boolean(message))
+        .filter((message) => !suppressedAssistantMessageIds.has(message.id))
         .map((message) => renderMessage(message, anchors.get(message.id))),
     ]),
   ) as Record<BranchId, RenderedMessage[]>;

@@ -110,10 +110,12 @@ export function mergeRenderedMessage(
 export function initialStreamState(
   streamId: string,
   branchId: BranchId,
+  assistantMessageId?: string | null,
 ): StreamState {
   return {
     streamId,
     branchId,
+    assistantMessageId: assistantMessageId ?? null,
     status: "starting",
     text: "",
     reasoningSummary: null,
@@ -132,6 +134,20 @@ export function isStreamActive(
       stream.status !== "complete" &&
       stream.status !== "cancelled" &&
       stream.status !== "error",
+  );
+}
+
+export function isSupersededByActiveStream(
+  message: Pick<Message, "id" | "role" | "content">,
+  stream: StreamState | null | undefined,
+): boolean {
+  return Boolean(
+    stream &&
+      isStreamActive(stream) &&
+      stream.assistantMessageId &&
+      message.id === stream.assistantMessageId &&
+      message.role === "assistant" &&
+      message.content.trim().length === 0,
   );
 }
 
