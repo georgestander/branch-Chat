@@ -1,0 +1,10 @@
+{
+  "version": "0.144.5",
+  "platform": "aarch64-apple-darwin",
+  "archiveName": "codex-app-server-aarch64-apple-darwin.tar.gz",
+  "archiveSize": 83224462,
+  "archiveSha256": "ec98c5647ff482cde7fe7b4091950a23f19ffceb0b343612a1bab0de0857f5d1",
+  "binarySha256": "9cc54a53c8afc64b1db8e8123a8672555411150bafab7b20a2c5ab898112b356",
+  "downloadUrl": "https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-app-server-aarch64-apple-darwin.tar.gz",
+  "executableName": "codex-app-server-aarch64-apple-darwin"
+}

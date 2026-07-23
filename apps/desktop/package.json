@@ -6,19 +6,34 @@
   "type": "module",
   "main": ".vite/build/main.js",
   "scripts": {
+    "codex:fetch": "node scripts/fetch-codex-app-server.mjs",
     "dev": "electron-forge start",
     "package": "electron-forge package --arch=arm64 --platform=darwin",
     "make": "electron-forge make --arch=arm64 --platform=darwin",
-    "test": "node --experimental-strip-types --test src/main/*.test.ts",
+    "release:mac": "BRANCHY_RELEASE=1 electron-forge make --arch=arm64 --platform=darwin",
+    "test:release": "node --test scripts/release-macos.test.mjs",
+    "test": "node scripts/run-tests.mjs && node --test scripts/release-macos.test.mjs",
     "types": "tsc --noEmit -p tsconfig.json",
     "lint": "pnpm run types",
     "clean": "rm -rf .vite out"
+  },
+  "dependencies": {
+    "@branchy/conversation-core": "workspace:*",
+    "@xyflow/react": "12.11.2",
+    "fflate": "0.8.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "unpdf": "1.6.2"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
     "@electron-forge/maker-dmg": "7.11.2",
     "@electron-forge/plugin-vite": "7.11.2",
+    "@electron/notarize": "2.5.0",
     "@types/node": "~24.5.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.2.0",
     "electron": "43.2.0",
     "typescript": "5.8.3",
     "vite": "7.1.11"

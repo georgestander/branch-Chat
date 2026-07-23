@@ -58,6 +58,9 @@ dist
 
 # Electron Forge output
 apps/desktop/out/
+apps/desktop/resources/codex/bin/
+apps/desktop/resources/codex/.download/
+apps/desktop/resources/codex/receipt.json
 
 # Coverage directory used by tools like istanbul
 coverage

@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "es2022",
     "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
     "module": "es2022",
     "moduleResolution": "bundler",
     "lib": [
@@ -9,7 +10,8 @@
       "ES2022"
     ],
     "types": [
-      "node"
+      "node",
+      "vite/client"
     ],
     "strict": true,
     "skipLibCheck": true,
@@ -22,6 +24,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "src/**/*.d.ts",
     "vite.*.mts",
     "forge.config.mjs"

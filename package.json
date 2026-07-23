@@ -25,7 +25,8 @@
     "release": "rw-scripts ensure-deploy-env && npm run clean && npm run build && RWSDK_DEPLOY=1 wrangler deploy",
     "generate": "rw-scripts ensure-env && wrangler types",
     "check": "npm run generate && npm run types",
-    "types": "tsc",
+    "types": "pnpm run types:legacy && pnpm -C packages/conversation-core types && pnpm -C apps/desktop types",
+    "types:legacy": "tsc",
     "typecheck": "npm run types",
     "test": "node --experimental-strip-types --test",
     "lint": "npm run types -- --pretty false"
@@ -77,6 +78,7 @@
     "onlyBuiltDependencies": [
       "electron",
       "esbuild",
+      "macos-alias",
       "sharp",
       "workerd"
     ]
