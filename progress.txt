@@ -20,3 +20,9 @@
 - Files: apps/desktop/src/renderer/App.tsx, BranchCanvas.tsx, Sidebar.tsx, MessageBubble.tsx, state.ts, branch-canvas-layout.ts, styles.css and focused tests.
 - Verification: pnpm types; npm run test (265 passed); npm run lint.
 - Next: package the native app and run visual, keyboard, branch, image, reload, and dictation smoke tests.
+
+2026-07-23 — Native canvas text selection (feat/canvas-chat parity)
+- Decision: explicitly restore text selection inside assistant Markdown because React Flow nodes otherwise inherit non-selectable canvas behavior and cannot open an exact-span branch draft.
+- Files: apps/desktop/src/renderer/styles.css.
+- Verification: pnpm types; npm run test (265 passed); npm run lint.
+- Next: package and verify that selecting assistant text opens the connected temporary branch card.

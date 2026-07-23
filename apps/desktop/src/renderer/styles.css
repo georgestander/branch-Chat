@@ -1514,6 +1514,13 @@ button.account-avatar:hover {
   padding: 14px;
 }
 
+.message--assistant .message__content,
+.message--assistant .markdown-body {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
 .message__text {
   color: var(--foreground);
   font-size: 14px;
