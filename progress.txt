@@ -1,0 +1,5 @@
+2026-07-23 — Desktop canvas UI dependencies (feat/canvas-chat parity)
+- Decision: pin the Electron renderer to the repository's existing Dagre and rich Markdown stack so the original canvas layout and message rendering can be reused without a second implementation.
+- Files: apps/desktop/package.json, pnpm-lock.yaml.
+- Verification: pnpm types; npm run test (265 passed); npm run lint.
+- Next: commit the restored rich message presentation and connected canvas interactions.
