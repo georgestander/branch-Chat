@@ -16,6 +16,9 @@ import {
   type BranchyCodexRuntime,
 } from "./runtime.ts";
 import {
+  verifyPackagedCodexExecutableForLaunch,
+} from "./launch-verification.ts";
+import {
   CodexProtocolError,
   StdioCodexTransport,
   type SpawnCodexProcess,
@@ -1639,16 +1642,29 @@ export async function createBranchyCodexClient({
     bundledExecutablePath,
     developmentExecutablePath,
   });
+  const args = buildCodexAppServerArguments(
+    codexExecutableKind(command, isPackaged),
+  );
   const transport = new StdioCodexTransport({
     command,
-    args: buildCodexAppServerArguments(
-      codexExecutableKind(command, isPackaged),
-    ),
+    args,
     cwd: runtime.workspacePath,
     environment: buildCodexChildEnvironment(
       runtime,
       sourceEnvironment,
     ),
+    ...(isPackaged
+      ? {
+          prepareSpawn: async () => ({
+            command: await verifyPackagedCodexExecutableForLaunch({
+              executablePath: command,
+              resourcesPath,
+              runtimeRootPath: runtime.rootPath,
+            }),
+            args,
+          }),
+        }
+      : {}),
     spawnProcess,
     onDiagnostic: (message) => onDiagnostic?.(message),
   });

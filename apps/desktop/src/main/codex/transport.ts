@@ -46,11 +46,17 @@ export type SpawnCodexProcess = (
   options: CodexSpawnOptions,
 ) => CodexChildProcess;
 
+export interface PreparedCodexSpawn {
+  command: string;
+  args: string[];
+}
+
 export interface StdioCodexTransportOptions {
   command: string;
   args: string[];
   cwd: string;
   environment: NodeJS.ProcessEnv;
+  prepareSpawn?: () => Promise<PreparedCodexSpawn>;
   spawnProcess?: SpawnCodexProcess;
   onDiagnostic?: (message: string) => void;
   requestTimeoutMilliseconds?: number;
@@ -125,11 +131,23 @@ export class StdioCodexTransport implements CodexRpcTransport {
     }
 
     this.stopping = false;
-    this.startPromise = new Promise<void>((resolve, reject) => {
+    this.startPromise = this.startChild().catch((error: unknown) => {
+      this.startPromise = null;
+      throw error;
+    });
+    return this.startPromise;
+  }
+
+  private async startChild(): Promise<void> {
+    const prepared = await this.prepareSpawn();
+    if (this.stopping) {
+      throw new Error("Codex app-server start was cancelled");
+    }
+    return new Promise<void>((resolve, reject) => {
       let settled = false;
       const child = this.spawnProcess(
-        this.options.command,
-        [...this.options.args],
+        prepared.command,
+        [...prepared.args],
         {
           cwd: this.options.cwd,
           env: { ...this.options.environment },
@@ -180,11 +198,17 @@ export class StdioCodexTransport implements CodexRpcTransport {
           }
         },
       );
-    }).catch((error: unknown) => {
-      this.startPromise = null;
-      throw error;
     });
-    return this.startPromise;
+  }
+
+  private async prepareSpawn(): Promise<PreparedCodexSpawn> {
+    if (this.options.prepareSpawn) {
+      return this.options.prepareSpawn();
+    }
+    return {
+      command: this.options.command,
+      args: [...this.options.args],
+    };
   }
 
   async stop(): Promise<void> {
@@ -195,6 +219,9 @@ export class StdioCodexTransport implements CodexRpcTransport {
     }
     if (child) {
       child.kill("SIGTERM");
+    }
+    if (!child && this.startPromise) {
+      await this.startPromise.catch(() => undefined);
     }
   }
 

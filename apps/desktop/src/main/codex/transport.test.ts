@@ -207,6 +207,75 @@ test("unexpected child exit notifies listeners and permits a clean restart", asy
   await transport.stop();
 });
 
+test("transport re-runs pre-spawn verification before every restart", async () => {
+  const child = new FakeCodexChild();
+  let prepareCount = 0;
+  let spawnCount = 0;
+  const transport = new StdioCodexTransport({
+    command: "codex",
+    args: [],
+    cwd: "/tmp",
+    environment: {},
+    prepareSpawn: async () => {
+      prepareCount += 1;
+      if (prepareCount === 2) {
+        throw new Error("re-verify failed");
+      }
+      return {
+        command: "codex",
+        args: [],
+      };
+    },
+    spawnProcess: () => {
+      spawnCount += 1;
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    },
+  });
+
+  await transport.start();
+  child.emit("exit", 1, null);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  await assert.rejects(transport.start(), /re-verify failed/);
+  assert.equal(prepareCount, 2);
+  assert.equal(spawnCount, 1);
+});
+
+test("stop during pending pre-spawn verification prevents spawn and settles start", async () => {
+  let releasePrepare: (() => void) | undefined;
+  let spawnCount = 0;
+  const transport = new StdioCodexTransport({
+    command: "codex",
+    args: [],
+    cwd: "/tmp",
+    environment: {},
+    prepareSpawn: async () =>
+      await new Promise((resolve) => {
+        releasePrepare = () =>
+          resolve({
+            command: "codex",
+            args: [],
+          });
+      }),
+    spawnProcess: () => {
+      spawnCount += 1;
+      throw new Error("spawn should not run after stop");
+    },
+  });
+
+  const startPromise = transport.start();
+  const stopPromise = transport.stop();
+  if (!releasePrepare) {
+    throw new Error("prepareSpawn did not expose a release handle");
+  }
+  releasePrepare();
+
+  await assert.rejects(startPromise, /start was cancelled/);
+  await stopPromise;
+  assert.equal(spawnCount, 0);
+});
+
 test("output from a replaced child cannot affect the active transport", async () => {
   const children = [new FakeCodexChild(), new FakeCodexChild()];
   const diagnostics: string[] = [];
