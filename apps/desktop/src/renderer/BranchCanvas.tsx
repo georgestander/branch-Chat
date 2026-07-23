@@ -36,6 +36,7 @@ import {
 } from "@branchy/conversation-core";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
+import { BrandMark } from "./BrandMark.tsx";
 import { BranchCompareDialog } from "./BranchCompareDialog.tsx";
 import {
   Composer,
@@ -559,9 +560,7 @@ const BranchCard = memo(function BranchCard({
             >
               {visibleMessages.length === 0 && !streamActive ? (
                 <div className="branch-empty">
-                  <span className="branch-empty__mark">
-                    <Icon name="branch" size={22} />
-                  </span>
+                  <BrandMark className="branch-empty__mark" size={32} />
                   <strong>Start this branch</strong>
                   <span>Every path keeps its own context.</span>
                 </div>

@@ -28,6 +28,7 @@
   --warning: #b45309;
   --selection: rgba(217, 48, 37, 0.16);
   --menu-shadow: 0 8px 24px rgba(17, 17, 17, 0.12);
+  --brand-logo-filter: none;
 }
 
 .dark {
@@ -53,6 +54,7 @@
   --warning: #f59e0b;
   --selection: rgba(227, 55, 30, 0.2);
   --menu-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+  --brand-logo-filter: invert(1);
 }
 
 * {
@@ -222,11 +224,7 @@ label[for]:focus-within {
   letter-spacing: -0.02em;
 }
 
-.brand__mark,
-.workspace__title-mark,
-.empty-workspace__mark,
-.branch-empty__mark,
-.account-intro__mark {
+.workspace__title-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -234,16 +232,12 @@ label[for]:focus-within {
   color: var(--background);
 }
 
-.brand__mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-}
-
-.brand__mark--large {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+.brand-mark {
+  display: block;
+  flex: none;
+  object-fit: contain;
+  filter: var(--brand-logo-filter);
+  user-select: none;
 }
 
 .sidebar__controls {
@@ -648,7 +642,6 @@ button.account-avatar:hover {
 .empty-workspace__mark {
   width: 52px;
   height: 52px;
-  border-radius: 12px;
   margin-bottom: 30px;
 }
 
@@ -1464,7 +1457,6 @@ button.account-avatar:hover {
 .branch-empty__mark {
   width: 38px;
   height: 38px;
-  border-radius: 9px;
   margin-bottom: 5px;
 }
 
@@ -2365,7 +2357,6 @@ button.account-avatar:hover {
 .account-intro__mark {
   width: 45px;
   height: 45px;
-  border-radius: 10px;
   margin-bottom: 18px;
 }
 

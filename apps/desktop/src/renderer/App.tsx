@@ -28,6 +28,7 @@ import type {
 } from "../shared/contracts.ts";
 
 import { AccountPanel } from "./AccountPanel.tsx";
+import { BrandMark } from "./BrandMark.tsx";
 import {
   BranchCanvas,
   type BranchStopMode,
@@ -2055,9 +2056,7 @@ export function App(): React.JSX.Element {
 
       {screen.kind === "loading" ? (
         <main className="screen-state" aria-busy="true">
-          <span className="brand__mark brand__mark--large">
-            <Icon name="branch" size={23} />
-          </span>
+          <BrandMark className="brand-mark--large" size={44} />
           <span className="spinner spinner--large" />
           <p>Opening your branch map…</p>
         </main>
@@ -2079,9 +2078,7 @@ export function App(): React.JSX.Element {
       ) : screen.kind === "empty" ? (
         <main className="empty-workspace empty-workspace--start">
           <section className="empty-start">
-            <span className="empty-workspace__mark">
-              <Icon name="branch" size={28} />
-            </span>
+            <BrandMark className="empty-workspace__mark" size={54} />
             <h1>Sign in once, keep branching</h1>
             <p>
               Start a conversation here. Any reply can become a connected path
