@@ -1,15 +1,17 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-type PingResponse = {
-  ok: boolean;
-  appName: string;
-  electron: string;
-  node: string;
-  platform: string;
-};
+import { createBranchyDesktopApi } from "./preload-api.ts";
 
-const api = {
-  ping: (): Promise<PingResponse> => ipcRenderer.invoke("branchy:ping"),
-};
-
-contextBridge.exposeInMainWorld("branchy", api);
+contextBridge.exposeInMainWorld(
+  "branchy",
+  createBranchyDesktopApi({
+    invoke: (channel, payload) => ipcRenderer.invoke(channel, payload),
+    postMessage: (channel, payload, transfer) =>
+      ipcRenderer.postMessage(
+        channel,
+        payload,
+        transfer ? [...transfer] : undefined,
+      ),
+    send: (channel, payload) => ipcRenderer.send(channel, payload),
+  }),
+);
