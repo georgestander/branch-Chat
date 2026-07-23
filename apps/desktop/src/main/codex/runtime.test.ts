@@ -64,6 +64,8 @@ test("Codex child environment is allowlisted and cannot inherit app secrets", as
     LANG: "en_ZA.UTF-8",
     HOME: "/Users/shared-app",
     CODEX_HOME: "/Users/shared-app/.codex",
+    SSL_CERT_FILE: "/tmp/custom.pem",
+    SSL_CERT_DIR: "/tmp/certs",
     OPENAI_API_KEY: "must-not-leak",
     ANTHROPIC_API_KEY: "must-not-leak",
     HTTP_PROXY: "https://secret:password@example.invalid",
@@ -72,6 +74,8 @@ test("Codex child environment is allowlisted and cannot inherit app secrets", as
 
   assert.equal(environment.OPENAI_API_KEY, undefined);
   assert.equal(environment.HTTP_PROXY, undefined);
+  assert.equal(environment.SSL_CERT_FILE, undefined);
+  assert.equal(environment.SSL_CERT_DIR, undefined);
   assert.deepEqual(environment, {
     PATH: "/safe/bin",
     LANG: "en_ZA.UTF-8",

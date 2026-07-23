@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { lstat, readFile, unlink } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 
 import {
   buildDictationFrames,
@@ -165,6 +165,38 @@ function numericValue(value: unknown): number {
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+async function assertPrivateAuthFileSafe(path: string): Promise<void> {
+  try {
+    const metadata = await lstat(path);
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      throw new Error(`Refusing unsafe Codex auth file: ${path}`);
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function deletePrivateAuthFile(path: string): Promise<void> {
+  await assertPrivateAuthFileSafe(path);
+  await unlink(path).catch((error: unknown) => {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return;
+    }
+    throw error;
+  });
 }
 
 export function isMissingCodexContextError(error: unknown): boolean {
@@ -612,7 +644,16 @@ export class CodexAppServerClient {
     for (const loginId of [...this.activeLogins.keys()]) {
       await this.cancelDeviceCodeLogin(loginId).catch(() => false);
     }
+    const authPath = this.runtime
+      ? join(this.runtime.codexHome, "auth.json")
+      : null;
+    if (authPath) {
+      await assertPrivateAuthFileSafe(authPath);
+    }
     await this.transport.request("account/logout");
+    if (authPath) {
+      await deletePrivateAuthFile(authPath);
+    }
     await this.hardenRuntime();
     return this.readAccount();
   }

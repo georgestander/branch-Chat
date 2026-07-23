@@ -1,4 +1,14 @@
 import assert from "node:assert/strict";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import {
@@ -260,6 +270,98 @@ test("ChatGPT logout clears only the isolated Codex account", async () => {
     ),
     true,
   );
+});
+
+test("ChatGPT logout deletes only Branchy's isolated auth file", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branchy-codex-auth-"));
+  const codexHome = join(root, "codex-home");
+  await mkdir(codexHome, { recursive: true });
+  const authPath = join(codexHome, "auth.json");
+  const outsidePath = join(root, "outside.json");
+  await writeFile(authPath, '{"token":"branchy"}', "utf8");
+  await writeFile(outsidePath, '{"token":"outside"}', "utf8");
+  const transport = new FakeTransport((method) => {
+    if (method === "account/logout") {
+      return {};
+    }
+    if (method === "account/read") {
+      return {
+        account: null,
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: join(root, "workspace"),
+    runtime: {
+      rootPath: root,
+      codexHome,
+      processHome: join(root, "process-home"),
+      workspacePath: join(root, "workspace"),
+      configPath: join(root, "config.toml"),
+      xdgConfigHome: join(root, "xdg-config"),
+      xdgCacheHome: join(root, "xdg-cache"),
+      xdgDataHome: join(root, "xdg-data"),
+      xdgStateHome: join(root, "xdg-state"),
+    },
+  });
+
+  try {
+    await client.logoutChatGpt();
+    await assert.rejects(readFile(authPath, "utf8"), /ENOENT/u);
+    assert.equal(await readFile(outsidePath, "utf8"), '{"token":"outside"}');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ChatGPT logout fails closed when isolated auth.json is a symlink", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branchy-codex-auth-"));
+  const codexHome = join(root, "codex-home");
+  await mkdir(codexHome, { recursive: true });
+  const outsidePath = join(root, "outside.json");
+  const authPath = join(codexHome, "auth.json");
+  let logoutRequestCount = 0;
+  await writeFile(authPath, '{"token":"branchy"}', "utf8");
+  await writeFile(outsidePath, '{"token":"outside"}', "utf8");
+  const transport = new FakeTransport((method) => {
+    if (method === "account/logout") {
+      logoutRequestCount += 1;
+      return {};
+    }
+    return defaultResponse(method);
+  });
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: join(root, "workspace"),
+    runtime: {
+      rootPath: root,
+      codexHome,
+      processHome: join(root, "process-home"),
+      workspacePath: join(root, "workspace"),
+      configPath: join(root, "config.toml"),
+      xdgConfigHome: join(root, "xdg-config"),
+      xdgCacheHome: join(root, "xdg-cache"),
+      xdgDataHome: join(root, "xdg-data"),
+      xdgStateHome: join(root, "xdg-state"),
+    },
+  });
+
+  try {
+    await client.readAccount();
+    await rm(authPath, { force: true });
+    await symlink(outsidePath, authPath);
+    await assert.rejects(
+      client.logoutChatGpt(),
+      /Refusing unsafe Codex auth file/u,
+    );
+    assert.equal(logoutRequestCount, 0);
+    assert.equal(await readFile(outsidePath, "utf8"), '{"token":"outside"}');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("turn subscribes before request and preserves structured event order", async () => {
