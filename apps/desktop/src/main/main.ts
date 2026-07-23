@@ -11,6 +11,7 @@ import {
   protocol,
   session,
   shell,
+  utilityProcess,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -24,7 +25,10 @@ import {
   type BranchyGeneratedImageFile,
 } from "./application/service.ts";
 import { StreamHub } from "./application/stream-hub.ts";
-import { createBranchyCodexClient } from "./codex/index.ts";
+import {
+  createCodexUtilityGateway,
+  type CodexUtilityProcess,
+} from "./codex/utility-gateway.ts";
 import { ConversationRepository } from "./persistence/index.ts";
 import {
   appProtocol,
@@ -43,6 +47,19 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 
 const assetProtocol = "branchy-asset";
+const utilityEnvironmentKeys = [
+  "PATH",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+] as const;
 
 let application: BranchyApplication | null = null;
 let streamHub: StreamHub | null = null;
@@ -92,6 +109,19 @@ function requireApplication(): BranchyApplication {
     throw new Error("Branchy Chat is still starting.");
   }
   return application;
+}
+
+function codexUtilityEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const key of utilityEnvironmentKeys) {
+    const value = source[key];
+    if (typeof value === "string" && value.length > 0) {
+      environment[key] = value;
+    }
+  }
+  return environment;
 }
 
 function registerRendererProtocol(rendererRoot: string): void {
@@ -483,16 +513,33 @@ function registerIpc(): void {
 async function initializeApplication(): Promise<void> {
   const userDataPath = app.getPath("userData");
   await mkdir(userDataPath, { recursive: true, mode: 0o700 });
-  const codex = await createBranchyCodexClient({
-    userDataPath,
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    developmentExecutablePath: app.isPackaged
-      ? undefined
-      : resolve(
-          app.getAppPath(),
-          "resources/codex/bin/codex-app-server",
-        ),
+  const utilityEntryPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "utility-entry.cjs",
+  );
+  const codex = await createCodexUtilityGateway({
+    initialize: {
+      userDataPath,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      ...(app.isPackaged
+        ? {}
+        : {
+            developmentExecutablePath: resolve(
+              app.getAppPath(),
+              "resources/codex/bin/codex-app-server",
+            ),
+          }),
+    },
+    spawnProcess: () =>
+      utilityProcess.fork(utilityEntryPath, [], {
+        cwd: userDataPath,
+        env: codexUtilityEnvironment(),
+        serviceName: "Branchy Chat Codex",
+        stdio: "ignore",
+        allowLoadingUnsignedLibraries: false,
+        disclaim: false,
+      }) as CodexUtilityProcess,
     onDiagnostic: (message) => {
       console.warn(`[TRACE] codex ${message}`);
     },

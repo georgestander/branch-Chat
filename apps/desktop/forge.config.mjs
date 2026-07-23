@@ -84,6 +84,10 @@ export default {
             entry: "src/preload.ts",
             config: "vite.preload.config.mts",
           },
+          {
+            entry: "src/main/codex/utility-entry.ts",
+            config: "vite.main.config.mts",
+          },
         ],
         renderer: [
           {
