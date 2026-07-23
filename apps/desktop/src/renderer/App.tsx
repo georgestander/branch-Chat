@@ -53,6 +53,7 @@ import {
   removeStreamStateIfMatching,
   reduceStreamState,
   retainBranchRecords,
+  retainBranchSelectionDraft,
   toRenderedMessage,
 } from "./state.ts";
 import {
@@ -456,6 +457,13 @@ export function App(): React.JSX.Element {
       const sameConversation =
         nextConversationId !== null &&
         nextConversationId === previousConversationId;
+      setBranchDraft((current) =>
+        retainBranchSelectionDraft(
+          current,
+          previousConversationId,
+          nextConversationId,
+        ),
+      );
       const validBranchIds = new Set(
         bootstrap.kind === "ready"
           ? Object.keys(bootstrap.snapshot.branches)

@@ -7,6 +7,7 @@ import type {
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
 import type {
+  BranchSelectionDraft,
   RendererStreamEvent,
   StreamState,
 } from "./types.ts";
@@ -18,6 +19,17 @@ export function retainBranchRecords<T>(
   return Object.fromEntries(
     Object.entries(current).filter(([branchId]) => branchId in branches),
   );
+}
+
+export function retainBranchSelectionDraft(
+  draft: BranchSelectionDraft | null,
+  previousConversationId: string | null,
+  nextConversationId: string | null,
+): BranchSelectionDraft | null {
+  return previousConversationId !== null &&
+    previousConversationId === nextConversationId
+    ? draft
+    : null;
 }
 
 export function branchChildren(
@@ -231,6 +243,19 @@ export function isStreamActive(
       stream.status !== "complete" &&
       stream.status !== "cancelled" &&
       stream.status !== "error",
+  );
+}
+
+export function isEmptyCanvasRoot(
+  branchId: BranchId,
+  rootBranchId: BranchId,
+  messageCount: number,
+  stream: StreamState | null | undefined,
+): boolean {
+  return (
+    branchId === rootBranchId &&
+    messageCount === 0 &&
+    !isStreamActive(stream)
   );
 }
 

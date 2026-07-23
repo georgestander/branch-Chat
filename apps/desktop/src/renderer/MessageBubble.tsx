@@ -8,8 +8,8 @@ import {
 import { branchToneByKey } from "@branchy/conversation-core";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
+import { createBranchSelectionDraft } from "./branch-selection.ts";
 import { Icon } from "./icons.tsx";
-import { trimSelectionRange } from "./markdown.ts";
 import { MarkdownContent } from "./MarkdownContent.tsx";
 import { sourceSelectionOffsets } from "./state.ts";
 import {
@@ -96,17 +96,15 @@ export const MessageBubble = memo(function MessageBubble({
     ) {
       return;
     }
-    const trimmedSelection = trimSelectionRange(
-      range.toString(),
-      sourceSelectionOffsets(root, range),
-    );
-    if (!trimmedSelection) return;
-    onCreateBranch({
-      parentBranchId: branchId,
+    const draft = createBranchSelectionDraft({
+      branchId,
       messageId: message.id,
-      excerpt: trimmedSelection.excerpt,
-      span: trimmedSelection.span,
+      role: message.role,
+      selectedText: range.toString(),
+      sourceSpan: sourceSelectionOffsets(root, range),
     });
+    if (!draft) return;
+    onCreateBranch(draft);
     browserSelection.removeAllRanges();
   }, [branchId, message.id, message.role, onCreateBranch]);
 

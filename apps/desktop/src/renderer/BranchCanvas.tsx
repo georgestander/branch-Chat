@@ -53,6 +53,7 @@ import {
 import {
   branchToFocusBeforeFold,
   descendantCount,
+  isEmptyCanvasRoot,
   isStreamActive,
   isSupersededByActiveStream,
   messagesForBranch,
@@ -313,10 +314,12 @@ const BranchCard = memo(function BranchCard({
     ? data.snapshot.branches[branch.parentId]?.title ?? "Parent branch"
     : null;
   const streamActive = isStreamActive(stream);
-  const emptyRoot =
-    branch.parentId === null &&
-    visibleMessages.length === 0 &&
-    !streamActive;
+  const emptyRoot = isEmptyCanvasRoot(
+    branch.id,
+    data.snapshot.conversation.rootBranchId,
+    visibleMessages.length,
+    stream,
+  );
   const composer = (
     <Composer
       branchTitle={title}

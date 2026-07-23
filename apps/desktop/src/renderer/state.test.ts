@@ -12,6 +12,7 @@ import {
   descendantCount,
   initialStreamState,
   isBranchDescendant,
+  isEmptyCanvasRoot,
   isSupersededByActiveStream,
   isStreamActive,
   latestUserPrompt,
@@ -20,6 +21,7 @@ import {
   removeStreamStateIfMatching,
   reduceStreamState,
   retainBranchRecords,
+  retainBranchSelectionDraft,
   visibleBranchIds,
 } from "./state.ts";
 
@@ -238,6 +240,24 @@ test("terminal streams allow a retry while active streams block it", () => {
   assert.equal(isStreamActive(undefined), false);
 });
 
+test("empty canvas detection uses the canonical root instead of parent nullability", () => {
+  const starting = initialStreamState("stream", "root");
+
+  assert.equal(isEmptyCanvasRoot("root", "root", 0, undefined), true);
+  assert.equal(
+    isEmptyCanvasRoot(
+      "root",
+      "root",
+      0,
+      { ...starting, status: "complete" },
+    ),
+    true,
+  );
+  assert.equal(isEmptyCanvasRoot("child", "root", 0, undefined), false);
+  assert.equal(isEmptyCanvasRoot("root", "root", 1, undefined), false);
+  assert.equal(isEmptyCanvasRoot("root", "root", 0, starting), false);
+});
+
 test("active bootstrap streams suppress only their blank assistant placeholder", () => {
   const stream = initialStreamState("stream", "root", "assistant-1");
   const userMessage: Message = {
@@ -286,6 +306,28 @@ test("same-conversation reloads retain only live branch composer state", () => {
       snapshot().branches,
     ),
     { root: "root draft", child: "child draft" },
+  );
+});
+
+test("temporary branch selection survives reload but not conversation changes", () => {
+  const draft = {
+    parentBranchId: "root",
+    messageId: "assistant",
+    excerpt: "selected text",
+    span: { start: 2, end: 15 },
+  };
+
+  assert.equal(
+    retainBranchSelectionDraft(draft, "conversation-a", "conversation-a"),
+    draft,
+  );
+  assert.equal(
+    retainBranchSelectionDraft(draft, "conversation-a", "conversation-b"),
+    null,
+  );
+  assert.equal(
+    retainBranchSelectionDraft(draft, "conversation-a", null),
+    null,
   );
 });
 
