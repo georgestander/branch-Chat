@@ -88,11 +88,14 @@ test("Codex child environment is allowlisted and cannot inherit app secrets", as
   });
 });
 
-test("app-server arguments force file auth and experimental realtime over stdio", () => {
+test("app-server arguments force file auth over stdio without realtime voice", () => {
   const args = buildCodexAppServerArguments();
   assert.deepEqual(args.slice(-2), ["--listen", "stdio://"]);
   assert(args.includes('cli_auth_credentials_store="file"'));
-  assert(args.includes("features.realtime_conversation=true"));
+  assert.equal(
+    args.some((argument) => argument.includes("realtime")),
+    false,
+  );
   assert.equal(args.includes("--strict-config"), true);
   assert.equal(args.includes("app-server"), false);
   assert.equal(args.includes("--enable"), false);

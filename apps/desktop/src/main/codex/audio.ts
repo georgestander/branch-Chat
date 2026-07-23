@@ -2,9 +2,6 @@ export const MAX_DICTATION_BODY_BYTES = 6 * 1024 * 1024;
 export const MAX_DICTATION_DURATION_SECONDS = 120;
 export const DICTATION_SAMPLE_RATE = 24_000;
 
-const DICTATION_FRAME_SECONDS = 1;
-const DEFAULT_SETTLE_MILLISECONDS = 750;
-
 export class DictationRequestError extends Error {
   readonly status: number;
 
@@ -19,14 +16,6 @@ export interface ParsedPcm16Wav {
   pcm: Buffer;
   samples: number;
   durationSeconds: number;
-}
-
-export interface RealtimeAudioFrame {
-  data: string;
-  sampleRate: number;
-  numChannels: number;
-  samplesPerChannel: number;
-  itemId: null;
 }
 
 export function parsePcm16Wav(input: Uint8Array): ParsedPcm16Wav {
@@ -103,39 +92,4 @@ export function parsePcm16Wav(input: Uint8Array): ParsedPcm16Wav {
     );
   }
   return { pcm, samples, durationSeconds };
-}
-
-export function buildDictationFrames(
-  pcm: Uint8Array,
-  settleMilliseconds = DEFAULT_SETTLE_MILLISECONDS,
-): RealtimeAudioFrame[] {
-  const bytes = Buffer.isBuffer(pcm) ? pcm : Buffer.from(pcm);
-  const bytesPerFrame =
-    DICTATION_SAMPLE_RATE * 2 * DICTATION_FRAME_SECONDS;
-  const frames: RealtimeAudioFrame[] = [];
-  for (let offset = 0; offset < bytes.length; offset += bytesPerFrame) {
-    const data = bytes.subarray(
-      offset,
-      Math.min(offset + bytesPerFrame, bytes.length),
-    );
-    frames.push({
-      data: data.toString("base64"),
-      sampleRate: DICTATION_SAMPLE_RATE,
-      numChannels: 1,
-      samplesPerChannel: data.length / 2,
-      itemId: null,
-    });
-  }
-
-  const silenceSamples = Math.ceil(
-    (DICTATION_SAMPLE_RATE * settleMilliseconds) / 1000,
-  );
-  frames.push({
-    data: Buffer.alloc(silenceSamples * 2).toString("base64"),
-    sampleRate: DICTATION_SAMPLE_RATE,
-    numChannels: 1,
-    samplesPerChannel: silenceSamples,
-    itemId: null,
-  });
-  return frames;
 }

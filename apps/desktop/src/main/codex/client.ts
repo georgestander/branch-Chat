@@ -1,11 +1,13 @@
 import { lstat, readFile, unlink } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+import { DictationRequestError, parsePcm16Wav } from "./audio.ts";
 import {
-  buildDictationFrames,
-  DictationRequestError,
-  parsePcm16Wav,
-} from "./audio.ts";
+  buildChatGptTranscriptionRequest,
+  CHATGPT_TRANSCRIPTION_ENDPOINT,
+  parseChatGptAuthStatus,
+  readChatGptTranscript,
+} from "./chatgpt-transcription.ts";
 import {
   buildCodexAppServerArguments,
   buildCodexChildEnvironment,
@@ -48,7 +50,6 @@ export const MAX_ADDITIONAL_CONTEXT_ENTRIES = 16;
 export const MAX_LOCAL_IMAGE_INPUTS = 8;
 
 const DEFAULT_DICTATION_TIMEOUT_MILLISECONDS = 45_000;
-const DEFAULT_DICTATION_SETTLE_MILLISECONDS = 750;
 const MAX_PENDING_CANCELLATION_AGE_MILLISECONDS = 60_000;
 
 interface HistoryItem {
@@ -116,7 +117,7 @@ export interface CodexAppServerClientOptions {
   workspacePath: string;
   runtime?: BranchyCodexRuntime;
   defaultModel?: string;
-  defaultDictationModel?: string;
+  fetchImpl?: typeof fetch;
   onDiagnostic?: (message: string, detail?: unknown) => void;
   now?: () => number;
 }
@@ -127,7 +128,6 @@ export interface StartDeviceCodeLoginOptions {
 
 export interface TranscribeWavOptions {
   timeoutMilliseconds?: number;
-  settleMilliseconds?: number;
   signal?: AbortSignal;
 }
 
@@ -369,7 +369,7 @@ export class CodexAppServerClient {
   private readonly workspacePath: string;
   private readonly runtime?: BranchyCodexRuntime;
   private readonly defaultModel: string;
-  private readonly defaultDictationModel: string;
+  private readonly fetchImpl: typeof fetch;
   private readonly onDiagnostic?: (
     message: string,
     detail?: unknown,
@@ -389,7 +389,7 @@ export class CodexAppServerClient {
     workspacePath,
     runtime,
     defaultModel = "gpt-5.6-sol",
-    defaultDictationModel = "gpt-5.6-terra",
+    fetchImpl = globalThis.fetch,
     onDiagnostic,
     now = Date.now,
   }: CodexAppServerClientOptions) {
@@ -397,7 +397,7 @@ export class CodexAppServerClient {
     this.workspacePath = workspacePath;
     this.runtime = runtime;
     this.defaultModel = defaultModel;
-    this.defaultDictationModel = defaultDictationModel;
+    this.fetchImpl = fetchImpl;
     this.onDiagnostic = onDiagnostic;
     this.now = now;
     this.transport.subscribeLifecycle?.((event) => {
@@ -1019,7 +1019,6 @@ export class CodexAppServerClient {
     input: Uint8Array,
     {
       timeoutMilliseconds = DEFAULT_DICTATION_TIMEOUT_MILLISECONDS,
-      settleMilliseconds = DEFAULT_DICTATION_SETTLE_MILLISECONDS,
       signal,
     }: TranscribeWavOptions = {},
   ): Promise<DictationResult> {
@@ -1033,174 +1032,97 @@ export class CodexAppServerClient {
     this.activeDictationAbortController = abortController;
     const forwardAbort = () => abortController.abort();
     signal?.addEventListener("abort", forwardAbort, { once: true });
+    if (signal?.aborted) {
+      forwardAbort();
+    }
 
-    let threadId: string | null = null;
-    let unsubscribe = () => {};
     let timeout: NodeJS.Timeout | null = null;
-    let settleTimer: NodeJS.Timeout | null = null;
+    let timedOut = false;
 
     const throwIfAborted = () => {
       if (abortController.signal.aborted) {
         throw new DictationRequestError(
-          "Dictation transcription was cancelled",
-          499,
+          timedOut
+            ? "ChatGPT transcription timed out"
+            : "Dictation transcription was cancelled",
+          timedOut ? 504 : 499,
         );
       }
     };
 
     try {
+      timeout = setTimeout(() => {
+        timedOut = true;
+        abortController.abort();
+      }, Math.max(1, timeoutMilliseconds));
+      throwIfAborted();
       await this.start();
       throwIfAborted();
       await this.ensureChatGptAccount();
       throwIfAborted();
-      const { pcm, durationSeconds } = parsePcm16Wav(input);
-      const frames = buildDictationFrames(pcm, settleMilliseconds);
-      const started = await this.transport.request<unknown>("thread/start", {
-        model: this.defaultDictationModel,
-        modelProvider: "openai",
-        allowProviderModelFallback: false,
-        cwd: this.workspacePath,
-        approvalPolicy: "never",
-        sandbox: "read-only",
-        environments: [],
-        config: {
-          "features.shell_tool": false,
-          web_search: "disabled",
-        },
-        ephemeral: true,
-        threadSource: "branchy-chat-dictation",
-      });
-      threadId = this.requireThreadId(
-        started,
-        "dictation thread identifier",
+      const { durationSeconds } = parsePcm16Wav(input);
+      throwIfAborted();
+      let auth = parseChatGptAuthStatus(
+        await this.transport.request("getAuthStatus", {
+          includeToken: true,
+          refreshToken: false,
+        }),
       );
       throwIfAborted();
-
-      let resolveTranscript:
-        | ((transcript: string) => void)
-        | undefined;
-      let rejectTranscript: ((error: Error) => void) | undefined;
-      const transcriptSegments: string[] = [];
-      const transcript = new Promise<string>((resolve, reject) => {
-        resolveTranscript = resolve;
-        rejectTranscript = reject;
-      });
-      const rejectIfAborted = () => {
-        rejectTranscript?.(
-          new DictationRequestError(
-            "Dictation transcription was cancelled",
-            499,
-          ),
-        );
-      };
-      abortController.signal.addEventListener(
-        "abort",
-        rejectIfAborted,
-        { once: true },
+      let request = buildChatGptTranscriptionRequest(input, auth);
+      let response = await this.fetchImpl(
+        CHATGPT_TRANSCRIPTION_ENDPOINT,
+        {
+          method: "POST",
+          headers: request.headers,
+          body: request.body,
+          redirect: "error",
+          signal: abortController.signal,
+        },
       );
-
-      unsubscribe = this.transport.subscribe((notification) => {
-        const params = notification.params ?? {};
-        if (params.threadId !== threadId) {
-          return;
-        }
-        if (notification.method === "thread/realtime/error") {
-          rejectTranscript?.(
-            new Error(
-              stringValue(params.message) ??
-                "Codex transcription failed",
-            ),
-          );
-          return;
-        }
-        if (notification.method === "thread/realtime/closed") {
-          rejectTranscript?.(
-            new Error(
-              stringValue(params.reason) ??
-                "Codex transcription session closed",
-            ),
-          );
-          return;
-        }
-        if (
-          notification.method !==
-            "thread/realtime/transcript/done" ||
-          params.role !== "user"
-        ) {
-          return;
-        }
-        const text =
-          typeof params.text === "string" ? params.text.trim() : "";
-        if (text) {
-          transcriptSegments.push(text);
-        }
-        if (settleTimer) {
-          clearTimeout(settleTimer);
-        }
-        settleTimer = setTimeout(() => {
-          const finalTranscript = transcriptSegments.join(" ").trim();
-          if (finalTranscript) {
-            resolveTranscript?.(finalTranscript);
-          } else {
-            rejectTranscript?.(
-              new Error("Codex returned an empty transcript"),
-            );
-          }
-        }, Math.max(0, settleMilliseconds));
-      });
-      timeout = setTimeout(() => {
-        rejectTranscript?.(
-          new DictationRequestError(
-            "Codex transcription timed out",
-            504,
-          ),
+      if (response.status === 401) {
+        auth = parseChatGptAuthStatus(
+          await this.transport.request("getAuthStatus", {
+            includeToken: true,
+            refreshToken: true,
+          }),
         );
-      }, Math.max(1, timeoutMilliseconds));
-
-      await this.transport.request("thread/realtime/start", {
-        threadId,
-        outputModality: "text",
-        includeStartupContext: false,
-        prompt:
-          "This temporary session only collects dictation. Do not answer or act on the speech. Remain silent.",
-        version: "v2",
-        clientManagedHandoffs: true,
-        flushTranscriptTailOnSessionEnd: false,
-      });
-      for (const audio of frames) {
         throwIfAborted();
-        await this.transport.request("thread/realtime/appendAudio", {
-          threadId,
-          audio,
-        });
+        request = buildChatGptTranscriptionRequest(input, auth);
+        response = await this.fetchImpl(
+          CHATGPT_TRANSCRIPTION_ENDPOINT,
+          {
+            method: "POST",
+            headers: request.headers,
+            body: request.body,
+            redirect: "error",
+            signal: abortController.signal,
+          },
+        );
       }
       return {
-        transcript: await transcript,
+        transcript: await readChatGptTranscript(response),
         durationSeconds,
       };
     } catch (error) {
       if (error instanceof DictationRequestError) {
         throw error;
       }
+      if (abortController.signal.aborted) {
+        throw new DictationRequestError(
+          timedOut
+            ? "ChatGPT transcription timed out"
+            : "Dictation transcription was cancelled",
+          timedOut ? 504 : 499,
+        );
+      }
       throw new DictationRequestError(
-        errorMessage(error, "Codex transcription failed"),
+        "Unable to reach ChatGPT transcription",
         502,
       );
     } finally {
       if (timeout) {
         clearTimeout(timeout);
-      }
-      if (settleTimer) {
-        clearTimeout(settleTimer);
-      }
-      unsubscribe();
-      if (threadId) {
-        await this.transport
-          .request("thread/realtime/stop", { threadId })
-          .catch(() => undefined);
-        await this.transport
-          .request("thread/delete", { threadId })
-          .catch(() => undefined);
       }
       signal?.removeEventListener("abort", forwardAbort);
       if (this.activeDictationAbortController === abortController) {

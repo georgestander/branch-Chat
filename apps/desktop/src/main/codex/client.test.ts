@@ -17,6 +17,7 @@ import {
   normalizeLocalImagePaths,
 } from "./client.ts";
 import { DictationRequestError } from "./audio.ts";
+import { CHATGPT_TRANSCRIPTION_ENDPOINT } from "./chatgpt-transcription.ts";
 import type {
   CodexNotification,
   CodexNotificationListener,
@@ -109,6 +110,20 @@ function createPcm16Wav({
   wav.write("data", 36, "ascii");
   wav.writeUInt32LE(dataBytes, 40);
   return wav;
+}
+
+function createFakeChatGptToken(
+  accountId: string,
+  signature = "signature",
+): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: accountId,
+      },
+    }),
+  ).toString("base64url");
+  return `header.${payload}.${signature}`;
 }
 
 function defaultResponse(method: string): unknown {
@@ -649,82 +664,208 @@ test("thread cleanup is idempotent for missing threads", async () => {
   );
 });
 
-test("dictation subscribes before realtime audio and always removes its temporary thread", async () => {
-  let audioFrames = 0;
-  const transport = new FakeTransport((method, _params, fake) => {
-    if (method === "thread/start") {
-      return { thread: { id: "dictation-thread" } };
-    }
-    if (method === "thread/realtime/start") {
-      assert.equal(fake.listeners.size, 1);
-      return {};
-    }
-    if (method === "thread/realtime/appendAudio") {
-      audioFrames += 1;
-      if (audioFrames === 2) {
-        fake.emit({
-          method: "thread/realtime/transcript/done",
-          params: {
-            threadId: "dictation-thread",
-            role: "user",
-            text: "hello branchy",
-          },
-        });
-      }
-      return {};
+test("dictation uses ChatGPT batch transcription with isolated account auth", async () => {
+  const wav = createPcm16Wav();
+  const accessToken = createFakeChatGptToken("account-1");
+  const transport = new FakeTransport((method) => {
+    if (method === "getAuthStatus") {
+      return {
+        authMethod: "chatgpt",
+        authToken: accessToken,
+        requiresOpenaiAuth: true,
+      };
     }
     return defaultResponse(method);
   });
+  const requests: Array<{
+    url: string;
+    init: RequestInit | undefined;
+  }> = [];
   const client = new CodexAppServerClient({
     transport,
     workspacePath: "/isolated/workspace",
+    fetchImpl: async (input, init) => {
+      requests.push({ url: String(input), init });
+      return new Response(
+        JSON.stringify({ text: "hello branchy" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    },
   });
 
   assert.deepEqual(
-    await client.transcribeWav(createPcm16Wav(), {
+    await client.transcribeWav(wav, {
       timeoutMilliseconds: 2_000,
-      settleMilliseconds: 1,
     }),
     {
       transcript: "hello branchy",
       durationSeconds: 0.02,
     },
   );
-  assert.deepEqual(
-    transport.calls
-      .filter((call) => call.kind === "request")
-      .slice(-2)
-      .map((call) => call.method),
-    ["thread/realtime/stop", "thread/delete"],
+  const request = requests[0];
+  assert(request);
+  assert.equal(request.url, CHATGPT_TRANSCRIPTION_ENDPOINT);
+  assert.equal(request.init?.method, "POST");
+  assert.equal(request.init?.redirect, "error");
+  const headers = new Headers(request.init?.headers);
+  assert.equal(headers.get("Authorization"), `Bearer ${accessToken}`);
+  assert.equal(headers.get("ChatGPT-Account-Id"), "account-1");
+  assert.equal(headers.get("originator"), "Branchy Chat");
+  assert.match(
+    headers.get("Content-Type") ?? "",
+    /^multipart\/form-data; boundary=----branchy-transcribe-/,
+  );
+  const body = Buffer.from(request.init?.body as Uint8Array);
+  assert.notEqual(body.indexOf(wav), -1);
+  assert.match(
+    body.toString("utf8", 0, Math.min(body.length, 300)),
+    /name="file"; filename="branchy-dictation\.wav"/,
+  );
+  assert.equal(
+    transport.calls.some((call) =>
+      call.method?.startsWith("thread/realtime"),
+    ),
+    false,
   );
 });
 
-test("dictation timeout still stops realtime and deletes its temporary thread", async () => {
+test("dictation refreshes ChatGPT auth once after an unauthorized response", async () => {
+  const firstToken = createFakeChatGptToken("account-1", "first");
+  const refreshedToken = createFakeChatGptToken(
+    "account-1",
+    "refreshed",
+  );
+  const refreshValues: boolean[] = [];
+  const transport = new FakeTransport((method, params) => {
+    if (method === "getAuthStatus") {
+      const refreshToken =
+        (params as { refreshToken?: boolean }).refreshToken === true;
+      refreshValues.push(refreshToken);
+      return {
+        authMethod: "chatgpt",
+        authToken: refreshToken ? refreshedToken : firstToken,
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  const authorizationHeaders: string[] = [];
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    fetchImpl: async (_input, init) => {
+      authorizationHeaders.push(
+        new Headers(init?.headers).get("Authorization") ?? "",
+      );
+      if (authorizationHeaders.length === 1) {
+        return new Response(null, { status: 401 });
+      }
+      return new Response(JSON.stringify({ text: "refreshed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  assert.equal(
+    (await client.transcribeWav(createPcm16Wav())).transcript,
+    "refreshed",
+  );
+  assert.deepEqual(refreshValues, [false, true]);
+  assert.deepEqual(authorizationHeaders, [
+    `Bearer ${firstToken}`,
+    `Bearer ${refreshedToken}`,
+  ]);
+});
+
+test("dictation rejects non-ChatGPT auth before making a network request", async () => {
+  let fetchCalls = 0;
   const transport = new FakeTransport((method) => {
-    if (method === "thread/start") {
-      return { thread: { id: "dictation-timeout" } };
+    if (method === "getAuthStatus") {
+      return {
+        authMethod: "apikey",
+        authToken: "not-a-chatgpt-token",
+        requiresOpenaiAuth: true,
+      };
     }
     return defaultResponse(method);
   });
   const client = new CodexAppServerClient({
     transport,
     workspacePath: "/isolated/workspace",
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return new Response(null, { status: 500 });
+    },
+  });
+
+  await assert.rejects(
+    () => client.transcribeWav(createPcm16Wav()),
+    (error) =>
+      error instanceof DictationRequestError && error.status === 401,
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test("dictation timeout aborts the ChatGPT transcription request", async () => {
+  const transport = new FakeTransport((method) => {
+    if (method === "getAuthStatus") {
+      return {
+        authMethod: "chatgpt",
+        authToken: createFakeChatGptToken("account-timeout"),
+        requiresOpenaiAuth: true,
+      };
+    }
+    return defaultResponse(method);
+  });
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    fetchImpl: async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      }),
   });
 
   await assert.rejects(
     () =>
       client.transcribeWav(createPcm16Wav(), {
         timeoutMilliseconds: 5,
-        settleMilliseconds: 1,
       }),
     (error) =>
       error instanceof DictationRequestError && error.status === 504,
   );
-  assert.deepEqual(
-    transport.calls
-      .filter((call) => call.kind === "request")
-      .slice(-2)
-      .map((call) => call.method),
-    ["thread/realtime/stop", "thread/delete"],
+});
+
+test("dictation honors an already-cancelled request before app-server startup", async () => {
+  const transport = new FakeTransport((method) =>
+    defaultResponse(method),
   );
+  const abortController = new AbortController();
+  abortController.abort();
+  const client = new CodexAppServerClient({
+    transport,
+    workspacePath: "/isolated/workspace",
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ text: "unexpected" }), {
+        status: 200,
+      }),
+  });
+
+  await assert.rejects(
+    () =>
+      client.transcribeWav(createPcm16Wav(), {
+        signal: abortController.signal,
+      }),
+    (error) =>
+      error instanceof DictationRequestError && error.status === 499,
+  );
+  assert.deepEqual(transport.calls, []);
 });
