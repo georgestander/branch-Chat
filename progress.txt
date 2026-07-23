@@ -39,3 +39,10 @@
 - Evidence: the packaged app launched and signed in; a text attachment returned its exact sentinel; chat, cancellation, reload persistence, and archive validation passed; image progress survived reload and completed in place; Edit prompt & retry restored editable text without sending; `/tmp/branchy-e2e-image.png` is byte-identical to the stored generated-image object with SHA-256 `36e77ebe94e81a44ea42ca81ff0885a0c996211809b181ae5861df83d6da581c`; the global `~/.codex/auth.json` checksum stayed unchanged.
 - Verification: current SQLite state retains `Branchy E2E QA 2026-07-23`, the attachment record, completed image-generation invocation, and generated asset; the final package passes deep strict codesign verification; Branchy application data and isolated auth paths are mode `0700`/`0600`.
 - Next: finish the real-speech packaged dictation smoke and final visual inspection after macOS is unlocked.
+
+2026-07-23 — Neutral active-branch focus and visible selection cue
+- Reference: Electron migration visual-parity audit and the no-colored-shadow/no-colored-edge requirement.
+- Decisions: distinguish the active card with one neutral foreground border and no shadow; expose the assistant-message highlight interaction with a quiet inline hint; capture selections from keyboard, pointer, and touch input.
+- Files changed: apps/desktop/src/renderer/MessageBubble.tsx, apps/desktop/src/renderer/styles.css, apps/desktop/scripts/package-contract.test.mjs.
+- Verification: pnpm types; npm run test 289/289; npm run lint; package contracts assert the neutral active boundary, absence of active-card shadow, visible hint, and keyboard/mouse/touch selection handlers.
+- Next: rebuild and inspect the packaged app, then complete deep-branch and real-speech dictation acceptance.

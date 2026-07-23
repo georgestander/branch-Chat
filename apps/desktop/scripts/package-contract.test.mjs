@@ -35,6 +35,10 @@ const branchCanvasSource = await readFile(
   new URL("../src/renderer/BranchCanvas.tsx", import.meta.url),
   "utf8",
 );
+const messageBubbleSource = await readFile(
+  new URL("../src/renderer/MessageBubble.tsx", import.meta.url),
+  "utf8",
+);
 const rendererMarkdownSource = await readFile(
   new URL("../src/renderer/markdown.ts", import.meta.url),
   "utf8",
@@ -121,8 +125,24 @@ test("branch creation chrome stays neutral without colored rails or shadows", ()
     rendererStyles,
     /\.selection-action\s*\{[^}]*box-shadow:\s*none;/su,
   );
+  assert.match(
+    rendererStyles,
+    /\.branch-card\.is-active\s*\{[^}]*border-color:\s*var\(--foreground\);[^}]*outline:\s*0;/su,
+  );
+  assert.doesNotMatch(
+    rendererStyles,
+    /\.branch-card\.is-active\s*\{[^}]*box-shadow:/su,
+  );
   assert.match(rendererStyles, /--selection:\s*rgba\(107,\s*114,\s*128,/u);
   assert.match(rendererStyles, /--selection:\s*rgba\(156,\s*163,\s*175,/u);
+  assert.match(
+    messageBubbleSource,
+    /onKeyUp=\{captureSelection\}[\s\S]*onMouseUp=\{captureSelection\}[\s\S]*onTouchEnd=\{captureSelection\}/u,
+  );
+  assert.match(
+    messageBubbleSource,
+    /Highlight text to start a focused child branch\./u,
+  );
 });
 
 test("the production renderer bundles exactly one React runtime", async () => {

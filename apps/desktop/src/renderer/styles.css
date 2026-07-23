@@ -1219,6 +1219,7 @@ button.account-avatar:hover {
 }
 
 .branch-card.is-active {
+  border-color: var(--foreground);
   outline: 0;
 }
 
@@ -1492,6 +1493,20 @@ button.account-avatar:hover {
   -webkit-user-select: text;
   user-select: text;
   cursor: text;
+}
+
+.message__branch-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 12px 0 0;
+  color: var(--muted-foreground);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.message__branch-hint svg {
+  flex: 0 0 auto;
 }
 
 .message__text {

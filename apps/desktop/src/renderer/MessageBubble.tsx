@@ -112,7 +112,9 @@ export const MessageBubble = memo(function MessageBubble({
     >
       <div
         className="message__body"
+        onKeyUp={captureSelection}
         onMouseUp={captureSelection}
+        onTouchEnd={captureSelection}
       >
         {userMessageCollapsible ? (
           <button
@@ -270,6 +272,13 @@ export const MessageBubble = memo(function MessageBubble({
               </button>
             ))}
           </nav>
+        ) : null}
+
+        {message.role === "assistant" ? (
+          <p className="message__branch-hint">
+            <Icon name="branch" size={13} />
+            Highlight text to start a focused child branch.
+          </p>
         ) : null}
       </div>
     </article>
