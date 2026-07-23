@@ -56,6 +56,9 @@ dist
 # Vite cache
 .vite
 
+# Electron Forge output
+apps/desktop/out/
+
 # Coverage directory used by tools like istanbul
 coverage
 

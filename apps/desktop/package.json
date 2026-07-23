@@ -1,0 +1,29 @@
+{
+  "name": "@branchy/desktop",
+  "version": "1.0.0",
+  "description": "Branchy Chat Electron desktop shell",
+  "private": true,
+  "type": "module",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "dev": "electron-forge start",
+    "package": "electron-forge package --arch=arm64 --platform=darwin",
+    "make": "electron-forge make --arch=arm64 --platform=darwin",
+    "test": "node --experimental-strip-types --test src/main/*.test.ts",
+    "types": "tsc --noEmit -p tsconfig.json",
+    "lint": "pnpm run types",
+    "clean": "rm -rf .vite out"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-dmg": "7.11.2",
+    "@electron-forge/plugin-vite": "7.11.2",
+    "@types/node": "~24.5.2",
+    "electron": "43.2.0",
+    "typescript": "5.8.3",
+    "vite": "7.1.11"
+  },
+  "config": {
+    "forge": "./forge.config.mjs"
+  }
+}
