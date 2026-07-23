@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,6 +37,7 @@ import {
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
 import { BrandMark } from "./BrandMark.tsx";
+import { completeBranchSwitchPaintTrace } from "./branch-switch-performance.ts";
 import { BranchCompareDialog } from "./BranchCompareDialog.tsx";
 import {
   Composer,
@@ -311,6 +313,15 @@ const BranchCard = memo(function BranchCard({
     visibleMessages.length,
     stream,
   );
+
+  useLayoutEffect(() => {
+    if (!active || !expanded || !threadRef.current) return;
+    completeBranchSwitchPaintTrace({
+      branchId: branch.id,
+      renderedMessageCount: visibleMessages.length,
+    });
+  }, [active, branch.id, expanded, visibleMessages]);
+
   const composer = (
     <Composer
       branchTitle={title}

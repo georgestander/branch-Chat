@@ -109,6 +109,18 @@ pnpm -C apps/desktop types
 pnpm -C apps/desktop test
 ```
 
+Measure the production renderer's branch-switch click-to-visible path with a
+representative two-branch, 500-message fixture:
+
+```bash
+pnpm -C apps/desktop benchmark:branch-switch
+```
+
+The benchmark resets to a one-message root branch, then performs 10 warmup
+switches and 100 measured real DOM clicks in a fixed-size foreground Electron
+window. Every sample expands and maps a collapsed 499-message child before
+waiting two animation frames. It fails when p95 completion is 120 ms or slower.
+
 ## Release packaging
 
 A distributable DMG is a separate release workflow. It must be signed with a

@@ -11,6 +11,7 @@
     "package": "electron-forge package --arch=arm64 --platform=darwin",
     "make": "electron-forge make --arch=arm64 --platform=darwin",
     "release:mac": "BRANCHY_RELEASE=1 electron-forge make --arch=arm64 --platform=darwin",
+    "benchmark:branch-switch": "vite build --config vite.renderer.config.mts && electron scripts/branch-switch-performance.mjs",
     "test:release": "node --test scripts/package-contract.test.mjs scripts/release-macos.test.mjs",
     "test": "node scripts/run-tests.mjs && node --test scripts/package-contract.test.mjs scripts/release-macos.test.mjs",
     "types": "tsc --noEmit -p tsconfig.json",

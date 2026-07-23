@@ -29,6 +29,7 @@ import type {
 
 import { AccountPanel } from "./AccountPanel.tsx";
 import { BrandMark } from "./BrandMark.tsx";
+import { startBranchSwitchPaintTrace } from "./branch-switch-performance.ts";
 import {
   BranchCanvas,
   type BranchStopMode,
@@ -833,6 +834,14 @@ export function App(): React.JSX.Element {
   const openBranch = useCallback(
     (branchId: BranchId) => {
       if (!ready) return;
+      startBranchSwitchPaintTrace(() => ({
+        branchId,
+        totalMessageCount: Object.keys(ready.snapshot.messages).length,
+        targetMessageCount:
+          ready.messagesByBranch[branchId]?.length ??
+          ready.snapshot.branches[branchId]?.messageIds.length ??
+          0,
+      }));
       const currentNode = ready.snapshot.canvas.nodes[branchId];
       patchCanvas({
         focusedBranchId: branchId,

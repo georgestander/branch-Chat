@@ -53,3 +53,10 @@
 - Files changed: README.md, CONTRIBUTING.md, Docs/architecture.md, Docs/env-vars.md, apps/desktop/README.md.
 - Verification: all local Markdown links resolve; documented commands, environment variables, security boundaries, data paths, and release distinctions were checked against repository code; pnpm types; npm run test 294/294; npm run lint; git diff --check.
 - Next: land and execute the production-renderer branch-switch benchmark, then finish packaged visual, deep-branch, archive, and dictation acceptance.
+
+2026-07-23 — Action-to-visible branch-switch benchmark harness
+- Reference: Electron migration p95 branch-switch visible-completion budget with up to 500 total messages.
+- Decisions: instrument the real App open-branch action only behind an explicit benchmark query; complete a sample only after the expected active, expanded branch has mounted its exact message count and crossed two animation frames; drive a foreground production renderer with a one-message root and collapsed 499-message child.
+- Files changed: apps/desktop/src/renderer/branch-switch-performance.ts, apps/desktop/src/renderer/branch-switch-performance.test.ts, apps/desktop/src/renderer/App.tsx, apps/desktop/src/renderer/BranchCanvas.tsx, apps/desktop/scripts/branch-switch-performance.mjs, apps/desktop/scripts/branch-switch-performance-preload.cjs, apps/desktop/package.json, apps/desktop/README.md.
+- Verification: recorder and percentile tests 5/5; pnpm types; npm run test 294/294; npm run lint; production renderer build and benchmark-script syntax checks pass; instrumentation is lazy and does not evaluate metadata outside the explicit benchmark flag.
+- Next: run `pnpm -C apps/desktop benchmark:branch-switch` in an unlocked foreground session, record p50/p95, and require p95 below 120 ms.
