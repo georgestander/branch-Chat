@@ -27,6 +27,18 @@ const rendererHtml = await readFile(
   new URL("../src/renderer/index.html", import.meta.url),
   "utf8",
 );
+const rendererStyles = await readFile(
+  new URL("../src/renderer/styles.css", import.meta.url),
+  "utf8",
+);
+const branchCanvasSource = await readFile(
+  new URL("../src/renderer/BranchCanvas.tsx", import.meta.url),
+  "utf8",
+);
+const rendererMarkdownSource = await readFile(
+  new URL("../src/renderer/markdown.ts", import.meta.url),
+  "utf8",
+);
 const desktopIconUrl = new URL(
   "../resources/icons/BranchyChat.icns",
   import.meta.url,
@@ -71,6 +83,27 @@ test("desktop packaging and runtime surfaces use the supplied Branchy icon", asy
       ),
     ),
   );
+});
+
+test("branch creation chrome stays neutral without colored rails or shadows", () => {
+  assert.doesNotMatch(
+    rendererStyles,
+    /--branch-tone|--anchor-tone|--branch-highlight-color/u,
+  );
+  assert.doesNotMatch(
+    branchCanvasSource,
+    /branchToneForBranch|#f59e0b/u,
+  );
+  assert.doesNotMatch(
+    rendererMarkdownSource,
+    /branchToneByKey|branch-highlight-color/u,
+  );
+  assert.match(
+    rendererStyles,
+    /\.selection-action\s*\{[^}]*box-shadow:\s*none;/su,
+  );
+  assert.match(rendererStyles, /--selection:\s*rgba\(107,\s*114,\s*128,/u);
+  assert.match(rendererStyles, /--selection:\s*rgba\(156,\s*163,\s*175,/u);
 });
 
 test("the production renderer bundles exactly one React runtime", async () => {

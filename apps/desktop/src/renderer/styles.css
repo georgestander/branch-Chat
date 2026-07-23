@@ -26,7 +26,7 @@
   --canvas-dot: #d7d9dc;
   --success: #15803d;
   --warning: #b45309;
-  --selection: rgba(217, 48, 37, 0.16);
+  --selection: rgba(107, 114, 128, 0.22);
   --menu-shadow: 0 8px 24px rgba(17, 17, 17, 0.12);
   --brand-logo-filter: none;
 }
@@ -52,7 +52,7 @@
   --canvas-dot: #353535;
   --success: #4ade80;
   --warning: #f59e0b;
-  --selection: rgba(227, 55, 30, 0.2);
+  --selection: rgba(156, 163, 175, 0.22);
   --menu-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
   --brand-logo-filter: invert(1);
 }
@@ -1804,7 +1804,7 @@ button.account-avatar:hover {
   font-size: 10px;
   font-weight: 650;
   white-space: nowrap;
-  box-shadow: var(--menu-shadow);
+  box-shadow: none;
   animation: pop-in 120ms ease-out both;
 }
 
