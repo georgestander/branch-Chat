@@ -1,0 +1,6 @@
+2026-07-23 — Highlight-to-branch context and neutral branch chrome
+- Reference: Electron migration end-to-end goal; parity with original canvas highlight branching.
+- Decisions: inject the verified assistant selection as the first application-context block and explicitly make it the child turn's primary focus; keep inherited thread context only as support; replace colored selection/branch affordance shadows with neutral gray and no shadow.
+- Files changed: apps/desktop/src/main/application/service.ts, apps/desktop/src/main/application/service.test.ts, apps/desktop/src/main/codex/client.test.ts, apps/desktop/src/renderer/styles.css, apps/desktop/scripts/package-contract.test.mjs.
+- Verification: focused service/client tests 36/36; package contracts 6/6; pnpm types; npm run test 274/274; npm run lint; packaged macOS computer-use flow highlighted “Booleans — truth values: true / false” and returned a BOOLEAN FOCUS response limited to booleans; visual inspection confirmed neutral draft/card/connector chrome.
+- Next: resume the remaining packaged Electron end-to-end audit, especially image generation lifecycle and dictation.
