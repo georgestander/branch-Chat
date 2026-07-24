@@ -8,6 +8,7 @@ import type {
 } from "@branchy/conversation-core";
 
 import {
+  branchConnectorEmphasis,
   branchToFocusBeforeFold,
   clearTransientImageUrls,
   descendantCount,
@@ -141,6 +142,41 @@ test("branch ancestry is cycle-safe and excludes the branch itself", () => {
 
   graph.branches.root!.parentId = "grandchild";
   assert.equal(isBranchDescendant(graph, "sibling", "grandchild"), false);
+});
+
+test("connector emphasis traces one continuous ancestry through every depth", () => {
+  const graph = snapshot();
+  graph.branches.deep = branch("deep", "grandchild");
+  graph.branches.side = branch("side", "child");
+
+  assert.equal(
+    branchConnectorEmphasis(graph, "root", "child"),
+    "default",
+  );
+  assert.equal(
+    branchConnectorEmphasis(graph, "deep", "child"),
+    "ancestry",
+  );
+  assert.equal(
+    branchConnectorEmphasis(graph, "deep", "grandchild"),
+    "ancestry",
+  );
+  assert.equal(
+    branchConnectorEmphasis(graph, "deep", "deep"),
+    "immediate",
+  );
+  assert.equal(
+    branchConnectorEmphasis(graph, "deep", "sibling"),
+    "muted",
+  );
+  assert.equal(
+    branchConnectorEmphasis(graph, "deep", "side"),
+    "muted",
+  );
+  assert.equal(
+    branchConnectorEmphasis(graph, "missing", "child"),
+    "default",
+  );
 });
 
 test("folding an active branch ancestor first focuses that ancestor", () => {

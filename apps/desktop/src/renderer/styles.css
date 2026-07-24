@@ -24,6 +24,18 @@
   --ring: #8b929c;
   --sidebar: #f8f8f8;
   --canvas-dot: #d7d9dc;
+  --connector-default: var(--border-strong);
+  --connector-muted: color-mix(
+    in srgb,
+    var(--border-strong) 56%,
+    var(--background)
+  );
+  --connector-ancestry: color-mix(
+    in srgb,
+    var(--foreground) 74%,
+    var(--border-strong)
+  );
+  --connector-immediate: var(--foreground);
   --success: #15803d;
   --warning: #b45309;
   --selection: rgba(107, 114, 128, 0.22);
@@ -50,6 +62,18 @@
   --ring: #69717d;
   --sidebar: #1a1a1a;
   --canvas-dot: #353535;
+  --connector-default: var(--border-strong);
+  --connector-muted: color-mix(
+    in srgb,
+    var(--border-strong) 56%,
+    var(--background)
+  );
+  --connector-ancestry: color-mix(
+    in srgb,
+    var(--foreground) 74%,
+    var(--border-strong)
+  );
+  --connector-immediate: var(--foreground);
   --success: #4ade80;
   --warning: #f59e0b;
   --selection: rgba(156, 163, 175, 0.22);
@@ -1128,7 +1152,9 @@ button.account-avatar:hover {
 }
 
 .react-flow__edge-path {
-  transition: stroke 120ms ease;
+  transition:
+    stroke 120ms ease,
+    stroke-width 120ms ease;
 }
 
 .react-flow__controls {

@@ -12,6 +12,7 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
+  MarkerType,
   NodeResizer,
   Panel,
   Position,
@@ -53,6 +54,7 @@ import {
   type CanvasLayoutNode,
 } from "./branch-canvas-layout.ts";
 import {
+  branchConnectorEmphasis,
   branchToFocusBeforeFold,
   descendantCount,
   isEmptyCanvasRoot,
@@ -1260,18 +1262,39 @@ function BranchCanvasInner({
             visible.has(branch.id) &&
             visible.has(branch.parentId),
         )
-        .map((branch) => ({
-          id: `${branch.parentId}-${branch.id}`,
-          source: branch.parentId!,
-          target: branch.id,
-          type: "smoothstep",
-          animated: Boolean(streamsByBranch[branch.id]),
-          style: {
-            stroke: "var(--border-strong)",
-            strokeWidth: 1.4,
-          },
-        }));
+        .map((branch) => {
+          const emphasis = branchConnectorEmphasis(
+            snapshot,
+            selectedBranchId,
+            branch.id,
+          );
+          const stroke = `var(--connector-${emphasis})`;
+          const strokeWidth =
+            emphasis === "immediate"
+              ? 2.8
+              : emphasis === "ancestry"
+                ? 2
+                : 1.4;
+          return {
+            id: `${branch.parentId}-${branch.id}`,
+            source: branch.parentId!,
+            target: branch.id,
+            type: "smoothstep",
+            animated: Boolean(streamsByBranch[branch.id]),
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 12,
+              height: 12,
+              color: stroke,
+            },
+            style: {
+              stroke,
+              strokeWidth,
+            },
+          };
+        });
     if (branchDraft && draftLayout) {
+      const stroke = "var(--connector-default)";
       branchEdges.push({
         id: `${branchDraft.parentBranchId}-${DRAFT_NODE_ID}`,
         source: branchDraft.parentBranchId,
@@ -1280,14 +1303,27 @@ function BranchCanvasInner({
         targetHandle: "draft-target",
         type: "smoothstep",
         animated: true,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 12,
+          height: 12,
+          color: stroke,
+        },
         style: {
-          stroke: "var(--border-strong)",
+          stroke,
           strokeWidth: 1.4,
         },
       });
     }
     return branchEdges;
-  }, [branchDraft, draftLayout, snapshot, streamsByBranch, visible]);
+  }, [
+    branchDraft,
+    draftLayout,
+    selectedBranchId,
+    snapshot,
+    streamsByBranch,
+    visible,
+  ]);
 
   const nodeTypes = useMemo(
     () => ({

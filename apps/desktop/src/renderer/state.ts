@@ -117,6 +117,26 @@ export function isBranchDescendant(
   return false;
 }
 
+export type BranchConnectorEmphasis =
+  | "default"
+  | "muted"
+  | "ancestry"
+  | "immediate";
+
+export function branchConnectorEmphasis(
+  snapshot: Pick<ConversationGraphSnapshot, "branches">,
+  selectedBranchId: BranchId,
+  childBranchId: BranchId,
+): BranchConnectorEmphasis {
+  const selected = snapshot.branches[selectedBranchId];
+  const child = snapshot.branches[childBranchId];
+  if (!selected?.parentId || !child?.parentId) return "default";
+  if (childBranchId === selectedBranchId) return "immediate";
+  return isBranchDescendant(snapshot, childBranchId, selectedBranchId)
+    ? "ancestry"
+    : "muted";
+}
+
 /**
  * Returns the branch that must become active before a fold hides the current
  * branch. A null result means the fold/unfold can proceed without navigation.
