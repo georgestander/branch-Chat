@@ -488,7 +488,7 @@ const BranchCard = memo(function BranchCard({
                 });
               }}
             >
-              <Icon name="plus" size={16} />
+              <Icon name="branch" size={16} />
             </button>
             <button
               className="icon-button icon-button--quiet"
