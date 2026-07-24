@@ -46,6 +46,8 @@ export type TrimmedSelection = {
 };
 
 const DESKTOP_MARKDOWN_SCHEMA = createDesktopMarkdownSchema();
+const BRANCH_HIGHLIGHTS_FILE_DATA_KEY = "branchHighlights";
+const DESKTOP_MARKDOWN_PROCESSOR = createDesktopMarkdownProcessor();
 
 export function safeExternalUrl(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -98,25 +100,35 @@ export function renderDesktopMarkdown(
   );
 
   try {
-    const processor = unified()
-      .use(remarkParse)
-      .use(remarkGfm)
-      .use(remarkMath)
-      .use(remarkRehype, { allowDangerousHtml: false })
-      .use(rehypeKatex)
-      .use(rehypeHighlight)
-      .use(rehypeEnhanceCodeBlocks)
-      .use(rehypeBranchHighlights, { highlights })
-      .use(rehypeExternalLinks)
-      .use(rehypeSanitize, DESKTOP_MARKDOWN_SCHEMA)
-      .use(rehypeStringify, { allowDangerousHtml: false });
-
-    return String(processor.processSync(markdown));
+    return String(
+      DESKTOP_MARKDOWN_PROCESSOR.processSync({
+        value: markdown,
+        data: {
+          [BRANCH_HIGHLIGHTS_FILE_DATA_KEY]: highlights,
+        },
+      }),
+    );
   } catch {
     // Partial model output must remain visible even if a Markdown extension
     // cannot parse the in-flight fragment yet.
     return `<p>${escapeHtml(markdown)}</p>`;
   }
+}
+
+function createDesktopMarkdownProcessor() {
+  return unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkMath)
+    .use(remarkRehype, { allowDangerousHtml: false })
+    .use(rehypeKatex)
+    .use(rehypeHighlight)
+    .use(rehypeEnhanceCodeBlocks)
+    .use(rehypeBranchHighlights)
+    .use(rehypeExternalLinks)
+    .use(rehypeSanitize, DESKTOP_MARKDOWN_SCHEMA)
+    .use(rehypeStringify, { allowDangerousHtml: false })
+    .freeze();
 }
 
 function highlightsForMessage(
@@ -301,9 +313,16 @@ function codeBlock(pre: HastElement, language: string | null): HastElement {
   };
 }
 
-function rehypeBranchHighlights(options: { highlights?: Highlight[] } = {}) {
-  return (tree: HastRoot): void => {
-    const highlights = options.highlights ?? [];
+function rehypeBranchHighlights() {
+  return (
+    tree: HastRoot,
+    file: { data: Record<string, unknown> },
+  ): void => {
+    const storedHighlights =
+      file.data[BRANCH_HIGHLIGHTS_FILE_DATA_KEY];
+    const highlights = Array.isArray(storedHighlights)
+      ? (storedHighlights as Highlight[])
+      : [];
     if (highlights.length === 0) return;
     const state = { offset: 0 };
     wrapHighlightChildren(tree, highlights, state);

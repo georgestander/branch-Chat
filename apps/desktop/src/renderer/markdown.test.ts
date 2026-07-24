@@ -118,6 +118,29 @@ test("marks exact visible source ranges with stable branch lineage", () => {
   assert.doesNotMatch(html, /> delta<\/mark>/);
 });
 
+test("keeps branch highlights isolated between shared processor calls", () => {
+  const highlighted = renderDesktopMarkdown("Alpha beta gamma", {
+    messageId: "message-shared-processor",
+    branchAnchors: [
+      {
+        branchId: "branch-highlighted",
+        title: "Highlighted branch",
+        excerpt: "beta",
+        range: { start: 6, end: 10 },
+        tone: "amber",
+      },
+    ],
+  });
+  const plain = renderDesktopMarkdown("Alpha beta gamma", {
+    messageId: "message-shared-processor",
+    branchAnchors: [],
+  });
+
+  assert.match(highlighted, /data-branch-id="branch-highlighted"/);
+  assert.doesNotMatch(plain, /data-branch-highlight/);
+  assert.match(plain, /Alpha beta gamma/);
+});
+
 test("renders incomplete streaming Markdown without requiring rendered HTML", () => {
   const html = renderDesktopMarkdown(
     "Still **thinking through an unfinished response",

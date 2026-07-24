@@ -145,6 +145,13 @@ export function messagesForBranch(
     .map(toRenderedMessage);
 }
 
+export function hasLoadedBranchMessages(
+  messagesByBranch: Record<BranchId, RenderedMessage[]>,
+  branchId: BranchId,
+): boolean {
+  return Object.hasOwn(messagesByBranch, branchId);
+}
+
 export function latestUserPrompt(
   messages: ReadonlyArray<Pick<Message, "role" | "content">>,
 ): string {

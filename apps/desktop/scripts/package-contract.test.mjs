@@ -43,6 +43,10 @@ const rendererMarkdownSource = await readFile(
   new URL("../src/renderer/markdown.ts", import.meta.url),
   "utf8",
 );
+const branchSwitchBenchmarkSource = await readFile(
+  new URL("./branch-switch-performance.mjs", import.meta.url),
+  "utf8",
+);
 const desktopIconUrl = new URL(
   "../resources/icons/BranchyChat.icns",
   import.meta.url,
@@ -65,6 +69,39 @@ test("the renderer bundle is emitted into Forge's packaged .vite tree", () => {
   assert.equal(
     rendererConfig.build?.outDir,
     fileURLToPath(new URL("../.vite/renderer/main_window", import.meta.url)),
+  );
+});
+
+test("the foreground benchmark starts Electron without unbounded frame waits", () => {
+  assert.doesNotMatch(
+    branchSwitchBenchmarkSource,
+    /await\s+app\.whenReady\(\)/u,
+    "Top-level awaiting app.whenReady deadlocks Electron ESM startup",
+  );
+  assert.match(
+    branchSwitchBenchmarkSource,
+    /app\.whenReady\(\)\s*\.then\(/u,
+  );
+  assert.match(
+    branchSwitchBenchmarkSource,
+    /Electron did not become ready for the branch-switch benchmark in 30 seconds\./u,
+  );
+  assert.match(
+    branchSwitchBenchmarkSource,
+    /app\.focus\(\{\s*steal:\s*true\s*\}\)/u,
+  );
+  assert.match(
+    branchSwitchBenchmarkSource,
+    /const exitCode = await runBenchmark\(\);\s*app\.exit\(exitCode\);/su,
+    "A failed performance budget must exit the command unsuccessfully",
+  );
+  assert.match(
+    branchSwitchBenchmarkSource,
+    /setTimeout\(\(\) => \{\s*reject\(new Error\("Branch-switch fixture did not render in 30 seconds"\)\);/su,
+  );
+  assert.match(
+    branchSwitchBenchmarkSource,
+    /setTimeout\(\(\) => \{\s*reject\(new Error\("Benchmark branch did not collapse"\)\);/su,
   );
 });
 

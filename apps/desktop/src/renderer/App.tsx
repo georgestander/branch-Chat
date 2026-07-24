@@ -49,6 +49,7 @@ import {
 } from "./pending-uploads.ts";
 import {
   clearTransientImageUrls,
+  hasLoadedBranchMessages,
   initialStreamState,
   isStreamActive,
   latestUserPrompt,
@@ -842,7 +843,6 @@ export function App(): React.JSX.Element {
           ready.snapshot.branches[branchId]?.messageIds.length ??
           0,
       }));
-      const currentNode = ready.snapshot.canvas.nodes[branchId];
       patchCanvas({
         focusedBranchId: branchId,
         nodes: { [branchId]: { expanded: true } },
@@ -850,7 +850,7 @@ export function App(): React.JSX.Element {
       setScreen((current) =>
         current.kind === "ready" ? { ...current, activeBranchId: branchId } : current,
       );
-      if (ready.messagesByBranch[branchId] && currentNode?.expanded) return;
+      if (hasLoadedBranchMessages(ready.messagesByBranch, branchId)) return;
       void window.branchy
         .openCanvasBranchCard({
           conversationId: ready.conversationId,

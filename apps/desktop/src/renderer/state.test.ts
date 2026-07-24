@@ -11,6 +11,7 @@ import {
   branchToFocusBeforeFold,
   clearTransientImageUrls,
   descendantCount,
+  hasLoadedBranchMessages,
   initialStreamState,
   isBranchDescendant,
   isEmptyCanvasRoot,
@@ -123,6 +124,11 @@ test("latest user prompt ignores assistant output and empty prompts", () => {
     latestUserPrompt([{ role: "assistant", content: "Only an answer" }]),
     "",
   );
+});
+
+test("loaded branch messages include an intentionally empty branch", () => {
+  assert.equal(hasLoadedBranchMessages({ root: [] }, "root"), true);
+  assert.equal(hasLoadedBranchMessages({ root: [] }, "child"), false);
 });
 
 test("branch ancestry is cycle-safe and excludes the branch itself", () => {
