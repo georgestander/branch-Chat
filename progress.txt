@@ -81,3 +81,10 @@
 - Archive and auth: the native dialogs exported seven conversations to `/tmp/branchy-e2e-roundtrip-2026-07-23.branchychat` and imported all seven successfully; global Codex auth SHA-256 remained `ab176be8cebac41fef8a597d37561f3f2f76bc51ce23fcc309faca4fd5e88508`, Branchy’s isolated auth SHA-256 remained `57cccd6a0ca05da534fd460a06efd79533875fdd067c1901e78f3d982f1bfaf4`, and both files remain mode `0600`.
 - Package: `apps/desktop/out/Branchy Chat-darwin-arm64/Branchy Chat.app` was rebuilt from `942b65d`, passes deep strict codesign verification, and contains the bounded microphone recovery; the older local QA DMG predates the current app and is not final.
 - Remaining required checks: exercise the rebuilt microphone recovery and a real editable, unsent speech transcript on a host exposing an input device; record the foreground 500-message branch-switch p50/p95; delete the disposable QA branch only after action-time confirmation; rebuild the local QA DMG after command approval succeeds.
+
+2026-07-24 — Packaged one-way dictation acceptance
+- Reference: Electron migration speak-to-transcript, review-before-send, and reload-safe draft gates.
+- Evidence: after relaunching the current packaged app, Computer Use started native recording; captured speech transcribed to `Yes.` in the active branch composer; no message was submitted; Send became enabled only because the editable draft existed.
+- Edit and reload: Computer Use changed the transcript to `Yes. — edited locally`, relaunched Branchy Chat, and verified the exact draft survived; clearing the draft disabled Send again and left no accidental QA message.
+- Recovery: the rebuilt package no longer remained on the stale generic audio-source failure and completed the bounded request, recording, transcription, editing, restart, and cleanup lifecycle.
+- Remaining required checks: record the foreground 500-message branch-switch p50/p95; delete the disposable QA branch only after action-time confirmation; rebuild and verify the local QA DMG after command approval succeeds.
