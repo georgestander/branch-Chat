@@ -25,7 +25,7 @@ import {
   type NodeProps,
   type Viewport,
 } from "@xyflow/react";
-import { LayoutGrid } from "lucide-react";
+import { GitBranch, LayoutGrid } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import {
   arrangeFocusedChildOnCanvas,
@@ -488,7 +488,7 @@ const BranchCard = memo(function BranchCard({
                 });
               }}
             >
-              <Icon name="branch" size={16} />
+              <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
             </button>
             <button
               className="icon-button icon-button--quiet"
