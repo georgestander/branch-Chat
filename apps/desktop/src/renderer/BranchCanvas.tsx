@@ -25,6 +25,7 @@ import {
   type NodeProps,
   type Viewport,
 } from "@xyflow/react";
+import { LayoutGrid } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import {
   arrangeFocusedChildOnCanvas,
@@ -1528,7 +1529,7 @@ function BranchCanvasInner({
           aria-label="Branch navigation"
         >
           <button type="button" onClick={tidy} title="Arrange branch cards">
-            <Icon name="branch" size={14} />
+            <LayoutGrid aria-hidden="true" size={14} strokeWidth={1.8} />
             Tidy
           </button>
           {activeBranchId !== rootBranchId ? (
