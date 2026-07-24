@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -114,6 +115,11 @@ export function Composer({
   const expandedEditorTitleId = useId();
   const dictationStatusId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingSelectionRef = useRef<{
+    value: string;
+    start: number;
+    end: number;
+  } | null>(null);
   const expandedTextareaRef = useRef<HTMLTextAreaElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -152,10 +158,31 @@ export function Composer({
 
   useEffect(() => {
     if (focusToken > 0) {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(value.length, value.length);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     }
-  }, [focusToken, value.length]);
+  }, [focusToken]);
+
+  useLayoutEffect(() => {
+    const pendingSelection = pendingSelectionRef.current;
+    if (!pendingSelection) return;
+    pendingSelectionRef.current = null;
+
+    const textarea = textareaRef.current;
+    if (
+      !textarea ||
+      pendingSelection.value !== value ||
+      document.activeElement !== textarea
+    ) {
+      return;
+    }
+    textarea.setSelectionRange(
+      pendingSelection.start,
+      pendingSelection.end,
+    );
+  }, [value]);
 
   useEffect(
     () => () => {
@@ -676,7 +703,13 @@ export function Composer({
             dictationUi.status ? dictationStatusId : undefined
           }
           onChange={(event) => {
-            if (!dictationDraftLocked) onChange(event.target.value);
+            if (dictationDraftLocked) return;
+            pendingSelectionRef.current = {
+              value: event.target.value,
+              start: event.target.selectionStart,
+              end: event.target.selectionEnd,
+            };
+            onChange(event.target.value);
           }}
           onKeyDown={handleKeyDown}
           placeholder={
