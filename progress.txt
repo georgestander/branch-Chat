@@ -101,3 +101,10 @@
 - Packaging and artifacts: rebuilt `apps/desktop/out/Branchy Chat-darwin-arm64/Branchy Chat.app` at `2026-07-24 08:24:32` and `apps/desktop/out/make/Branchy Chat-1.0.0-arm64.dmg` at `2026-07-24 08:25:00`; sandboxed DMG creation and mount both failed with `hdiutil ... Device not configured`, so the final make and attach checks were rerun outside the managed sandbox.
 - Verification: the rebuilt app passes `codesign --verify --strict --deep --verbose=2`; the DMG SHA-256 is `f5c751d8d084b1d8ee09f087f786e48a354c19d8a2c9c8ae6dbc660ab929a8b0`; the mounted image exposes `Branchy Chat.app`, `Applications`, and the expected background assets; a packaged screenshot of the rebuilt app showed the flat no-shadow canvas still intact with an unobstructed composer and no colored card-edge regression.
 - Remaining required checks: delete the disposable QA branch only after action-time confirmation.
+
+2026-07-24 — Neutral Branchy visual contract
+- Reference: final Electron migration audit and the approved requirement that branch selection, connectors, edges, and elevation never use colored chrome.
+- Decision: make topology, labels, breadcrumbs, and neutral marks the durable lineage vocabulary; reserve the warm red accent for established branded, destructive, or error states instead of branch edges or shadows.
+- Files changed: `designs/visual-language.md`.
+- Verification: `pnpm types`, all 308 tests, and `npm run lint` passed; the unchanged foreground 500-message branch-switch fixture passed again outside the managed AppKit sandbox at p50 `41.50 ms`, p95 `53.40 ms`, and max `54.60 ms`.
+- Remaining check: finish the independent migration audit; leave the disposable QA branch and macOS microphone privacy state unchanged without explicit user authority.

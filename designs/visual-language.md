@@ -1,14 +1,14 @@
-# Branch Chat Visual Language
+# Branchy Chat Visual Language
 
 ## Purpose
 
-This document is the durable visual contract for Branch Chat across the RedwoodSDK web application and Electron desktop application. It prevents individual features, agents, and generated code from drifting into generic component-library or AI-generated aesthetics.
+This document is the durable visual contract for Branchy Chat across the retained RedwoodSDK web application and Electron desktop application. It prevents individual features, agents, and generated code from drifting into generic component-library or AI-generated aesthetics.
 
 Use it before changing a user-facing surface. Feature-specific design specifications may add constraints, but they should not silently replace this vocabulary.
 
 ## Visual Thesis
 
-Branch Chat is a focused thinking workspace: calm, flat, precise, and spatial. The interface should make conversation lineage and the current writing context immediately legible without surrounding the work in decorative chrome.
+Branchy Chat is a focused thinking workspace: calm, flat, precise, and spatial. The interface should make conversation lineage and the current writing context immediately legible without surrounding the work in decorative chrome.
 
 The canvas is the product's distinctive visual idea. Branch relationships, selected context, and active work should carry the personality—not gradients, inflated cards, ornamental illustrations, or marketing-style copy.
 
@@ -24,7 +24,8 @@ The canvas is the product's distinctive visual idea. Branch relationships, selec
 ## Color
 
 - Use the existing neutral black, white, and gray foundation with the established warm red product accent.
-- Branch lineage colors are semantic. A root-level child establishes a tone and descendants inherit it; apply that meaning consistently to marks, connectors, edges, and restrained state indicators.
+- Communicate branch lineage through spatial topology, labels, breadcrumbs, and neutral marks. Branch cards, connectors, selection rails, outlines, and shadows remain neutral; do not assign lineage colors to canvas chrome.
+- Keep the warm red accent out of branch edges and elevation. Reserve it for established branded, destructive, or error states where color communicates an actual action or condition.
 - Do not introduce purple-to-blue gradients, default Tailwind indigo/violet palettes, or extra accent colors merely to create visual interest.
 - Do not use gradients as a substitute for hierarchy, imagery, or composition. A gradient is acceptable only when it communicates a real state or is part of an explicitly approved visual artifact.
 - Maintain WCAG AA contrast for text and controls in both light and dark themes.
@@ -40,7 +41,7 @@ The canvas is the product's distinctive visual idea. Branch relationships, selec
 
 - Use the established restrained radius vocabulary; do not introduce `rounded-2xl` or `rounded-3xl` styling as a default.
 - Prefer one visible boundary. Do not stack a border, inner ring, outer ring, and shadow around the same surface.
-- Ordinary panels and branch objects remain flat. Use tone, a restrained border, or a semantic edge before using a shadow.
+- Ordinary panels and branch objects remain flat. Use neutral tone or a restrained border before using a shadow.
 - Reserve elevation for temporary layers that physically overlap the workspace: menus, popovers, dialogs, dragged objects, and similar transient UI.
 - Never add hover halos, colored outlines, or glow effects to compensate for weak hierarchy.
 
