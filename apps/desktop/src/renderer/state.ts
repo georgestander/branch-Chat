@@ -1,6 +1,7 @@
 import type {
   Branch,
   BranchId,
+  ConversationCanvasViewport,
   ConversationGraphSnapshot,
   Message,
 } from "@branchy/conversation-core";
@@ -40,6 +41,31 @@ export function retainBranchSelectionDraft(
     previousConversationId === nextConversationId
     ? draft
     : null;
+}
+
+export interface BranchDraftViewportSession {
+  focusedBranchId: BranchId | null;
+  returnViewport: ConversationCanvasViewport;
+  pairedViewport: ConversationCanvasViewport;
+}
+
+export function resolveBranchDraftViewport(
+  session: BranchDraftViewportSession,
+  focusedBranchId: BranchId | null,
+): {
+  createdChildId: BranchId | null;
+  viewport: ConversationCanvasViewport;
+} {
+  const createdChildId =
+    focusedBranchId && focusedBranchId !== session.focusedBranchId
+      ? focusedBranchId
+      : null;
+  return {
+    createdChildId,
+    viewport: createdChildId
+      ? session.pairedViewport
+      : session.returnViewport,
+  };
 }
 
 export function branchChildren(

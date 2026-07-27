@@ -23,6 +23,7 @@ import {
   parentComparisonForBranch,
   removeStreamStateIfMatching,
   reduceStreamState,
+  resolveBranchDraftViewport,
   retainBranchRecords,
   retainBranchSelectionDraft,
   visibleBranchIds,
@@ -387,6 +388,23 @@ test("temporary branch selection survives reload but not conversation changes", 
     retainBranchSelectionDraft(draft, "conversation-a", null),
     null,
   );
+});
+
+test("a completed branch draft keeps the paired parent and child viewport", () => {
+  const session = {
+    focusedBranchId: "root",
+    returnViewport: { x: 40, y: 60, zoom: 0.8 },
+    pairedViewport: { x: -120, y: 90, zoom: 0.72 },
+  };
+
+  assert.deepEqual(resolveBranchDraftViewport(session, "child"), {
+    createdChildId: "child",
+    viewport: session.pairedViewport,
+  });
+  assert.deepEqual(resolveBranchDraftViewport(session, "root"), {
+    createdChildId: null,
+    viewport: session.returnViewport,
+  });
 });
 
 test("canonical completion messages replace optimistic entries", () => {

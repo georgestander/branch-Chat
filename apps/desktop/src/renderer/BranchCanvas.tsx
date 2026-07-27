@@ -73,7 +73,9 @@ import {
   isSupersededByActiveStream,
   messagesForBranch,
   parentComparisonForBranch,
+  resolveBranchDraftViewport,
   visibleBranchIds,
+  type BranchDraftViewportSession,
 } from "./state.ts";
 import type {
   AttachmentDraft,
@@ -1143,11 +1145,12 @@ function BranchCanvasInner({
 }: BranchCanvasProps): React.JSX.Element {
   const flow = useReactFlow<CanvasFlowNode, Edge>();
   const updateNodeInternals = useUpdateNodeInternals();
-  const draftViewportRef = useRef<{
-    key: string;
-    focusedBranchId: BranchId | null;
-    viewport: Viewport;
-  } | null>(null);
+  const draftViewportRef = useRef<
+    | (BranchDraftViewportSession & {
+        key: string;
+      })
+    | null
+  >(null);
   const [compareBranchId, setCompareBranchId] =
     useState<BranchId | null>(null);
   const [selectedBranchId, setSelectedBranchId] =
@@ -1475,32 +1478,15 @@ function BranchCanvasInner({
       const draftSession = draftViewportRef.current;
       if (!draftSession) return;
       draftViewportRef.current = null;
-      const focusedBranchId = snapshot.canvas.focusedBranchId;
-      const createdChildId =
-        focusedBranchId && focusedBranchId !== draftSession.focusedBranchId
-          ? focusedBranchId
-          : null;
-      const createdChildState = createdChildId
-        ? snapshot.canvas.nodes[createdChildId]
-        : null;
+      const { createdChildId, viewport } = resolveBranchDraftViewport(
+        draftSession,
+        snapshot.canvas.focusedBranchId,
+      );
       const frame = window.requestAnimationFrame(() => {
-        if (createdChildId && createdChildState) {
-          setSelectedBranchId(createdChildId);
-          void flow.fitBounds(
-            {
-              x: createdChildState.x,
-              y: createdChildState.y,
-              width: createdChildState.width ?? EXPANDED_CARD_WIDTH,
-              height: createdChildState.height ?? EXPANDED_CARD_HEIGHT,
-            },
-            {
-              padding: 0.14,
-              duration: 300,
-            },
-          );
-          return;
-        }
-        void flow.setViewport(draftSession.viewport, { duration: 220 });
+        if (createdChildId) setSelectedBranchId(createdChildId);
+        void flow.setViewport(viewport, {
+          duration: createdChildId ? 0 : 220,
+        });
       });
       return () => window.cancelAnimationFrame(frame);
     }
@@ -1512,7 +1498,8 @@ function BranchCanvasInner({
       draftViewportRef.current = {
         key: draftKey,
         focusedBranchId: snapshot.canvas.focusedBranchId,
-        viewport: flow.getViewport(),
+        returnViewport: flow.getViewport(),
+        pairedViewport: flow.getViewport(),
       };
     }
     let measuredFrame: number | null = null;
@@ -1530,6 +1517,9 @@ function BranchCanvasInner({
       });
     });
     return () => {
+      if (draftViewportRef.current?.key === draftKey) {
+        draftViewportRef.current.pairedViewport = flow.getViewport();
+      }
       window.cancelAnimationFrame(layoutFrame);
       if (measuredFrame !== null) {
         window.cancelAnimationFrame(measuredFrame);
