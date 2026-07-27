@@ -45,6 +45,7 @@ import {
   type ComposerSettingsChangeHandler,
   type ComposerSettingsSelection,
 } from "./Composer.tsx";
+import { CopyTextButton } from "./CopyTextButton.tsx";
 import { Icon } from "./icons.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
 import {
@@ -234,52 +235,52 @@ function StreamBubble({
         ) : null}
 
         {stream.status !== "error" ? (
-          <div
-            className="menu-anchor"
-            style={{ marginTop: 10, width: "fit-content" }}
-          >
-            <button
-              className="connect-button"
-              type="button"
-              aria-expanded={stopMenuOpen}
-              onClick={() => setStopMenuOpen((current) => !current)}
-            >
-              <Icon name="square" size={12} />
-              Stop
-              <Icon name="chevron-down" size={12} />
-            </button>
-            {stopMenuOpen ? (
-              <div
-                className="context-menu"
-                style={{
-                  top: "auto",
-                  right: "auto",
-                  bottom: "calc(100% + 5px)",
-                  left: 0,
-                }}
+          <div className="stream-message__actions">
+            <div className="menu-anchor">
+              <button
+                className="connect-button"
+                type="button"
+                aria-expanded={stopMenuOpen}
+                onClick={() => setStopMenuOpen((current) => !current)}
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStopMenuOpen(false);
-                    onStop("edit");
+                <Icon name="square" size={12} />
+                Stop
+                <Icon name="chevron-down" size={12} />
+              </button>
+              {stopMenuOpen ? (
+                <div
+                  className="context-menu"
+                  style={{
+                    top: "auto",
+                    right: "auto",
+                    bottom: "calc(100% + 5px)",
+                    left: 0,
                   }}
                 >
-                  <Icon name="pencil" size={14} />
-                  Stop &amp; edit prompt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStopMenuOpen(false);
-                    onStop("discard");
-                  }}
-                >
-                  <Icon name="trash" size={14} />
-                  Stop &amp; discard
-                </button>
-              </div>
-            ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStopMenuOpen(false);
+                      onStop("edit");
+                    }}
+                  >
+                    <Icon name="pencil" size={14} />
+                    Stop &amp; edit prompt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStopMenuOpen(false);
+                      onStop("discard");
+                    }}
+                  >
+                    <Icon name="trash" size={14} />
+                    Stop &amp; discard
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <CopyTextButton text={stream.text} label="Copy partial output" />
           </div>
         ) : null}
       </div>

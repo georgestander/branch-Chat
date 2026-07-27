@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   applyCanvasPatch,
+  getEffectiveBranchMessages,
   type Branch,
   type BranchId,
   type ComposerPreset,
@@ -15,6 +16,7 @@ import {
   type Message,
   type ReasoningEffort,
 } from "@branchy/conversation-core";
+import { Copy } from "lucide-react";
 import type { ConversationComposerTool } from "@branchy/conversation-core/tools";
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 import type {
@@ -35,6 +37,10 @@ import {
   type BranchStopMode,
 } from "./BranchCanvas.tsx";
 import type { ComposerSettingsSelection } from "./composer-settings.ts";
+import {
+  copyTextToClipboard,
+  formatConversationThread,
+} from "./conversation-copy.ts";
 import { Icon } from "./icons.tsx";
 import {
   ConfirmDialog,
@@ -1991,6 +1997,25 @@ export function App(): React.JSX.Element {
     }
   }, [notify]);
 
+  const copyActiveThread = useCallback(async () => {
+    if (screen.kind !== "ready") return;
+    const stream = streamsByBranch[screen.activeBranchId];
+    const text = formatConversationThread({
+      title: screen.title,
+      messages: getEffectiveBranchMessages(
+        screen.snapshot,
+        screen.activeBranchId,
+      ),
+      pendingAssistantText:
+        stream && isStreamActive(stream) ? stream.text : null,
+    });
+    const copied = await copyTextToClipboard(text, navigator.clipboard);
+    notify(
+      copied ? "Active thread copied." : "Could not copy the active thread.",
+      copied ? "success" : "error",
+    );
+  }, [notify, screen, streamsByBranch]);
+
   const importArchive = useCallback(async () => {
     setHeaderMenuOpen(false);
     try {
@@ -2440,6 +2465,16 @@ export function App(): React.JSX.Element {
                     >
                       <Icon name="pencil" size={15} />
                       Rename conversation
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHeaderMenuOpen(false);
+                        void copyActiveThread();
+                      }}
+                    >
+                      <Copy aria-hidden="true" size={15} strokeWidth={1.8} />
+                      Copy active thread
                     </button>
                     <button type="button" onClick={() => void exportArchive()}>
                       <Icon name="arrow-down" size={15} />

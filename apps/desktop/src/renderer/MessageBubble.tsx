@@ -8,6 +8,7 @@ import {
 import type { RenderedMessage } from "@branchy/conversation-core/presentation";
 
 import { createBranchSelectionDraft } from "./branch-selection.ts";
+import { CopyTextButton } from "./CopyTextButton.tsx";
 import { Icon } from "./icons.tsx";
 import { MarkdownContent } from "./MarkdownContent.tsx";
 import { sourceSelectionOffsets } from "./state.ts";
@@ -275,10 +276,13 @@ export const MessageBubble = memo(function MessageBubble({
         ) : null}
 
         {message.role === "assistant" ? (
-          <p className="message__branch-hint">
-            <Icon name="branch" size={13} />
-            Highlight text to start a focused child branch.
-          </p>
+          <footer className="message__footer">
+            <p className="message__branch-hint">
+              <Icon name="branch" size={13} />
+              Highlight text to start a focused child branch.
+            </p>
+            <CopyTextButton text={message.content} label="Copy output" />
+          </footer>
         ) : null}
       </div>
     </article>

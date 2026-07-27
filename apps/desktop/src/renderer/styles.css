@@ -1517,7 +1517,7 @@ button.account-avatar:hover {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin: 12px 0 0;
+  margin: 0;
   color: var(--muted-foreground);
   font-size: 9.5px;
   line-height: 1.4;
@@ -1525,6 +1525,52 @@ button.account-avatar:hover {
 
 .message__branch-hint svg {
   flex: 0 0 auto;
+}
+
+.message__footer,
+.stream-message__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.message-copy-button {
+  display: inline-flex;
+  min-height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0 6px;
+  color: var(--muted-foreground);
+  font-size: 9.5px;
+  font-weight: 650;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.message-copy-button:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.message-copy-button[data-copy-state="copied"] {
+  color: var(--success);
+}
+
+.message-copy-button[data-copy-state="error"] {
+  color: var(--destructive);
+}
+
+.message-copy-button:disabled {
+  opacity: 0.42;
 }
 
 .message__text {
