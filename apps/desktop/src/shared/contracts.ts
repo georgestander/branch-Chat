@@ -32,6 +32,7 @@ export const IPC_CHANNELS = {
   renameBranch: "branchy:branch:rename",
   deleteBranch: "branchy:branch:delete",
   saveBranchNote: "branchy:branch:note:save",
+  updateBranchNote: "branchy:branch:note:update",
   saveComposerDraft: "branchy:composer:draft:save",
   sendMessage: "branchy:message:send",
   cancelMessage: "branchy:message:cancel",
@@ -230,6 +231,15 @@ export interface SaveBranchNoteInput
 export interface SaveBranchNoteResult extends ConversationLoadResult {
   branch: Branch;
   appendedMessages: Message[];
+}
+
+export interface UpdateBranchNoteInput extends BranchIdentityInput {
+  content: string;
+}
+
+export interface UpdateBranchNoteResult extends ConversationLoadResult {
+  branch: Branch;
+  updatedMessage: Message;
 }
 
 export interface SaveComposerDraftInput extends BranchIdentityInput {
@@ -478,6 +488,7 @@ export interface BranchyDesktopApi {
   renameBranch(input: RenameBranchInput): Promise<RenameBranchResult>;
   deleteBranch(input: BranchIdentityInput): Promise<DeleteBranchResult>;
   saveBranchNote(input: SaveBranchNoteInput): Promise<SaveBranchNoteResult>;
+  updateBranchNote(input: UpdateBranchNoteInput): Promise<UpdateBranchNoteResult>;
   saveComposerDraft(
     input: SaveComposerDraftInput,
   ): Promise<SaveComposerDraftResult>;
@@ -521,6 +532,7 @@ export type DesktopCommandRequestMap = {
   [IPC_CHANNELS.renameBranch]: RenameBranchInput;
   [IPC_CHANNELS.deleteBranch]: BranchIdentityInput;
   [IPC_CHANNELS.saveBranchNote]: SaveBranchNoteInput;
+  [IPC_CHANNELS.updateBranchNote]: UpdateBranchNoteInput;
   [IPC_CHANNELS.saveComposerDraft]: SaveComposerDraftInput;
   [IPC_CHANNELS.sendMessage]: SendMessageInput;
   [IPC_CHANNELS.cancelMessage]: CancelMessageInput;
@@ -559,6 +571,7 @@ export type DesktopCommandResponseMap = {
   [IPC_CHANNELS.renameBranch]: RenameBranchResult;
   [IPC_CHANNELS.deleteBranch]: DeleteBranchResult;
   [IPC_CHANNELS.saveBranchNote]: SaveBranchNoteResult;
+  [IPC_CHANNELS.updateBranchNote]: UpdateBranchNoteResult;
   [IPC_CHANNELS.saveComposerDraft]: SaveComposerDraftResult;
   [IPC_CHANNELS.sendMessage]: SendMessageResult;
   [IPC_CHANNELS.cancelMessage]: CancelMessageResult;

@@ -427,6 +427,9 @@ function registerIpc(): void {
   registerInvoke(IPC_CHANNELS.saveBranchNote, (input) =>
     requireApplication().saveBranchNote(input),
   );
+  registerInvoke(IPC_CHANNELS.updateBranchNote, (input) =>
+    requireApplication().updateBranchNote(input),
+  );
   registerInvoke(IPC_CHANNELS.saveComposerDraft, (input) =>
     requireApplication({ allowDuringShutdown: true }).saveComposerDraft(input),
   );

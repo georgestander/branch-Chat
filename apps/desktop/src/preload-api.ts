@@ -82,6 +82,8 @@ export function createBranchyDesktopApi(
     deleteBranch: (input) => invoke(IPC_CHANNELS.deleteBranch, input),
     saveBranchNote: (input) =>
       invoke(IPC_CHANNELS.saveBranchNote, input),
+    updateBranchNote: (input) =>
+      invoke(IPC_CHANNELS.updateBranchNote, input),
     saveComposerDraft: (input) =>
       invoke(IPC_CHANNELS.saveComposerDraft, input),
     sendMessage: (input) => invoke(IPC_CHANNELS.sendMessage, input),

@@ -39,6 +39,9 @@
   --success: #15803d;
   --warning: #b45309;
   --selection: rgba(107, 114, 128, 0.22);
+  --note-paper: #fff5bf;
+  --note-border: #d8ca86;
+  --note-muted: #756b42;
   --menu-shadow: 0 8px 24px rgba(17, 17, 17, 0.12);
   --brand-logo-filter: none;
 }
@@ -77,6 +80,9 @@
   --success: #4ade80;
   --warning: #f59e0b;
   --selection: rgba(156, 163, 175, 0.22);
+  --note-paper: #332f20;
+  --note-border: #706640;
+  --note-muted: #c2b98a;
   --menu-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
   --brand-logo-filter: invert(1);
 }
@@ -1239,6 +1245,115 @@ button.account-avatar:hover {
 .branch-card.is-active {
   border-color: var(--foreground);
   outline: 0;
+}
+
+.branch-note {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  overflow: visible;
+  border: 1px solid var(--note-border);
+  border-radius: 2px;
+  background: var(--note-paper);
+  color: var(--foreground);
+  transition:
+    border-color 140ms ease,
+    opacity 140ms ease;
+}
+
+.branch-note.is-active {
+  border-color: var(--foreground);
+  outline: 0;
+}
+
+.branch-note__header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--note-border) 72%, transparent);
+  padding: 5px 6px 5px 12px;
+}
+
+.branch-note__label {
+  color: var(--note-muted);
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.branch-note__actions {
+  display: flex;
+  align-items: center;
+}
+
+.branch-note__content {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 15px 17px 18px;
+  font-size: 14px;
+  line-height: 1.52;
+  white-space: pre-wrap;
+}
+
+.branch-note__editor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.branch-note__editor textarea {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--note-border);
+  border-radius: 2px;
+  outline: 0;
+  background: color-mix(in srgb, var(--note-paper) 84%, var(--background));
+  padding: 8px;
+  line-height: 1.45;
+}
+
+.branch-note__editor textarea:focus {
+  border-color: var(--foreground);
+}
+
+.branch-note__editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.branch-note__editor-actions button {
+  min-height: 27px;
+  border: 1px solid var(--note-border);
+  border-radius: 3px;
+  background: transparent;
+  padding: 0 9px;
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.branch-note__editor-actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+.branch-note__editor-actions .is-primary {
+  border-color: var(--foreground);
+  background: var(--foreground);
+  color: var(--background);
 }
 
 .branch-handle {

@@ -426,6 +426,7 @@ function validateBranch(value: unknown): Branch {
   const {
     id,
     parentId,
+    kind,
     title,
     createdFrom,
     messageIds,
@@ -440,6 +441,10 @@ function validateBranch(value: unknown): Branch {
       parentId === null ||
       (typeof parentId === "string" && parentId.length > 0),
     "branch.parentId invalid",
+  );
+  assert(
+    kind === undefined || kind === "note",
+    "branch.kind invalid",
   );
   assert(typeof title === "string", "branch.title invalid");
   assert(isObject(createdFrom), "branch.createdFrom invalid");
@@ -472,6 +477,7 @@ function validateBranch(value: unknown): Branch {
   return {
     id: id as BranchId,
     parentId: parentId ?? undefined,
+    ...(kind === "note" ? { kind } : {}),
     title,
     createdFrom: {
       messageId: messageId as MessageId,

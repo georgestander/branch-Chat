@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-export const LATEST_SCHEMA_VERSION = 2;
+export const LATEST_SCHEMA_VERSION = 4;
 
 interface SchemaVersionRow {
   user_version: number;
@@ -136,6 +136,49 @@ function migrateToVersionTwo(database: DatabaseSync): void {
   `);
 }
 
+function migrateToVersionThree(database: DatabaseSync): void {
+  const hasKindColumn = database
+    .prepare("PRAGMA table_info(branches)")
+    .all()
+    .some((row) => row.name === "kind");
+  if (!hasKindColumn) {
+    database.exec(`
+      ALTER TABLE branches
+        ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'
+        CHECK (kind IN ('chat', 'note'));
+    `);
+  }
+  database.exec("PRAGMA user_version = 3");
+}
+
+function migrateToVersionFour(database: DatabaseSync): void {
+  database.exec(`
+    UPDATE branches
+    SET kind = 'note'
+    WHERE kind = 'chat'
+      AND parent_id IS NOT NULL
+      AND inference_context_json IS NULL
+      AND (
+        SELECT COUNT(*)
+        FROM branch_message_order
+        WHERE branch_message_order.conversation_id = branches.conversation_id
+          AND branch_message_order.branch_id = branches.id
+      ) = 1
+      AND EXISTS (
+        SELECT 1
+        FROM branch_message_order
+        JOIN messages
+          ON messages.conversation_id = branch_message_order.conversation_id
+          AND messages.id = branch_message_order.message_id
+        WHERE branch_message_order.conversation_id = branches.conversation_id
+          AND branch_message_order.branch_id = branches.id
+          AND messages.role = 'user'
+      );
+
+    PRAGMA user_version = 4;
+  `);
+}
+
 export function applyPersistenceSchema(database: DatabaseSync): void {
   database.exec("PRAGMA foreign_keys = ON");
 
@@ -157,6 +200,12 @@ export function applyPersistenceSchema(database: DatabaseSync): void {
     }
     if (readSchemaVersion(database) === 1) {
       migrateToVersionTwo(database);
+    }
+    if (readSchemaVersion(database) === 2) {
+      migrateToVersionThree(database);
+    }
+    if (readSchemaVersion(database) === 3) {
+      migrateToVersionFour(database);
     }
 
     const migratedVersion = readSchemaVersion(database);

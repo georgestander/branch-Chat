@@ -1591,6 +1591,41 @@ export function App(): React.JSX.Element {
     ],
   );
 
+  const updateBranchNote = useCallback(
+    async (branchId: BranchId, content: string): Promise<boolean> => {
+      if (!ready) return false;
+      try {
+        const result = await window.branchy.updateBranchNote({
+          conversationId: ready.conversationId,
+          branchId,
+          content,
+        });
+        setScreen((current) =>
+          current.kind === "ready" &&
+          current.conversationId === result.conversationId
+            ? {
+                ...current,
+                snapshot: result.snapshot,
+                messagesByBranch: addMessagesByBranch(
+                  current.messagesByBranch,
+                  [toRenderedMessage(result.updatedMessage)],
+                ),
+              }
+            : current,
+        );
+        notify("Note updated.", "success");
+        return true;
+      } catch (error) {
+        notify(
+          errorMessage(error, "Branchy could not update this note."),
+          "error",
+        );
+        return false;
+      }
+    },
+    [notify, ready],
+  );
+
   const chooseFiles = useCallback(
     async (branchId: BranchId, files: File[]) => {
       if (!ready) return;
@@ -2557,6 +2592,7 @@ export function App(): React.JSX.Element {
                   });
                 }
               }}
+              onUpdateBranchNote={updateBranchNote}
               onCreateBranch={beginBranchDraft}
               onCancelBranchDraft={discardBranchDraft}
               onCreateBranchPrompt={(prompt) =>

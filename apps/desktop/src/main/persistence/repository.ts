@@ -119,6 +119,7 @@ interface SerializedBranchRow {
   conversationId: string;
   id: string;
   parentId: string | null;
+  kind: "chat" | "note";
   title: string;
   createdFromMessageId: string;
   createdFromSpanStart: number | null;
@@ -449,6 +450,7 @@ function serializeSnapshot(
       conversationId,
       id: branch.id,
       parentId: branch.parentId ?? null,
+      kind: branch.kind ?? "chat",
       title: branch.title,
       createdFromMessageId: branch.createdFrom.messageId,
       createdFromSpanStart: branch.createdFrom.span?.start ?? null,
@@ -586,6 +588,9 @@ function parseBranchRow(row: SqlRow): Branch {
   return {
     id: expectString(row, "id", context) as BranchId,
     parentId: expectNullableString(row, "parent_id", context),
+    ...(expectString(row, "kind", context) === "note"
+      ? { kind: "note" as const }
+      : {}),
     title: expectString(row, "title", context),
     createdFrom: {
       messageId: expectString(
@@ -851,10 +856,10 @@ export class ConversationRepository {
     `);
     this.insertBranch = database.prepare(`
       INSERT INTO branches (
-        conversation_id, id, parent_id, title, created_from_message_id,
+        conversation_id, id, parent_id, kind, title, created_from_message_id,
         created_from_span_start, created_from_span_end,
         created_from_excerpt, created_at, archived_at, inference_context_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     this.insertMessage = database.prepare(`
       INSERT INTO messages (
@@ -1451,6 +1456,7 @@ export class ConversationRepository {
         branch.conversationId,
         branch.id,
         branch.parentId,
+        branch.kind,
         branch.title,
         branch.createdFromMessageId,
         branch.createdFromSpanStart,

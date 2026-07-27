@@ -396,6 +396,53 @@ test("schema migration upgrades an existing version-one database", () => {
         .map((row) => row.name),
       ["conversation_id", "branch_id", "content", "updated_at"],
     );
+    assert.ok(
+      database
+        .prepare("PRAGMA table_info(branches)")
+        .all()
+        .some((row) => row.name === "kind"),
+    );
+  } finally {
+    database.close();
+  }
+});
+
+test("schema migration recognizes legacy single-message notes", (t) => {
+  const databasePath = createTempDatabasePath(t);
+  const repository = ConversationRepository.open(databasePath, {
+    clock: () => LAST_ACTIVE_AT,
+  });
+  repository.create(createDeepSnapshot());
+  repository.close();
+
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.exec(`
+      DELETE FROM branch_message_order
+      WHERE conversation_id = 'conversation-deep'
+        AND branch_id = 'child'
+        AND ordinal = 1;
+      DELETE FROM messages
+      WHERE conversation_id = 'conversation-deep'
+        AND id = 'child-assistant';
+      UPDATE branches
+      SET inference_context_json = NULL,
+          kind = 'chat'
+      WHERE conversation_id = 'conversation-deep'
+        AND id = 'child';
+      PRAGMA user_version = 3;
+    `);
+
+    applyPersistenceSchema(database);
+
+    assert.equal(
+      database
+        .prepare(
+          "SELECT kind FROM branches WHERE conversation_id = ? AND id = ?",
+        )
+        .get("conversation-deep", "child")?.kind,
+      "note",
+    );
   } finally {
     database.close();
   }

@@ -1139,6 +1139,81 @@ test("independent branch composers can stage 5 plus 4 files while each message s
   });
 });
 
+test("saved notes remain editable and can seed a model-backed child branch", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation({
+    title: "Notes",
+  });
+  const rootBranchId = created.snapshot.conversation.rootBranchId;
+  const rootTurn = await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId: rootBranchId,
+    content: "Capture useful observations.",
+    streamId: "stream-note-root",
+  });
+
+  const saved = harness.application.saveBranchNote({
+    conversationId: created.conversationId,
+    parentBranchId: rootBranchId,
+    messageId: rootTurn.optimisticUserMessage.id,
+    content: "The first observation.",
+  });
+  assert.equal(saved.branch.kind, "note");
+
+  const updated = harness.application.updateBranchNote({
+    conversationId: created.conversationId,
+    branchId: saved.branch.id,
+    content: "The corrected observation.",
+  });
+  assert.equal(updated.updatedMessage.content, "The corrected observation.");
+  assert.equal(
+    harness.repository.require(created.conversationId).branches[saved.branch.id]
+      ?.kind,
+    "note",
+  );
+
+  const child = await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    content: "Explore this observation.",
+    streamId: "stream-note-child",
+    branchDraft: {
+      parentBranchId: saved.branch.id,
+      messageId: updated.updatedMessage.id,
+      excerpt: updated.updatedMessage.content,
+    },
+  });
+  assert.equal(child.createdBranch?.kind, undefined);
+  assert.equal(child.createdBranch?.parentId, saved.branch.id);
+  assert.deepEqual(
+    harness.codex.inputs[1]?.additionalContext?.[
+      "branch-source-selection"
+    ],
+    {
+      kind: "application",
+      value:
+        "The user created this child from the following saved note. " +
+        "Treat this selected span as the primary focus of the new branch request. " +
+        "Use inherited conversation only as supporting context; do not replace the selected subject with a broader topic.\n\n" +
+        "The corrected observation.",
+    },
+  );
+
+  const rootSession = harness.codex.turn("stream-note-root");
+  harness.codex.emit("stream-note-root", {
+    type: "cancelled",
+    streamId: "stream-note-root",
+    threadId: rootSession.threadId,
+    turnId: rootSession.turnId,
+  });
+  const childSession = harness.codex.turn("stream-note-child");
+  harness.codex.emit("stream-note-child", {
+    type: "cancelled",
+    streamId: "stream-note-child",
+    threadId: childSession.threadId,
+    turnId: childSession.turnId,
+  });
+});
+
 test("conversation deletion fails closed on provider cleanup and collects local assets", async (t) => {
   const harness = await setup(t);
   const created = harness.application.createConversation({

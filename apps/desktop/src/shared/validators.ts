@@ -31,6 +31,7 @@ import type {
   TranscribeAudioInput,
   UpdateConversationCanvasInput,
   UpdateConversationSettingsInput,
+  UpdateBranchNoteInput,
 } from "./contracts.ts";
 import { IPC_CHANNELS, STREAM_PROTOCOL_VERSION } from "./contracts.ts";
 
@@ -922,6 +923,24 @@ export function validateSaveBranchNoteInput(
   };
 }
 
+export function validateUpdateBranchNoteInput(
+  value: unknown,
+): UpdateBranchNoteInput {
+  const record = readRecord(value, "payload", [
+    "conversationId",
+    "branchId",
+    "content",
+  ]);
+  return {
+    conversationId: readId(
+      record.conversationId,
+      "payload.conversationId",
+    ),
+    branchId: readId(record.branchId, "payload.branchId"),
+    content: readMessage(record.content, "payload.content"),
+  };
+}
+
 export function validateSaveComposerDraftInput(
   value: unknown,
 ): SaveComposerDraftInput {
@@ -1726,6 +1745,7 @@ export const IPC_PAYLOAD_VALIDATORS = {
   [IPC_CHANNELS.renameBranch]: validateRenameBranchInput,
   [IPC_CHANNELS.deleteBranch]: validateBranchIdentityInput,
   [IPC_CHANNELS.saveBranchNote]: validateSaveBranchNoteInput,
+  [IPC_CHANNELS.updateBranchNote]: validateUpdateBranchNoteInput,
   [IPC_CHANNELS.saveComposerDraft]: validateSaveComposerDraftInput,
   [IPC_CHANNELS.sendMessage]: validateSendMessageInput,
   [IPC_CHANNELS.cancelMessage]: validateCancelMessageInput,

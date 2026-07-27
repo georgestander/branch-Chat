@@ -36,6 +36,7 @@ import {
   validateStreamOpenInput,
   validateStreamPortMessage,
   validateTranscribeAudioInput,
+  validateUpdateBranchNoteInput,
   validateUpdateConversationCanvasInput,
   validateUpdateConversationSettingsInput,
 } from "./validators.ts";
@@ -302,6 +303,25 @@ test("branch and note commands validate exact identities and selections", () => 
       content: "Remember this.",
       attachmentIds: ["attachment_1"],
     },
+  );
+  assert.deepEqual(
+    validateUpdateBranchNoteInput({
+      conversationId: "conversation_1",
+      branchId: "branch_note",
+      content: "Updated note.",
+    }),
+    {
+      conversationId: "conversation_1",
+      branchId: "branch_note",
+      content: "Updated note.",
+    },
+  );
+  rejects(() =>
+    validateUpdateBranchNoteInput({
+      conversationId: "conversation_1",
+      branchId: "branch_note",
+      content: " ",
+    }),
   );
   rejects(() =>
     validateSaveBranchNoteInput({

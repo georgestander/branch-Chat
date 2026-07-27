@@ -44,6 +44,8 @@ import type {
   SendMessageResult,
   StartChatGptLoginResult,
   TranscriptionResult,
+  UpdateBranchNoteInput,
+  UpdateBranchNoteResult,
   UpdateConversationCanvasInput,
   UpdateConversationSettingsInput,
 } from "../../shared/contracts.ts";
@@ -632,6 +634,7 @@ export class BranchyApplication {
       this.repository.require(input.conversationId),
     );
     const branch = this.createChildBranch(snapshot, input);
+    branch.kind = "note";
     const message: Message = {
       id: `message-${randomUUID()}`,
       branchId: branch.id,
@@ -676,6 +679,41 @@ export class BranchyApplication {
       ...this.loadResult(next),
       branch,
       appendedMessages: [message],
+    };
+  }
+
+  updateBranchNote(input: UpdateBranchNoteInput): UpdateBranchNoteResult {
+    const snapshot = cloneConversationSnapshot(
+      this.repository.require(input.conversationId),
+    );
+    const branch = snapshot.branches[input.branchId];
+    if (!branch || branch.kind !== "note") {
+      throw new Error(`Note ${input.branchId} was not found`);
+    }
+    if (branch.messageIds.length !== 1) {
+      throw new Error("A saved note must contain exactly one message.");
+    }
+    const [messageId] = branch.messageIds;
+    const message = messageId ? snapshot.messages[messageId] : undefined;
+    if (!message || message.role !== "user") {
+      throw new Error("The saved note content could not be found.");
+    }
+    const updatedMessage: Message = {
+      ...message,
+      content: input.content,
+    };
+    const next = applyConversationGraphUpdates(snapshot, [
+      {
+        type: "message:update",
+        conversationId: input.conversationId,
+        message: updatedMessage,
+      },
+    ]);
+    this.saveSnapshot(next);
+    return {
+      ...this.loadResult(next),
+      branch,
+      updatedMessage,
     };
   }
 
@@ -1120,9 +1158,18 @@ export class BranchyApplication {
       let createdBranch: Branch | null = null;
       if (input.branchDraft) {
         const sourceMessage = snapshot.messages[input.branchDraft.messageId];
-        if (!sourceMessage || sourceMessage.role !== "assistant") {
+        const parentBranch =
+          snapshot.branches[input.branchDraft.parentBranchId];
+        const sourceIsSavedNote =
+          parentBranch?.kind === "note" &&
+          sourceMessage?.branchId === parentBranch.id &&
+          sourceMessage.role === "user";
+        if (
+          !sourceMessage ||
+          (sourceMessage.role !== "assistant" && !sourceIsSavedNote)
+        ) {
           throw new Error(
-            "A model-backed child branch must start from an assistant response.",
+            "A model-backed child branch must start from an assistant response or saved note.",
           );
         }
         branch = this.createChildBranch(snapshot, input.branchDraft);
@@ -1283,10 +1330,14 @@ export class BranchyApplication {
       { kind: "application" | "untrusted"; value: string }
     > = {};
     if (branchSelection) {
+      const sourceDescription =
+        sourceMessage?.role === "user"
+          ? "saved note"
+          : "exact span of the parent assistant response";
       additionalContext["branch-source-selection"] = {
         kind: "application",
         value:
-          "The user created this child from the following exact span of the parent assistant response. " +
+          `The user created this child from the following ${sourceDescription}. ` +
           "Treat this selected span as the primary focus of the new branch request. " +
           "Use inherited conversation only as supporting context; do not replace the selected subject with a broader topic.\n\n" +
           branchSelection,

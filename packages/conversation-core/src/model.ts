@@ -74,6 +74,7 @@ export interface CodexMessageInferenceContext {
 export interface Branch {
   id: BranchId;
   parentId?: BranchId | null;
+  kind?: "note";
   title: string;
   createdFrom: BranchCreationSource;
   messageIds: MessageId[];

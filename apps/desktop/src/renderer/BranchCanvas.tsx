@@ -82,6 +82,8 @@ const MAX_EXPANDED_CARD_HEIGHT = 1_000;
 const DRAFT_NODE_ID = "__branch-draft__";
 const DRAFT_CARD_WIDTH = 420;
 const DRAFT_CARD_HEIGHT = 360;
+const NOTE_CARD_WIDTH = 300;
+const NOTE_CARD_HEIGHT = 220;
 const CANVAS_FIT_PADDING = 0.24;
 
 export type BranchStopMode = "edit" | "discard";
@@ -108,6 +110,7 @@ type BranchNodeData = {
   onCompareParent: (branchId: BranchId) => void;
   onRename: (branchId: BranchId) => void;
   onDelete: (branchId: BranchId) => void;
+  onUpdateNote: (branchId: BranchId, content: string) => Promise<boolean>;
   onResize: (
     branchId: BranchId,
     bounds: { x: number; y: number; width: number; height: number },
@@ -288,7 +291,7 @@ function StreamBubble({
   );
 }
 
-const BranchCard = memo(function BranchCard({
+const ChatBranchCard = memo(function ChatBranchCard({
   data,
   selected,
 }: NodeProps<BranchFlowNode>): React.JSX.Element {
@@ -679,6 +682,193 @@ const BranchCard = memo(function BranchCard({
   );
 });
 
+const BranchNoteCard = memo(function BranchNoteCard({
+  data,
+  selected,
+}: NodeProps<BranchFlowNode>): React.JSX.Element {
+  const { branch, messages, folded } = data;
+  const noteMessage = messages.find((message) => message.role === "user");
+  const noteContent = noteMessage?.content ?? "";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(noteContent);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(noteContent);
+  }, [editing, noteContent]);
+
+  const save = useCallback(async () => {
+    const content = draft.trim();
+    if (!content || saving) return;
+    setSaving(true);
+    try {
+      if (await data.onUpdateNote(branch.id, content)) setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }, [branch.id, data, draft, saving]);
+
+  return (
+    <article
+      className={`branch-note ${data.active || selected ? "is-active" : ""}`}
+      aria-label={`Saved note: ${branch.title}`}
+      onClick={() => data.onOpen(branch.id)}
+    >
+      <Handle
+        className="branch-handle branch-handle--target"
+        type="target"
+        position={Position.Left}
+        isConnectable={false}
+      />
+      <Handle
+        className="branch-handle branch-handle--source"
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+      />
+      {data.draftParent ? (
+        <Handle
+          id="draft-source"
+          className="branch-handle branch-handle--source"
+          type="source"
+          position={Position.Right}
+          isConnectable={false}
+          style={{ top: 24 }}
+        />
+      ) : null}
+
+      <header className="branch-note__header nodrag">
+        <span className="branch-note__label">Note</span>
+        <div className="branch-note__actions">
+          <button
+            className="icon-button icon-button--quiet"
+            type="button"
+            disabled={!noteMessage || editing}
+            aria-label="Start a branch from this note"
+            title="Start branch from note"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!noteMessage) return;
+              data.onCreateBranch({
+                parentBranchId: branch.id,
+                messageId: noteMessage.id,
+                excerpt: noteContent,
+                span: null,
+              });
+            }}
+          >
+            <GitBranch aria-hidden="true" size={15} strokeWidth={1.8} />
+          </button>
+          <button
+            className="icon-button icon-button--quiet"
+            type="button"
+            disabled={editing}
+            aria-label="Edit note"
+            title="Edit note"
+            onClick={(event) => {
+              event.stopPropagation();
+              setDraft(noteContent);
+              setEditing(true);
+            }}
+          >
+            <Icon name="pencil" size={14} />
+          </button>
+          {data.childCount > 0 ? (
+            <button
+              className="icon-button icon-button--quiet"
+              type="button"
+              aria-label={
+                folded
+                  ? `Show ${data.childCount} descendant branches`
+                  : `Fold ${data.childCount} descendant branches`
+              }
+              title={folded ? "Show descendants" : "Fold descendants"}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onToggleFold(branch.id);
+              }}
+            >
+              <Icon
+                name={folded ? "chevron-right" : "chevron-down"}
+                size={14}
+              />
+              <span>{data.childCount}</span>
+            </button>
+          ) : null}
+          <button
+            className="icon-button icon-button--quiet"
+            type="button"
+            aria-label="Delete note"
+            title="Delete note"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onDelete(branch.id);
+            }}
+          >
+            <Icon name="trash" size={14} />
+          </button>
+        </div>
+      </header>
+
+      {editing ? (
+        <div
+          className="branch-note__editor nodrag nowheel"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <textarea
+            autoFocus
+            aria-label="Note content"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setDraft(noteContent);
+                setEditing(false);
+              }
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                void save();
+              }
+            }}
+          />
+          <div className="branch-note__editor-actions">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setDraft(noteContent);
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="is-primary"
+              type="button"
+              disabled={saving || draft.trim().length === 0}
+              onClick={() => void save()}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="branch-note__content">{noteContent}</p>
+      )}
+    </article>
+  );
+});
+
+const BranchCard = memo(function BranchCard(
+  props: NodeProps<BranchFlowNode>,
+): React.JSX.Element {
+  return props.data.branch.kind === "note" ? (
+    <BranchNoteCard {...props} />
+  ) : (
+    <ChatBranchCard {...props} />
+  );
+});
+
 const BranchDraftCard = memo(function BranchDraftCard({
   data,
 }: NodeProps<BranchDraftFlowNode>): React.JSX.Element {
@@ -777,6 +967,10 @@ type BranchCanvasProps = {
   onPatchCanvas: (patch: ConversationCanvasPatch) => void;
   onRenameBranch: (branchId: BranchId) => void;
   onDeleteBranch: (branchId: BranchId) => void;
+  onUpdateBranchNote: (
+    branchId: BranchId,
+    content: string,
+  ) => Promise<boolean>;
   onCreateBranch: (draft: BranchSelectionDraft) => void;
   branchDraft: BranchSelectionDraft | null;
   isCreatingBranch: boolean;
@@ -827,6 +1021,7 @@ function BranchCanvasInner({
   onPatchCanvas,
   onRenameBranch,
   onDeleteBranch,
+  onUpdateBranchNote,
   onCreateBranch,
   branchDraft,
   isCreatingBranch,
@@ -986,6 +1181,7 @@ function BranchCanvasInner({
           );
           const isEmptyRoot =
             branch.id === rootBranchId && messages.length === 0;
+          const isNote = branch.kind === "note";
           const expandedWidth =
             canvasNode?.width ??
             (isEmptyRoot ? DRAFT_CARD_WIDTH : EXPANDED_CARD_WIDTH);
@@ -999,15 +1195,27 @@ function BranchCanvasInner({
               x: draftUpdate?.x ?? canvasNode?.x ?? 0,
               y: draftUpdate?.y ?? canvasNode?.y ?? 0,
             },
-            initialWidth: expanded
+            initialWidth: isNote
+              ? NOTE_CARD_WIDTH
+              : expanded
               ? expandedWidth
               : CARD_WIDTH,
-            initialHeight: expanded
+            initialHeight: isNote
+              ? NOTE_CARD_HEIGHT
+              : expanded
               ? expandedHeight
               : CARD_HEIGHT,
             style: {
-              width: expanded ? expandedWidth : CARD_WIDTH,
-              height: expanded ? expandedHeight : CARD_HEIGHT,
+              width: isNote
+                ? NOTE_CARD_WIDTH
+                : expanded
+                  ? expandedWidth
+                  : CARD_WIDTH,
+              height: isNote
+                ? NOTE_CARD_HEIGHT
+                : expanded
+                  ? expandedHeight
+                  : CARD_HEIGHT,
             },
             selected: branch.id === selectedBranchId,
             data: {
@@ -1032,6 +1240,7 @@ function BranchCanvasInner({
               onCompareParent: compareWithParent,
               onRename: onRenameBranch,
               onDelete: onDeleteBranch,
+              onUpdateNote: onUpdateBranchNote,
               onResize: resizeBranch,
               onCreateBranch,
               onChangeDraft,
@@ -1102,6 +1311,7 @@ function BranchCanvasInner({
       onCreateBranchPrompt,
       onChooseBranchDraftFiles,
       onDeleteBranch,
+      onUpdateBranchNote,
       onDownloadImage,
       onOpenBranch,
       onOpenExternal,
