@@ -1285,6 +1285,9 @@ button.account-avatar:hover {
 }
 
 .branch-note__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--note-muted);
   font-size: 9px;
   font-weight: 720;

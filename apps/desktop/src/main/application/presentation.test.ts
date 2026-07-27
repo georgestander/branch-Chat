@@ -155,3 +155,38 @@ test("branch anchors carry source-ordered markers into rendered messages", () =>
     ],
   );
 });
+
+test("saved notes retain their numbered source anchor for canvas rendering", () => {
+  const assistant: Message = {
+    id: "assistant-1",
+    branchId: "root",
+    role: "assistant",
+    content: "Alpha beta gamma",
+    createdAt: "2026-07-23T00:00:01.000Z",
+  };
+  const snapshot = snapshotWithMessages(assistant);
+  snapshot.branches.note = {
+    id: "note",
+    parentId: "root",
+    kind: "note",
+    title: "Research note",
+    createdFrom: {
+      messageId: assistant.id,
+      excerpt: "beta",
+      span: { start: 6, end: 10 },
+    },
+    messageIds: [],
+    createdAt: "2026-07-23T00:00:02.000Z",
+  };
+
+  assert.deepEqual(renderMessagesByBranch(snapshot).root?.[0]?.branchAnchors, [
+    {
+      branchId: "note",
+      marker: 1,
+      title: "Research note",
+      excerpt: "beta",
+      range: { start: 6, end: 10 },
+      tone: "rose",
+    },
+  ]);
+});

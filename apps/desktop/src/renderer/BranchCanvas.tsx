@@ -820,7 +820,14 @@ const BranchNoteCard = memo(function BranchNoteCard({
       ) : null}
 
       <header className="branch-note__header">
-        <span className="branch-note__label">Note</span>
+        <span className="branch-note__label">
+          {data.sourceMarker ? (
+            <span className="branch-card__source-marker">
+              {data.sourceMarker}
+            </span>
+          ) : null}
+          Note
+        </span>
         <div className="branch-note__actions nodrag">
           <button
             className="icon-button icon-button--quiet"
