@@ -78,6 +78,7 @@ import {
   arrangeFocusedChildOnCanvas,
   branchToneForBranch,
 } from "@/lib/conversation";
+import { branchSourceMarkers } from "@/lib/conversation/rendered";
 import {
   listCodexThreadIdsForBranchSubtree,
   resolveCodexInferenceTarget,
@@ -3235,17 +3236,23 @@ function listCanvasBranchHighlights(
   snapshot: ConversationGraphSnapshot,
   sourceBranchId: BranchId,
 ): MessageBranchHighlight[] {
+  const sourceMarkers = branchSourceMarkers(snapshot);
   return Object.values(snapshot.branches)
     .filter(
       (branch) =>
         branch.parentId === sourceBranchId &&
         typeof branch.createdFrom?.messageId === "string",
     )
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .sort(
+      (left, right) =>
+        (sourceMarkers.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (sourceMarkers.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    )
     .map((branch) => {
       const tone = branchToneForBranch(snapshot, branch.id);
       return {
         branchId: branch.id,
+        marker: sourceMarkers.get(branch.id) ?? 1,
         messageId: branch.createdFrom.messageId,
         title: branch.title?.trim() || "Child branch",
         excerpt: branch.createdFrom.excerpt?.trim() || null,

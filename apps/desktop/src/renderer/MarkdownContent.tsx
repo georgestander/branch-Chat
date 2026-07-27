@@ -19,6 +19,8 @@ type MarkdownContentProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   markdown: string;
   messageId: string;
   branchAnchors?: readonly RenderedBranchAnchor[];
+  selectedBranchId?: string | null;
+  onOpenBranch: (branchId: string) => void;
   onOpenExternal: (url: string) => void;
 };
 
@@ -28,6 +30,8 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
       markdown,
       messageId,
       branchAnchors = [],
+      selectedBranchId = null,
+      onOpenBranch,
       onOpenExternal,
       className,
       ...props
@@ -41,8 +45,9 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
         renderDesktopMarkdown(markdown, {
           messageId,
           branchAnchors,
+          selectedBranchId,
         }),
-      [branchAnchors, markdown, messageId],
+      [branchAnchors, markdown, messageId, selectedBranchId],
     );
 
     useEffect(() => {
@@ -65,6 +70,16 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
       const handleClick = async (event: MouseEvent): Promise<void> => {
         const target = event.target;
         if (!(target instanceof Element)) return;
+
+        const branchMarker = target.closest<HTMLButtonElement>(
+          "button[data-branch-marker]",
+        );
+        if (branchMarker && root.contains(branchMarker)) {
+          event.preventDefault();
+          const branchId = branchMarker.dataset.branchId;
+          if (branchId) onOpenBranch(branchId);
+          return;
+        }
 
         const copyButton = target.closest<HTMLButtonElement>(
           "button[data-copy-code]",
@@ -106,7 +121,7 @@ export const MarkdownContent = forwardRef<HTMLDivElement, MarkdownContentProps>(
 
       root.addEventListener("click", handleClick);
       return () => root.removeEventListener("click", handleClick);
-    }, [html, onOpenExternal]);
+    }, [html, onOpenBranch, onOpenExternal]);
 
     const classes = ["message__text", "markdown-body", className]
       .filter(Boolean)

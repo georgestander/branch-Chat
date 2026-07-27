@@ -84,6 +84,7 @@ test("marks exact visible source ranges with stable branch lineage", () => {
   const anchors: RenderedBranchAnchor[] = [
     {
       branchId: "branch-beta",
+      marker: 1,
       title: "Beta branch",
       excerpt: "beta",
       range: { start: 6, end: 10 },
@@ -91,6 +92,7 @@ test("marks exact visible source ranges with stable branch lineage", () => {
     },
     {
       branchId: "branch-gamma",
+      marker: 2,
       title: "Gamma branch",
       excerpt: "gamma",
       range: { start: 11, end: 16 },
@@ -104,14 +106,18 @@ test("marks exact visible source ranges with stable branch lineage", () => {
 
   assert.match(
     html,
-    /<strong><mark[^>]*data-branch-id="branch-beta"[^>]*>beta<\/mark><\/strong>/,
+    /<strong><mark[^>]*data-branch-id="branch-beta"[^>]*>beta.*data-branch-marker="1".*<\/mark><\/strong>/,
   );
   assert.match(
     html,
-    /<mark[^>]*data-branch-id="branch-gamma"[^>]*>gamma<\/mark>/,
+    /<mark[^>]*data-branch-id="branch-gamma"[^>]*>gamma.*data-branch-marker="2".*<\/mark>/,
   );
   assert.match(html, /data-message-id="message-source"/);
-  assert.match(html, /data-branch-tone="amber"/);
+  assert.match(html, /data-branch-marker="1"/);
+  assert.match(html, /data-branch-marker="2"/);
+  assert.match(html, /Focus 1 · Child branch/);
+  assert.match(html, /aria-label="Focus child branch 1"/);
+  assert.doesNotMatch(html, /data-branch-tone/);
   assert.doesNotMatch(html, /--branch-highlight-color/);
   assert.doesNotMatch(html, /border-bottom:2px solid/);
   assert.doesNotMatch(html, />Alpha<\/mark>/);
@@ -124,6 +130,7 @@ test("keeps branch highlights isolated between shared processor calls", () => {
     branchAnchors: [
       {
         branchId: "branch-highlighted",
+        marker: 1,
         title: "Highlighted branch",
         excerpt: "beta",
         range: { start: 6, end: 10 },
@@ -139,6 +146,45 @@ test("keeps branch highlights isolated between shared processor calls", () => {
   assert.match(highlighted, /data-branch-id="branch-highlighted"/);
   assert.doesNotMatch(plain, /data-branch-highlight/);
   assert.match(plain, /Alpha beta gamma/);
+});
+
+test("groups shared-span markers and emphasizes only the selected child source", () => {
+  const html = renderDesktopMarkdown("Alpha beta gamma delta", {
+    messageId: "message-shared-span",
+    selectedBranchId: "branch-second",
+    branchAnchors: [
+      {
+        branchId: "branch-first",
+        marker: 1,
+        title: "First",
+        excerpt: "beta",
+        range: { start: 6, end: 10 },
+      },
+      {
+        branchId: "branch-second",
+        marker: 2,
+        title: "Second",
+        excerpt: "beta",
+        range: { start: 6, end: 10 },
+      },
+      {
+        branchId: "branch-third",
+        marker: 3,
+        title: "Third",
+        excerpt: "gamma",
+        range: { start: 11, end: 16 },
+      },
+    ],
+  });
+
+  assert.equal(html.match(/data-branch-highlight="true"/g)?.length, 2);
+  assert.match(
+    html,
+    /data-branch-selected="true"[^>]*>beta<span class="branch-highlight__markers">/,
+  );
+  assert.match(html, /data-branch-marker="1"/);
+  assert.match(html, /data-branch-marker="2"/);
+  assert.match(html, /data-branch-muted="true"[^>]*>gamma/);
 });
 
 test("renders incomplete streaming Markdown without requiring rendered HTML", () => {

@@ -42,7 +42,10 @@ import {
   type ConversationCanvasPatch,
   type ConversationGraphSnapshot,
 } from "@branchy/conversation-core";
-import type { RenderedMessage } from "@branchy/conversation-core/presentation";
+import {
+  branchSourceMarkers,
+  type RenderedMessage,
+} from "@branchy/conversation-core/presentation";
 
 import { BrandMark } from "./BrandMark.tsx";
 import { completeBranchSwitchPaintTrace } from "./branch-switch-performance.ts";
@@ -105,6 +108,8 @@ type BranchNodeData = {
   messages: RenderedMessage[];
   stream: StreamState | null;
   active: boolean;
+  selectedBranchId: BranchId;
+  sourceMarker: number | null;
   expanded: boolean;
   folded: boolean;
   draftParent: boolean;
@@ -324,6 +329,13 @@ const ChatBranchCard = memo(function ChatBranchCard({
     ? data.snapshot.branches[branch.parentId]?.title ?? "Parent branch"
     : null;
   const streamActive = isStreamActive(stream);
+  const selectedSourceBranchId = visibleMessages.some((message) =>
+    message.branchAnchors.some(
+      (anchor) => anchor.branchId === data.selectedBranchId,
+    ),
+  )
+    ? data.selectedBranchId
+    : null;
   const emptyRoot = isEmptyCanvasRoot(
     branch.id,
     data.snapshot.conversation.rootBranchId,
@@ -469,7 +481,17 @@ const ChatBranchCard = memo(function ChatBranchCard({
             <span className="branch-card__heading">
               {parentTitle ? (
                 <span className="branch-card__parent">
-                  Branch · Child of {parentTitle}
+                  {data.sourceMarker ? (
+                    <>
+                      <span className="branch-card__source-marker">
+                        {data.sourceMarker}
+                      </span>
+                      <span aria-hidden="true"> · </span>
+                      Child branch · Child of {parentTitle}
+                    </>
+                  ) : (
+                    <>Branch · Child of {parentTitle}</>
+                  )}
                 </span>
               ) : (
                 <span className="branch-card__parent">Root chat</span>
@@ -593,6 +615,7 @@ const ChatBranchCard = memo(function ChatBranchCard({
                     key={message.id}
                     message={message}
                     branchId={branch.id}
+                    selectedSourceBranchId={selectedSourceBranchId}
                     onCreateBranch={data.onCreateBranch}
                     onOpenBranch={data.onOpen}
                     onDownloadImage={data.onDownloadImage}
@@ -1242,6 +1265,11 @@ function BranchCanvasInner({
     [onPatchCanvas],
   );
 
+  const sourceMarkers = useMemo(
+    () => branchSourceMarkers(snapshot),
+    [snapshot],
+  );
+
   const desiredNodes = useMemo<CanvasFlowNode[]>(() => {
     const branchNodes: BranchFlowNode[] = Object.values(snapshot.branches)
         .filter((branch) => visible.has(branch.id))
@@ -1303,6 +1331,8 @@ function BranchCanvasInner({
               messages,
               stream: streamsByBranch[branch.id] ?? null,
               active: branch.id === activeBranchId,
+              selectedBranchId,
+              sourceMarker: sourceMarkers.get(branch.id) ?? null,
               expanded,
               folded: canvasNode?.folded === true,
               draftParent: branchDraft?.parentBranchId === branch.id,
@@ -1410,6 +1440,7 @@ function BranchCanvasInner({
       settingsSaving,
       signedIn,
       snapshot,
+      sourceMarkers,
       streamsByBranch,
       toggleExpanded,
       toggleFold,

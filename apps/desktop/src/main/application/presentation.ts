@@ -9,11 +9,13 @@ import type {
   RenderedBranchAnchor,
   RenderedMessage,
 } from "@branchy/conversation-core/presentation";
+import { branchSourceMarkers } from "@branchy/conversation-core/presentation";
 
 function anchorsByMessage(
   snapshot: ConversationGraphSnapshot,
 ): Map<string, RenderedBranchAnchor[]> {
   const result = new Map<string, RenderedBranchAnchor[]>();
+  const markers = branchSourceMarkers(snapshot);
   for (const branch of Object.values(snapshot.branches)) {
     if (!branch.parentId) {
       continue;
@@ -23,6 +25,7 @@ function anchorsByMessage(
     const tone = branchToneForBranch(snapshot, branch.id);
     anchors.push({
       branchId: branch.id,
+      marker: markers.get(branch.id) ?? anchors.length + 1,
       title: branch.title,
       excerpt: branch.createdFrom.excerpt ?? null,
       range: branch.createdFrom.span ?? null,
@@ -31,7 +34,7 @@ function anchorsByMessage(
     result.set(messageId, anchors);
   }
   for (const anchors of result.values()) {
-    anchors.sort((left, right) => left.branchId.localeCompare(right.branchId));
+    anchors.sort((left, right) => left.marker - right.marker);
   }
   return result;
 }

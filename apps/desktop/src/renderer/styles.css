@@ -1439,6 +1439,14 @@ button.account-avatar:hover {
   white-space: nowrap;
 }
 
+.branch-card__source-marker {
+  border-bottom: 1px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 0 2px;
+  color: var(--accent);
+  font-weight: 720;
+}
+
 .branch-card__actions {
   display: flex;
   align-items: center;
@@ -1914,10 +1922,67 @@ button.account-avatar:hover {
 }
 
 .branch-highlight {
-  border-bottom: 1px solid var(--border-strong);
-  background: var(--muted);
+  border-bottom: 2px solid var(--accent);
+  background: var(--accent-soft);
   color: inherit;
-  font-weight: 650;
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.branch-highlight[data-branch-selected="true"] {
+  border-bottom-width: 3px;
+  background: color-mix(in srgb, var(--accent-soft) 82%, var(--accent));
+}
+
+.branch-highlight[data-branch-muted="true"] {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--accent) 42%,
+    var(--border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--accent-soft) 46%,
+    var(--background)
+  );
+}
+
+.branch-highlight__markers {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 3px;
+  vertical-align: 0.08em;
+}
+
+.branch-highlight__marker {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--background);
+  padding: 0;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.branch-highlight__marker:hover,
+.branch-highlight__marker:focus-visible,
+.branch-highlight__marker.is-selected {
+  outline: 0;
+  background: var(--accent);
+  color: var(--background);
+}
+
+.branch-highlight[data-branch-muted="true"] .branch-highlight__marker {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  color: color-mix(in srgb, var(--accent) 58%, var(--muted-foreground));
 }
 
 .message__expand {
@@ -2176,13 +2241,49 @@ button.account-avatar:hover {
   align-items: center;
   gap: 5px;
   overflow: hidden;
-  border: 1px solid var(--border-strong);
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
   border-radius: var(--radius);
-  background: var(--background);
+  background: var(--accent-soft);
   padding: 0 8px;
   color: var(--foreground);
   font-size: 9.5px;
   font-weight: 620;
+}
+
+.branch-anchor__marker {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: var(--background);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 760;
+}
+
+.branch-anchor:hover,
+.branch-anchor:focus-visible,
+.branch-anchor.is-selected {
+  border-color: var(--accent);
+  outline: 0;
+}
+
+.branch-anchor.is-selected .branch-anchor__marker {
+  background: var(--accent);
+  color: var(--background);
+}
+
+.branch-anchor.is-muted {
+  border-color: var(--border);
+  background: color-mix(
+    in srgb,
+    var(--accent-soft) 44%,
+    var(--background)
+  );
+  color: var(--muted-foreground);
 }
 
 .branch-anchor span {

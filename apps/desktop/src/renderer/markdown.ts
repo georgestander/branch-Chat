@@ -1,7 +1,3 @@
-import {
-  branchToneForId,
-  type BranchToneKey,
-} from "@branchy/conversation-core";
 import type { RenderedBranchAnchor } from "@branchy/conversation-core/presentation";
 import type {
   Element as HastElement,
@@ -20,10 +16,15 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
 type Highlight = {
-  branchId: string;
   messageId: string;
   range: { start: number; end: number };
-  tone: BranchToneKey;
+  markers: Array<{
+    branchId: string;
+    marker: number;
+    selected: boolean;
+  }>;
+  selected: boolean;
+  muted: boolean;
 };
 
 type MutableSchema = typeof defaultSchema & {
@@ -34,6 +35,7 @@ type MutableSchema = typeof defaultSchema & {
 export type DesktopMarkdownOptions = {
   messageId: string;
   branchAnchors?: readonly RenderedBranchAnchor[];
+  selectedBranchId?: string | null;
 };
 
 export type ClipboardWriter = {
@@ -97,6 +99,7 @@ export function renderDesktopMarkdown(
   const highlights = highlightsForMessage(
     options.messageId,
     options.branchAnchors ?? [],
+    options.selectedBranchId ?? null,
   );
 
   try {
@@ -134,8 +137,9 @@ function createDesktopMarkdownProcessor() {
 function highlightsForMessage(
   messageId: string,
   anchors: readonly RenderedBranchAnchor[],
+  selectedBranchId: string | null,
 ): Highlight[] {
-  return anchors
+  const ordered = anchors
     .filter(
       (
         anchor,
@@ -152,15 +156,50 @@ function highlightsForMessage(
     )
     .map((anchor) => ({
       branchId: anchor.branchId,
+      marker: anchor.marker,
       messageId,
       range: anchor.range,
-      tone: anchor.tone ?? branchToneForId(anchor.branchId).key,
+      selected: anchor.branchId === selectedBranchId,
     }))
-    .sort((left, right) =>
-      left.range.start !== right.range.start
-        ? left.range.start - right.range.start
-        : left.range.end - right.range.end,
+    .sort(
+      (left, right) =>
+        left.range.start - right.range.start ||
+        left.range.end - right.range.end ||
+        left.marker - right.marker,
     );
+
+  const grouped: Highlight[] = [];
+  for (const anchor of ordered) {
+    const existing = grouped.at(-1);
+    if (
+      existing &&
+      existing.range.start === anchor.range.start &&
+      existing.range.end === anchor.range.end
+    ) {
+      existing.markers.push({
+        branchId: anchor.branchId,
+        marker: anchor.marker,
+        selected: anchor.selected,
+      });
+      existing.selected ||= anchor.selected;
+      existing.muted = Boolean(selectedBranchId) && !existing.selected;
+      continue;
+    }
+    grouped.push({
+      messageId,
+      range: anchor.range,
+      markers: [
+        {
+          branchId: anchor.branchId,
+          marker: anchor.marker,
+          selected: anchor.selected,
+        },
+      ],
+      selected: anchor.selected,
+      muted: Boolean(selectedBranchId) && !anchor.selected,
+    });
+  }
+  return grouped;
 }
 
 function createDesktopMarkdownSchema(): typeof defaultSchema {
@@ -182,8 +221,11 @@ function createDesktopMarkdownSchema(): typeof defaultSchema {
   extend("button", [
     "ariaLabel",
     "className",
+    "data-branch-id",
+    "data-branch-marker",
     "data-copy-code",
     "data-copy-state",
+    "title",
     "type",
   ]);
   extend("code", ["className", "data-language"]);
@@ -193,8 +235,8 @@ function createDesktopMarkdownSchema(): typeof defaultSchema {
     "data-branch-highlight",
     "data-branch-id",
     "data-message-id",
-    "data-branch-tone",
-    "style",
+    "data-branch-muted",
+    "data-branch-selected",
   ]);
   extend("pre", ["className"]);
   extend("span", ["className"]);
@@ -324,7 +366,7 @@ function rehypeBranchHighlights() {
       ? (storedHighlights as Highlight[])
       : [];
     if (highlights.length === 0) return;
-    const state = { offset: 0 };
+    const state = { offset: 0, emittedMarkers: new Set<string>() };
     wrapHighlightChildren(tree, highlights, state);
   };
 }
@@ -332,7 +374,7 @@ function rehypeBranchHighlights() {
 function wrapHighlightChildren(
   parent: HastParent,
   highlights: readonly Highlight[],
-  state: { offset: number },
+  state: { offset: number; emittedMarkers: Set<string> },
 ): void {
   const children = parent.children as Array<HastElement | HastText>;
   for (let index = 0; index < children.length; index += 1) {
@@ -366,15 +408,24 @@ function wrapHighlightChildren(
         const segment = value.slice(localStart, localEnd);
         if (!segment) continue;
         const globalStart = nodeStart + localStart;
+        const globalEnd = nodeStart + localEnd;
         const highlight = overlapping.find(
           ({ range }) =>
             globalStart >= range.start && globalStart < range.end,
         );
         fragments.push(
           highlight
-            ? highlightedSegment(segment, highlight)
+            ? highlightedSegment(
+                segment,
+                highlight,
+                globalEnd >= highlight.range.end &&
+                  !state.emittedMarkers.has(highlightKey(highlight)),
+              )
             : { type: "text", value: segment },
         );
+        if (highlight && globalEnd >= highlight.range.end) {
+          state.emittedMarkers.add(highlightKey(highlight));
+        }
       }
       children.splice(index, 1, ...fragments);
       index += fragments.length - 1;
@@ -394,19 +445,59 @@ function wrapHighlightChildren(
 function highlightedSegment(
   value: string,
   highlight: Highlight,
+  includeMarkers: boolean,
 ): HastElement {
+  const selectedMarker =
+    highlight.markers.find((marker) => marker.selected) ??
+    highlight.markers[0]!;
   return {
     type: "element",
     tagName: "mark",
     properties: {
       className: ["branch-highlight"],
       "data-branch-highlight": "true",
-      "data-branch-id": highlight.branchId,
+      "data-branch-id": selectedMarker.branchId,
       "data-message-id": highlight.messageId,
-      "data-branch-tone": highlight.tone,
+      "data-branch-selected": String(highlight.selected),
+      "data-branch-muted": String(highlight.muted),
     },
-    children: [{ type: "text", value }],
+    children: [
+      { type: "text", value },
+      ...(includeMarkers
+        ? [
+            {
+              type: "element" as const,
+              tagName: "span",
+              properties: {
+                className: ["branch-highlight__markers"],
+              },
+              children: highlight.markers.map((marker) => ({
+                type: "element" as const,
+                tagName: "button",
+                properties: {
+                  ariaLabel: `Focus child branch ${marker.marker}`,
+                  className: [
+                    "branch-highlight__marker",
+                    ...(marker.selected ? ["is-selected"] : []),
+                  ],
+                  "data-branch-id": marker.branchId,
+                  "data-branch-marker": String(marker.marker),
+                  title: `Focus ${marker.marker} · Child branch`,
+                  type: "button",
+                },
+                children: [
+                  { type: "text" as const, value: String(marker.marker) },
+                ],
+              })),
+            },
+          ]
+        : []),
+    ],
   };
+}
+
+function highlightKey(highlight: Highlight): string {
+  return `${highlight.messageId}:${highlight.range.start}:${highlight.range.end}`;
 }
 
 function visitElements(

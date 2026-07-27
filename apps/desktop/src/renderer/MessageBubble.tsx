@@ -22,6 +22,7 @@ import {
 type MessageBubbleProps = {
   message: RenderedMessage;
   branchId: string;
+  selectedSourceBranchId: string | null;
   onCreateBranch: (draft: BranchSelectionDraft) => void;
   onOpenBranch: (branchId: string) => void;
   onDownloadImage: (messageId: string, imageId: string) => void;
@@ -43,6 +44,7 @@ const COLLAPSED_USER_MESSAGE_HEIGHT_PX = 208;
 export const MessageBubble = memo(function MessageBubble({
   message,
   branchId,
+  selectedSourceBranchId,
   onCreateBranch,
   onOpenBranch,
   onDownloadImage,
@@ -142,6 +144,8 @@ export const MessageBubble = memo(function MessageBubble({
               branchAnchors={message.branchAnchors}
               markdown={message.content}
               messageId={message.id}
+              selectedBranchId={selectedSourceBranchId}
+              onOpenBranch={onOpenBranch}
               onOpenExternal={onOpenExternal}
               ref={contentRef}
             />
@@ -264,12 +268,21 @@ export const MessageBubble = memo(function MessageBubble({
             {message.branchAnchors.map((anchor) => (
               <button
                 key={anchor.branchId}
-                className="branch-anchor"
+                className={`branch-anchor ${
+                  anchor.branchId === selectedSourceBranchId
+                    ? "is-selected"
+                    : selectedSourceBranchId
+                      ? "is-muted"
+                      : ""
+                }`}
                 type="button"
+                aria-label={`${anchor.marker} · Child branch: ${anchor.title}`}
+                title={`${anchor.marker} · Child branch: ${anchor.title}`}
                 onClick={() => onOpenBranch(anchor.branchId)}
               >
-                <Icon name="branch" size={14} />
-                <span>Child: {anchor.title}</span>
+                <span className="branch-anchor__marker">{anchor.marker}</span>
+                <span aria-hidden="true">·</span>
+                <span>Child branch</span>
               </button>
             ))}
           </nav>

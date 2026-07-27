@@ -7,7 +7,12 @@ import { enrichMessagesWithHtml } from "@/app/shared/markdown.server";
 import type { MessageBranchHighlight } from "@/app/shared/markdown.server";
 import { CanvasConversationLayout } from "@/app/components/conversation/CanvasConversationLayout";
 import type { AppRequestInfo } from "@/worker";
-import type { Branch, ConversationGraphSnapshot, Message } from "@/lib/conversation";
+import {
+  type Branch,
+  type ConversationGraphSnapshot,
+  type Message,
+} from "@/lib/conversation";
+import { branchSourceMarkers } from "@/lib/conversation/rendered";
 import { branchToneForBranch } from "@/lib/conversation/branchTone";
 import {
   listConversationDirectoryEntries,
@@ -134,17 +139,23 @@ function getBranchHighlights(
   snapshot: ConversationGraphSnapshot,
   sourceBranchId: string,
 ): MessageBranchHighlight[] {
+  const sourceMarkers = branchSourceMarkers(snapshot);
   return Object.values(snapshot.branches)
     .filter(
       (branch) =>
         branch.parentId === sourceBranchId &&
         typeof branch.createdFrom?.messageId === "string",
     )
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .sort(
+      (left, right) =>
+        (sourceMarkers.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (sourceMarkers.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    )
     .map((branch) => {
       const tone = branchToneForBranch(snapshot, branch.id);
       return {
         branchId: branch.id,
+        marker: sourceMarkers.get(branch.id) ?? 1,
         messageId: branch.createdFrom.messageId,
         title: branch.title?.trim() || "Child branch",
         excerpt: branch.createdFrom.excerpt?.trim() || null,

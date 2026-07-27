@@ -50,6 +50,7 @@ test("keeps span and whole-message branch anchors on rendered messages", async (
       {
         messageId: message.id,
         branchId: "child-span",
+        marker: 1,
         title: "Span child",
         excerpt: "Alpha",
         range: { start: 0, end: 5 },
@@ -57,6 +58,7 @@ test("keeps span and whole-message branch anchors on rendered messages", async (
       {
         messageId: message.id,
         branchId: "child-message",
+        marker: 2,
         title: "Message child",
         excerpt: null,
         range: null,

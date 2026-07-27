@@ -25,7 +25,8 @@ The canvas is the product's distinctive visual idea. Branch relationships, selec
 
 - Use the existing neutral black, white, and gray foundation with the established warm red product accent.
 - Communicate branch lineage through spatial topology, labels, breadcrumbs, and neutral marks. Branch cards, connectors, selection rails, outlines, and shadows remain neutral; do not assign lineage colors to canvas chrome.
-- Keep the warm red accent out of branch edges and elevation. Reserve it for established branded, destructive, or error states where color communicates an actual action or condition.
+- Use one warm-coral treatment for source annotations: an `accent-soft` highlight, stronger accent underline, and numbered boundary marker repeated on the matching child anchor and card context. Keep branch edges and elevation neutral.
+- Outside source annotations, reserve the warm red accent for established branded, destructive, or error states where color communicates an actual action or condition.
 - Do not introduce purple-to-blue gradients, default Tailwind indigo/violet palettes, or extra accent colors merely to create visual interest.
 - Do not use gradients as a substitute for hierarchy, imagery, or composition. A gradient is acceptable only when it communicates a real state or is part of an explicitly approved visual artifact.
 - Maintain WCAG AA contrast for text and controls in both light and dark themes.

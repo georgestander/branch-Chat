@@ -112,3 +112,46 @@ test("bootstrap rendering preserves persisted assistant content", () => {
   assert.deepEqual(rendered.root?.map((message) => message.id), [assistant.id]);
   assert.equal(rendered.root?.[0]?.content, assistant.content);
 });
+
+test("branch anchors carry source-ordered markers into rendered messages", () => {
+  const assistant: Message = {
+    id: "assistant-1",
+    branchId: "root",
+    role: "assistant",
+    content: "Alpha beta gamma",
+    createdAt: "2026-07-23T00:00:01.000Z",
+  };
+  const snapshot = snapshotWithMessages(assistant);
+  snapshot.branches.later = {
+    id: "later",
+    parentId: "root",
+    title: "Later",
+    createdFrom: {
+      messageId: assistant.id,
+      span: { start: 11, end: 16 },
+    },
+    messageIds: [],
+    createdAt: "2026-07-23T00:00:03.000Z",
+  };
+  snapshot.branches.earlier = {
+    id: "earlier",
+    parentId: "root",
+    title: "Earlier",
+    createdFrom: {
+      messageId: assistant.id,
+      span: { start: 6, end: 10 },
+    },
+    messageIds: [],
+    createdAt: "2026-07-23T00:00:02.000Z",
+  };
+
+  assert.deepEqual(
+    renderMessagesByBranch(snapshot).root?.[0]?.branchAnchors.map(
+      (anchor) => [anchor.branchId, anchor.marker],
+    ),
+    [
+      ["earlier", 1],
+      ["later", 2],
+    ],
+  );
+});
