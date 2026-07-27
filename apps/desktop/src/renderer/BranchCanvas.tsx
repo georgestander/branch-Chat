@@ -84,6 +84,10 @@ const DRAFT_CARD_WIDTH = 420;
 const DRAFT_CARD_HEIGHT = 360;
 const NOTE_CARD_WIDTH = 300;
 const NOTE_CARD_HEIGHT = 220;
+const MIN_NOTE_CARD_WIDTH = 240;
+const MIN_NOTE_CARD_HEIGHT = 160;
+const MAX_NOTE_CARD_WIDTH = 900;
+const MAX_NOTE_CARD_HEIGHT = 800;
 const CANVAS_FIT_PADDING = 0.24;
 
 export type BranchStopMode = "edit" | "discard";
@@ -709,11 +713,34 @@ const BranchNoteCard = memo(function BranchNoteCard({
   }, [branch.id, data, draft, saving]);
 
   return (
-    <article
-      className={`branch-note ${data.active || selected ? "is-active" : ""}`}
-      aria-label={`Saved note: ${branch.title}`}
-      onClick={() => data.onOpen(branch.id)}
-    >
+    <>
+      <NodeResizer
+        isVisible={data.active || selected}
+        minWidth={MIN_NOTE_CARD_WIDTH}
+        minHeight={MIN_NOTE_CARD_HEIGHT}
+        maxWidth={MAX_NOTE_CARD_WIDTH}
+        maxHeight={MAX_NOTE_CARD_HEIGHT}
+        lineStyle={{
+          borderColor: "var(--border-strong)",
+        }}
+        handleStyle={{
+          width: 8,
+          height: 8,
+          border: "1px solid var(--border-strong)",
+          borderRadius: 2,
+          background: "var(--background)",
+        }}
+        onResizeEnd={(_event, bounds) =>
+          data.onResize(branch.id, bounds)
+        }
+      />
+      <article
+        className={`branch-note ${
+          data.active || selected ? "is-active" : ""
+        }`}
+        aria-label={`Saved note: ${branch.title}`}
+        onClick={() => data.onOpen(branch.id)}
+      >
       <Handle
         className="branch-handle branch-handle--target"
         type="target"
@@ -737,9 +764,9 @@ const BranchNoteCard = memo(function BranchNoteCard({
         />
       ) : null}
 
-      <header className="branch-note__header nodrag">
+      <header className="branch-note__header">
         <span className="branch-note__label">Note</span>
-        <div className="branch-note__actions">
+        <div className="branch-note__actions nodrag">
           <button
             className="icon-button icon-button--quiet"
             type="button"
@@ -810,52 +837,62 @@ const BranchNoteCard = memo(function BranchNoteCard({
         </div>
       </header>
 
-      {editing ? (
-        <div
-          className="branch-note__editor nodrag nowheel"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <textarea
-            autoFocus
-            aria-label="Note content"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                setDraft(noteContent);
-                setEditing(false);
-              }
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                event.preventDefault();
-                void save();
-              }
-            }}
-          />
-          <div className="branch-note__editor-actions">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => {
-                setDraft(noteContent);
-                setEditing(false);
+        {editing ? (
+          <div
+            className="branch-note__editor nodrag nowheel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <textarea
+              autoFocus
+              aria-label="Note content"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDraft(noteContent);
+                  setEditing(false);
+                }
+                if (
+                  (event.metaKey || event.ctrlKey) &&
+                  event.key === "Enter"
+                ) {
+                  event.preventDefault();
+                  void save();
+                }
               }}
-            >
-              Cancel
-            </button>
-            <button
-              className="is-primary"
-              type="button"
-              disabled={saving || draft.trim().length === 0}
-              onClick={() => void save()}
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
+            />
+            <div className="branch-note__editor-actions">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  setDraft(noteContent);
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="is-primary"
+                type="button"
+                disabled={saving || draft.trim().length === 0}
+                onClick={() => void save()}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <p className="branch-note__content">{noteContent}</p>
-      )}
-    </article>
+        ) : (
+          <p
+            className="branch-note__content nodrag nowheel"
+            aria-label="Note content"
+            tabIndex={0}
+          >
+            {noteContent}
+          </p>
+        )}
+      </article>
+    </>
   );
 });
 
@@ -1188,6 +1225,8 @@ function BranchCanvasInner({
           const expandedHeight =
             canvasNode?.height ??
             (isEmptyRoot ? DRAFT_CARD_HEIGHT : EXPANDED_CARD_HEIGHT);
+          const noteWidth = canvasNode?.width ?? NOTE_CARD_WIDTH;
+          const noteHeight = canvasNode?.height ?? NOTE_CARD_HEIGHT;
           return {
             id: branch.id,
             type: "branch",
@@ -1196,27 +1235,28 @@ function BranchCanvasInner({
               y: draftUpdate?.y ?? canvasNode?.y ?? 0,
             },
             initialWidth: isNote
-              ? NOTE_CARD_WIDTH
+              ? noteWidth
               : expanded
               ? expandedWidth
               : CARD_WIDTH,
             initialHeight: isNote
-              ? NOTE_CARD_HEIGHT
+              ? noteHeight
               : expanded
               ? expandedHeight
               : CARD_HEIGHT,
             style: {
               width: isNote
-                ? NOTE_CARD_WIDTH
+                ? noteWidth
                 : expanded
                   ? expandedWidth
                   : CARD_WIDTH,
               height: isNote
-                ? NOTE_CARD_HEIGHT
+                ? noteHeight
                 : expanded
                   ? expandedHeight
                   : CARD_HEIGHT,
             },
+            dragHandle: isNote ? ".branch-note__header" : undefined,
             selected: branch.id === selectedBranchId,
             data: {
               branch,

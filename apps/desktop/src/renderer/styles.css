@@ -1277,6 +1277,11 @@ button.account-avatar:hover {
   border-bottom: 1px solid
     color-mix(in srgb, var(--note-border) 72%, transparent);
   padding: 5px 6px 5px 12px;
+  cursor: grab;
+}
+
+.branch-note__header:active {
+  cursor: grabbing;
 }
 
 .branch-note__label {
@@ -1296,11 +1301,19 @@ button.account-avatar:hover {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   margin: 0;
   padding: 15px 17px 18px;
   font-size: 14px;
   line-height: 1.52;
+  outline: 0;
   white-space: pre-wrap;
+}
+
+.branch-note__content:focus-visible {
+  outline: 1px solid var(--foreground);
+  outline-offset: -2px;
 }
 
 .branch-note__editor {
