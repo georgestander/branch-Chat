@@ -7,6 +7,7 @@ import type {
   CancelMessageInput,
   CreateAttachmentInput,
   CreateConversationInput,
+  ConversationTitleUpdate,
   DesktopCommandRequestMap,
   EmptyPayload,
   ExportArchiveInput,
@@ -1133,6 +1134,25 @@ export function validateGeneratedImageIdentityInput(
     conversationId: record.conversationId,
     messageId: record.messageId,
     imageId: record.imageId,
+  };
+}
+
+export function validateConversationTitleUpdate(
+  value: unknown,
+): ConversationTitleUpdate {
+  const record = readRecord(value, "conversation title update", [
+    "conversationId",
+    "title",
+  ]);
+  return {
+    conversationId: readId(
+      record.conversationId,
+      "conversation title update.conversationId",
+    ),
+    title: readString(record.title, "conversation title update.title", {
+      maxCharacters: 256,
+      maxBytes: 1_024,
+    }),
   };
 }
 

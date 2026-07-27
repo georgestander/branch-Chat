@@ -29,6 +29,7 @@ import type {
   ConversationDirectory,
   ConversationDirectoryEntry,
   ConversationLoadResult,
+  ConversationTitleUpdate,
   CreateAttachmentInput,
   CreateConversationInput,
   DeleteBranchResult,
@@ -49,6 +50,12 @@ import type {
   UpdateConversationCanvasInput,
   UpdateConversationSettingsInput,
 } from "../../shared/contracts.ts";
+import {
+  DEFAULT_CONVERSATION_TITLE,
+  conversationTitlePrompt,
+  fallbackConversationTitle,
+  sanitizeGeneratedConversationTitle,
+} from "./conversation-title.ts";
 import {
   exportBranchyChatArchive,
   stageBranchyChatArchive,
@@ -126,6 +133,7 @@ export interface BranchyApplicationOptions {
   draftSaveDelayMilliseconds?: number;
   drainMainLoop?: () => Promise<void>;
   now?: () => Date;
+  publishConversationTitle?: (update: ConversationTitleUpdate) => void;
   publishStream: (streamId: string, event: BranchyStreamEvent) => void;
   repository: ConversationRepository;
 }
@@ -303,6 +311,9 @@ export class BranchyApplication {
   private readonly draftSaveDelayMilliseconds: number;
   private readonly drainMainLoop: () => Promise<void>;
   private readonly now: () => Date;
+  private readonly publishConversationTitle: NonNullable<
+    BranchyApplicationOptions["publishConversationTitle"]
+  >;
   private readonly publishStream: BranchyApplicationOptions["publishStream"];
   private readonly repository: ConversationRepository;
   private readonly activeTurns = new Map<string, ActiveTurn>();
@@ -316,6 +327,8 @@ export class BranchyApplication {
   private readonly versions = new Map<string, number>();
   private readonly mutationTails = new Map<string, Promise<void>>();
   private readonly pendingDraftSaves = new Map<string, PendingDraftSave>();
+  private readonly titleTasks = new Set<Promise<void>>();
+  private defaultTitlesBackfilled = false;
   private acceptingDraftSaves = true;
   private closePromise: Promise<void> | null = null;
 
@@ -337,6 +350,8 @@ export class BranchyApplication {
       );
     }
     this.now = options.now ?? (() => new Date());
+    this.publishConversationTitle =
+      options.publishConversationTitle ?? (() => undefined);
     this.publishStream = options.publishStream;
     this.repository = options.repository;
   }
@@ -346,6 +361,7 @@ export class BranchyApplication {
     branchId?: string;
   } = {}): Promise<ConversationBootstrap> {
     await this.flushPendingDraftSaves();
+    this.backfillDefaultConversationTitles();
     const conversations = this.listConversations({ includeArchived: true });
     const account = await this.getAccountState();
     const requested = input.conversationId
@@ -431,7 +447,7 @@ export class BranchyApplication {
       },
       rootBranch: {
         id: rootBranchId,
-        title: input.title?.trim() || "New conversation",
+        title: input.title?.trim() || DEFAULT_CONVERSATION_TITLE,
         createdFrom: {
           messageId: `${conversationId}:origin`,
           excerpt: null,
@@ -442,7 +458,7 @@ export class BranchyApplication {
       initialMessages,
     });
     this.repository.create(snapshot, {
-      title: input.title?.trim() || "New conversation",
+      title: input.title?.trim() || DEFAULT_CONVERSATION_TITLE,
       lastActiveAt: now,
     });
     return this.loadResult(snapshot);
@@ -1133,6 +1149,7 @@ export class BranchyApplication {
       this.loginSessions.clear();
       this.loginExpiryById.clear();
       await this.codex.stop();
+      await Promise.allSettled([...this.titleTasks]);
     } finally {
       try {
         await this.drainMainLoop();
@@ -1640,14 +1657,51 @@ export class BranchyApplication {
         lastTurnId: event.turnId,
       };
       snapshot.messages[completed.id] = completed;
+      const rootBranch =
+        snapshot.branches[snapshot.conversation.rootBranchId];
+      const firstUserMessage = rootBranch?.messageIds
+        .map((messageId) => snapshot.messages[messageId])
+        .find((message) => message?.role === "user" && message.content.trim());
+      const shouldGenerateTitle =
+        state.branchId === snapshot.conversation.rootBranchId &&
+        rootBranch?.title === DEFAULT_CONVERSATION_TITLE &&
+        Boolean(firstUserMessage);
+      const fallbackTitle =
+        shouldGenerateTitle && firstUserMessage
+          ? fallbackConversationTitle(firstUserMessage.content)
+          : null;
+      if (
+        rootBranch &&
+        fallbackTitle &&
+        fallbackTitle !== DEFAULT_CONVERSATION_TITLE
+      ) {
+        rootBranch.title = fallbackTitle;
+      }
       this.saveSnapshot(snapshot);
       return {
         snapshot,
         assistant: completed,
+        automaticTitle:
+          firstUserMessage &&
+          fallbackTitle &&
+          fallbackTitle !== DEFAULT_CONVERSATION_TITLE
+            ? {
+                expectedTitle: fallbackTitle,
+                userMessage: firstUserMessage.content,
+                assistantMessage: completed.content,
+                model: snapshot.conversation.settings.model,
+              }
+            : null,
         version: this.versionFor(state.conversationId),
       };
     });
     state.terminal = true;
+    if (canonical.automaticTitle) {
+      this.publishConversationTitle({
+        conversationId: state.conversationId,
+        title: canonical.automaticTitle.expectedTitle,
+      });
+    }
     this.publishStream(state.streamId, {
       type: "complete",
       content: canonical.assistant.content,
@@ -1666,6 +1720,12 @@ export class BranchyApplication {
       recovered: event.recovered,
       historyTruncated: event.historyTruncated,
     });
+    if (canonical.automaticTitle) {
+      this.scheduleAutomaticConversationTitle(
+        state.conversationId,
+        canonical.automaticTitle,
+      );
+    }
   }
 
   private async persistTurnProgress(state: ActiveTurn): Promise<void> {
@@ -1963,6 +2023,134 @@ export class BranchyApplication {
     for (const candidate of candidates) {
       if (!referenced.has(candidate)) {
         await this.assets.deleteAsset(candidate);
+      }
+    }
+  }
+
+  private backfillDefaultConversationTitles(): void {
+    if (this.defaultTitlesBackfilled) {
+      return;
+    }
+    this.defaultTitlesBackfilled = true;
+    for (const entry of this.repository.list({ includeArchived: true })) {
+      if (entry.title !== DEFAULT_CONVERSATION_TITLE) {
+        continue;
+      }
+      const snapshot = this.repository.require(entry.id);
+      const root =
+        snapshot.branches[snapshot.conversation.rootBranchId];
+      if (!root || root.title !== DEFAULT_CONVERSATION_TITLE) {
+        continue;
+      }
+      const messages = root.messageIds
+        .map((messageId) => snapshot.messages[messageId])
+        .filter((message): message is Message => Boolean(message));
+      const firstUserMessage = messages.find(
+        (message) => message.role === "user" && message.content.trim(),
+      );
+      const hasCompletedAssistant = messages.some(
+        (message) =>
+          message.role === "assistant" && message.content.trim().length > 0,
+      );
+      if (!firstUserMessage || !hasCompletedAssistant) {
+        continue;
+      }
+      const title = fallbackConversationTitle(firstUserMessage.content);
+      if (title === DEFAULT_CONVERSATION_TITLE) {
+        continue;
+      }
+      this.repository.rename(entry.id, title, this.now().toISOString());
+      this.bumpVersion(entry.id);
+    }
+  }
+
+  private scheduleAutomaticConversationTitle(
+    conversationId: string,
+    input: {
+      expectedTitle: string;
+      userMessage: string;
+      assistantMessage: string;
+      model: string;
+    },
+  ): void {
+    const task = this.generateAutomaticConversationTitle(
+      conversationId,
+      input,
+    ).catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : "unknown title error";
+      console.warn(`[TRACE] conversation title generation failed: ${message}`);
+    });
+    this.titleTasks.add(task);
+    void task.finally(() => {
+      this.titleTasks.delete(task);
+    });
+  }
+
+  private async generateAutomaticConversationTitle(
+    conversationId: string,
+    input: {
+      expectedTitle: string;
+      userMessage: string;
+      assistantMessage: string;
+      model: string;
+    },
+  ): Promise<void> {
+    const streamId = `conversation-title-${randomUUID()}`;
+    let threadId: string | null = null;
+    try {
+      const session = await this.codex.startTurn(
+        {
+          streamId,
+          content: conversationTitlePrompt(
+            input.userMessage,
+            input.assistantMessage,
+          ),
+          threadId: null,
+          messages: [],
+          model: input.model,
+          effort: "low",
+          webSearch: false,
+          developerInstructions:
+            "Return only a descriptive conversation title of at most six words. " +
+            "Do not use quotation marks, a label, markdown, or ending punctuation.",
+        },
+        () => undefined,
+      );
+      threadId = session.threadId;
+      const terminal = await session.completion;
+      if (terminal.type !== "complete") {
+        return;
+      }
+      const title = sanitizeGeneratedConversationTitle(terminal.content);
+      if (!title || title === input.expectedTitle) {
+        return;
+      }
+      const applied = await this.withMutation(conversationId, () => {
+        const current = this.repository.getDirectoryEntry(conversationId);
+        if (!current || current.title !== input.expectedTitle) {
+          return false;
+        }
+        this.repository.rename(
+          conversationId,
+          title,
+          this.now().toISOString(),
+        );
+        this.bumpVersion(conversationId);
+        return true;
+      });
+      if (applied) {
+        this.publishConversationTitle({ conversationId, title });
+      }
+    } finally {
+      if (threadId) {
+        const result = await this.codex.deleteThreads([threadId]);
+        const failed = result.failed[0];
+        if (failed) {
+          console.warn(
+            `[TRACE] conversation title thread cleanup failed: ${failed.message}`,
+          );
+        }
       }
     }
   }

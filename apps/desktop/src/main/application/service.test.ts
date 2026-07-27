@@ -225,6 +225,7 @@ async function setup(
   });
   const codex = new FakeCodex();
   const streams = new Map<string, BranchyStreamEvent[]>();
+  const titleUpdates: Array<{ conversationId: string; title: string }> = [];
   const application = new BranchyApplication({
     assets,
     codex,
@@ -237,6 +238,9 @@ async function setup(
       const events = streams.get(streamId) ?? [];
       events.push(event);
       streams.set(streamId, events);
+    },
+    publishConversationTitle: (update) => {
+      titleUpdates.push(update);
     },
   });
   t.after(async () => {
@@ -251,8 +255,166 @@ async function setup(
     generatedRoot,
     repository,
     streams,
+    titleUpdates,
   };
 }
+
+test("first root exchange gets a fallback title then an isolated model title", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation();
+  const branchId = created.snapshot.conversation.rootBranchId;
+
+  await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId,
+    content: "Explain why the sky is blue in simple language.",
+    streamId: "stream-title-source",
+  });
+  const sourceTurn = harness.codex.turn("stream-title-source");
+  harness.codex.emit("stream-title-source", {
+    type: "complete",
+    streamId: "stream-title-source",
+    threadId: sourceTurn.threadId,
+    turnId: sourceTurn.turnId,
+    content: "Blue light scatters more strongly in Earth's atmosphere.",
+    reasoningSummary: null,
+    promptTokens: 10,
+    completionTokens: 8,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+
+  await waitFor(() => harness.codex.inputs.length === 2);
+  assert.equal(
+    harness.repository.getDirectoryEntry(created.conversationId)?.title,
+    "Explain why the sky is blue in simple language",
+  );
+  assert.deepEqual(harness.titleUpdates, [
+    {
+      conversationId: created.conversationId,
+      title: "Explain why the sky is blue in simple language",
+    },
+  ]);
+  const titleInput = harness.codex.inputs[1]!;
+  assert.equal(titleInput.threadId, null);
+  assert.equal(titleInput.webSearch, false);
+  assert.match(titleInput.content, /Assistant: Blue light scatters/u);
+
+  const titleTurn = harness.codex.turn(titleInput.streamId);
+  harness.codex.emit(titleInput.streamId, {
+    type: "complete",
+    streamId: titleInput.streamId,
+    threadId: titleTurn.threadId,
+    turnId: titleTurn.turnId,
+    content: '"Why the Sky Is Blue."',
+    reasoningSummary: null,
+    promptTokens: 20,
+    completionTokens: 6,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+
+  await waitFor(
+    () =>
+      harness.repository.getDirectoryEntry(created.conversationId)?.title ===
+      "Why the Sky Is Blue",
+  );
+  assert.deepEqual(harness.codex.deletedThreads, [[titleTurn.threadId]]);
+  assert.deepEqual(harness.titleUpdates.at(-1), {
+    conversationId: created.conversationId,
+    title: "Why the Sky Is Blue",
+  });
+});
+
+test("manual rename wins over an in-flight automatic title", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation();
+  const branchId = created.snapshot.conversation.rootBranchId;
+
+  await harness.application.sendMessage({
+    conversationId: created.conversationId,
+    branchId,
+    content: "Plan a garden.",
+    streamId: "stream-title-manual",
+  });
+  const sourceTurn = harness.codex.turn("stream-title-manual");
+  harness.codex.emit("stream-title-manual", {
+    type: "complete",
+    streamId: "stream-title-manual",
+    threadId: sourceTurn.threadId,
+    turnId: sourceTurn.turnId,
+    content: "Start with sunlight and soil.",
+    reasoningSummary: null,
+    promptTokens: 4,
+    completionTokens: 5,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+  await waitFor(() => harness.codex.inputs.length === 2);
+  harness.application.renameConversation(
+    created.conversationId,
+    "My Garden Notes",
+  );
+
+  const titleInput = harness.codex.inputs[1]!;
+  const titleTurn = harness.codex.turn(titleInput.streamId);
+  harness.codex.emit(titleInput.streamId, {
+    type: "complete",
+    streamId: titleInput.streamId,
+    threadId: titleTurn.threadId,
+    turnId: titleTurn.turnId,
+    content: "Garden Planning Basics",
+    reasoningSummary: null,
+    promptTokens: 8,
+    completionTokens: 4,
+    contextMode: "start",
+    recovered: false,
+    historyTruncated: false,
+  });
+
+  await waitFor(() => harness.codex.deletedThreads.length === 1);
+  assert.equal(
+    harness.repository.getDirectoryEntry(created.conversationId)?.title,
+    "My Garden Notes",
+  );
+});
+
+test("bootstrap backfills completed legacy default titles locally", async (t) => {
+  const harness = await setup(t);
+  const created = harness.application.createConversation();
+  const branchId = created.snapshot.conversation.rootBranchId;
+  const snapshot = structuredClone(created.snapshot);
+  snapshot.messages.user = {
+    id: "user",
+    branchId,
+    role: "user",
+    content: "Review the quarterly forecast.",
+    createdAt: NOW.toISOString(),
+  };
+  snapshot.messages.assistant = {
+    id: "assistant",
+    branchId,
+    role: "assistant",
+    content: "The forecast is on track.",
+    createdAt: NOW.toISOString(),
+  };
+  snapshot.branches[branchId]!.messageIds = ["user", "assistant"];
+  harness.repository.save(snapshot);
+
+  const bootstrap = await harness.application.bootstrap({
+    conversationId: created.conversationId,
+  });
+
+  assert.equal(bootstrap.kind, "ready");
+  assert.equal(
+    harness.repository.getDirectoryEntry(created.conversationId)?.title,
+    "Review the quarterly forecast",
+  );
+  assert.equal(harness.codex.inputs.length, 0);
+});
 
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 1_000;

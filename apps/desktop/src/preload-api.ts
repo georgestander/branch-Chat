@@ -1,10 +1,14 @@
 import {
+  DESKTOP_EVENT_CHANNELS,
   IPC_CHANNELS,
   type BranchyDesktopApi,
   type DesktopCommandRequestMap,
   type DesktopCommandResponseMap,
 } from "./shared/contracts.ts";
-import { validateStreamPortMessage } from "./shared/validators.ts";
+import {
+  validateConversationTitleUpdate,
+  validateStreamPortMessage,
+} from "./shared/validators.ts";
 
 export interface RendererIpcBridge {
   invoke(channel: string, payload: unknown): Promise<unknown>;
@@ -13,6 +17,7 @@ export interface RendererIpcBridge {
     payload: unknown,
     transfer?: readonly MessagePort[],
   ): void;
+  on(channel: string, listener: (payload: unknown) => void): () => void;
   send(channel: string, payload: unknown): void;
 }
 
@@ -113,6 +118,14 @@ export function createBranchyDesktopApi(
     exportArchive: (input = {}) => invoke(IPC_CHANNELS.exportArchive, input),
     importArchive: (input) => invoke(IPC_CHANNELS.importArchive, input),
     openExternal: (input) => invoke(IPC_CHANNELS.openExternal, input),
+    subscribeConversationTitles: (listener) =>
+      bridge.on(DESKTOP_EVENT_CHANNELS.conversationTitleUpdated, (payload) => {
+        try {
+          listener(validateConversationTitleUpdate(payload));
+        } catch {
+          // Invalid main-process data is ignored at the trust boundary.
+        }
+      }),
     subscribeStream: (streamId, listener) => {
       const subscriptionId = createSubscriptionId();
       const channel = createMessageChannel();

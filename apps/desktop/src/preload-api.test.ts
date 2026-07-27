@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { IPC_CHANNELS } from "./shared/contracts.ts";
+import {
+  DESKTOP_EVENT_CHANNELS,
+  IPC_CHANNELS,
+} from "./shared/contracts.ts";
 import { createBranchyDesktopApi } from "./preload-api.ts";
 
 type PostedMessage = {
@@ -14,12 +17,21 @@ function createHarness() {
   const invocations: Array<{ channel: string; payload: unknown }> = [];
   const posts: PostedMessage[] = [];
   const sends: Array<{ channel: string; payload: unknown }> = [];
+  const listeners = new Map<string, (payload: unknown) => void>();
   const messageChannel = new MessageChannel();
   const api = createBranchyDesktopApi(
     {
       invoke: async (channel, payload) => {
         invocations.push({ channel, payload });
         return { ok: true };
+      },
+      on: (channel, listener) => {
+        listeners.set(channel, listener);
+        return () => {
+          if (listeners.get(channel) === listener) {
+            listeners.delete(channel);
+          }
+        };
       },
       postMessage: (channel, payload, transfer) => {
         posts.push({ channel, payload, transfer });
@@ -33,7 +45,7 @@ function createHarness() {
       createSubscriptionId: () => "subscription-1",
     },
   );
-  return { api, invocations, messageChannel, posts, sends };
+  return { api, invocations, listeners, messageChannel, posts, sends };
 }
 
 test("exposes exact command methods over their allowlisted channels", async () => {
@@ -108,6 +120,34 @@ test("opens a MessagePort subscription before accepting stream events", async ()
       },
     },
   ]);
+  harness.messageChannel.port2.close();
+});
+
+test("validates conversation title updates before notifying the renderer", () => {
+  const harness = createHarness();
+  const updates: unknown[] = [];
+  const unsubscribe = harness.api.subscribeConversationTitles((update) => {
+    updates.push(update);
+  });
+  const listener = harness.listeners.get(
+    DESKTOP_EVENT_CHANNELS.conversationTitleUpdated,
+  );
+
+  listener?.({
+    conversationId: "conversation-1",
+    title: "A useful title",
+  });
+  listener?.({ conversationId: "../unsafe", title: "Ignored" });
+
+  assert.deepEqual(updates, [
+    { conversationId: "conversation-1", title: "A useful title" },
+  ]);
+  unsubscribe();
+  assert.equal(
+    harness.listeners.has(DESKTOP_EVENT_CHANNELS.conversationTitleUpdated),
+    false,
+  );
+  harness.messageChannel.port1.close();
   harness.messageChannel.port2.close();
 });
 

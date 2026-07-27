@@ -581,6 +581,47 @@ export function App(): React.JSX.Element {
     }
   }, [theme]);
 
+  useEffect(
+    () =>
+      window.branchy.subscribeConversationTitles(
+        ({ conversationId, title }) => {
+          setScreen((current) => {
+            if (current.kind !== "ready" && current.kind !== "empty") {
+              return current;
+            }
+            const conversations = current.conversations.map((conversation) =>
+              conversation.id === conversationId
+                ? { ...conversation, title }
+                : conversation,
+            );
+            if (
+              current.kind !== "ready" ||
+              current.conversationId !== conversationId
+            ) {
+              return { ...current, conversations };
+            }
+            const rootBranchId = current.snapshot.conversation.rootBranchId;
+            const rootBranch = current.snapshot.branches[rootBranchId];
+            return {
+              ...current,
+              title,
+              conversations,
+              snapshot: rootBranch
+                ? {
+                    ...current.snapshot,
+                    branches: {
+                      ...current.snapshot.branches,
+                      [rootBranchId]: { ...rootBranch, title },
+                    },
+                  }
+                : current.snapshot,
+            };
+          });
+        },
+      ),
+    [],
+  );
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) {
@@ -1213,8 +1254,6 @@ export function App(): React.JSX.Element {
       return;
     }
     const tools = [...startTools];
-    const title =
-      content.length > 52 ? `${content.slice(0, 49)}…` : content;
     let conversationId: string | null = null;
     let rootBranchId: BranchId | null = null;
     let streamId: string | null = null;
@@ -1222,7 +1261,6 @@ export function App(): React.JSX.Element {
     setBusyAction("start-conversation");
     try {
       const created = await window.branchy.createConversation({
-        title,
         preset: startPreset,
         model: startModel,
         reasoningEffort: startReasoningEffort,

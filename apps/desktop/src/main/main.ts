@@ -44,6 +44,7 @@ import {
   resolveRendererAsset,
 } from "./security.ts";
 import {
+  DESKTOP_EVENT_CHANNELS,
   IPC_CHANNELS,
   type DesktopCommandRequestMap,
   type DesktopCommandResponseMap,
@@ -633,6 +634,16 @@ async function initializeApplication(): Promise<void> {
     repository,
     publishStream: (streamId, event) => {
       streamHub?.publish(streamId, event);
+    },
+    publishConversationTitle: (update) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(
+            DESKTOP_EVENT_CHANNELS.conversationTitleUpdated,
+            update,
+          );
+        }
+      }
     },
   });
   application.recoverInterruptedMessages();

@@ -6,6 +6,13 @@ contextBridge.exposeInMainWorld(
   "branchy",
   createBranchyDesktopApi({
     invoke: (channel, payload) => ipcRenderer.invoke(channel, payload),
+    on: (channel, listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        listener(payload);
+      };
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.removeListener(channel, handler);
+    },
     postMessage: (channel, payload, transfer) =>
       ipcRenderer.postMessage(
         channel,

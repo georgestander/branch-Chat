@@ -58,6 +58,19 @@ export const IPC_CHANNELS = {
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
+export const DESKTOP_EVENT_CHANNELS = {
+  conversationTitleUpdated: "branchy:conversation:title:updated",
+} as const;
+
+export interface ConversationTitleUpdate {
+  conversationId: ConversationModelId;
+  title: string;
+}
+
+export type ConversationTitleListener = (
+  update: ConversationTitleUpdate,
+) => void;
+
 export interface ConversationDirectoryEntry {
   id: ConversationModelId;
   title: string;
@@ -514,6 +527,7 @@ export interface BranchyDesktopApi {
   importArchive(input: ImportArchiveInput): Promise<ImportArchiveResult>;
   openExternal(input: OpenExternalInput): Promise<OpenExternalResult>;
   subscribeStream(streamId: string, listener: StreamListener): () => void;
+  subscribeConversationTitles(listener: ConversationTitleListener): () => void;
 }
 
 export type DesktopCommandRequestMap = {
