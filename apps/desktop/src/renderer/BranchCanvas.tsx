@@ -26,7 +26,14 @@ import {
   type NodeProps,
   type Viewport,
 } from "@xyflow/react";
-import { GitBranch, LayoutGrid } from "lucide-react";
+import {
+  GitBranch,
+  LayoutGrid,
+  ListCollapse,
+  ListTree,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import {
   arrangeFocusedChildOnCanvas,
@@ -481,7 +488,7 @@ const ChatBranchCard = memo(function ChatBranchCard({
               aria-label={`Start a child branch from ${title}`}
               title={
                 branchSource
-                  ? "Start child branch"
+                  ? "Start a child branch"
                   : "A child branch needs an assistant response"
               }
               onClick={() => {
@@ -504,7 +511,7 @@ const ChatBranchCard = memo(function ChatBranchCard({
               className="icon-button icon-button--quiet"
               type="button"
               aria-label={`Rename ${title}`}
-              title="Rename branch"
+              title="Rename this branch"
               onClick={() => data.onRename(branch.id)}
             >
               <Icon name="pencil" size={15} />
@@ -518,21 +525,30 @@ const ChatBranchCard = memo(function ChatBranchCard({
                     ? `Show ${data.childCount} descendant branches`
                     : `Fold ${data.childCount} descendant branches`
                 }
-                title={folded ? "Show descendants" : "Fold descendants"}
+                title={
+                  folded
+                    ? `Show ${data.childCount} descendant branches`
+                    : `Fold ${data.childCount} descendant branches`
+                }
                 onClick={() => data.onToggleFold(branch.id)}
               >
-                <Icon
-                  name={folded ? "chevron-right" : "chevron-down"}
-                  size={16}
-                />
+                {folded ? (
+                  <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
+                ) : (
+                  <ListCollapse
+                    aria-hidden="true"
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                )}
               </button>
             ) : null}
             {expanded && branch.parentId ? (
               <button
                 className="icon-button icon-button--quiet"
-                type="button"
-                aria-label={`Delete ${title}`}
-                title="Delete branch"
+              type="button"
+              aria-label={`Delete ${title}`}
+              title="Delete this branch"
                 onClick={() => data.onDelete(branch.id)}
               >
                 <Icon name="trash" size={15} />
@@ -542,13 +558,14 @@ const ChatBranchCard = memo(function ChatBranchCard({
               className="icon-button icon-button--quiet"
               type="button"
               aria-label={`${expanded ? "Collapse" : "Expand"} ${title}`}
-              title={expanded ? "Collapse branch" : "Expand branch"}
+              title={expanded ? "Collapse this card" : "Expand this card"}
               onClick={() => data.onToggleExpanded(branch.id)}
             >
-              <Icon
-                name={expanded ? "chevron-down" : "chevron-right"}
-                size={16}
-              />
+              {expanded ? (
+                <Minimize2 aria-hidden="true" size={16} strokeWidth={1.8} />
+              ) : (
+                <Maximize2 aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
             </button>
           </div>
         </header>
@@ -657,13 +674,26 @@ const ChatBranchCard = memo(function ChatBranchCard({
                       ? `Show ${data.childCount} descendant branches`
                       : `Fold ${data.childCount} descendant branches`
                   }
-                  title={folded ? "Show descendants" : "Fold descendants"}
+                  title={
+                    folded
+                      ? `Show ${data.childCount} descendant branches`
+                      : `Fold ${data.childCount} descendant branches`
+                  }
                   onClick={() => data.onToggleFold(branch.id)}
                 >
-                  <Icon
-                    name={folded ? "chevron-right" : "chevron-down"}
-                    size={14}
-                  />
+                  {folded ? (
+                    <ListTree
+                      aria-hidden="true"
+                      size={14}
+                      strokeWidth={1.8}
+                    />
+                  ) : (
+                    <ListCollapse
+                      aria-hidden="true"
+                      size={14}
+                      strokeWidth={1.8}
+                    />
+                  )}
                   <span>{data.childCount}</span>
                 </button>
               ) : null}
@@ -672,7 +702,7 @@ const ChatBranchCard = memo(function ChatBranchCard({
                   className="icon-button icon-button--quiet"
                   type="button"
                   aria-label={`Delete ${title}`}
-                  title="Delete branch"
+                  title="Delete this branch"
                   onClick={() => data.onDelete(branch.id)}
                 >
                   <Icon name="trash" size={14} />
@@ -772,7 +802,7 @@ const BranchNoteCard = memo(function BranchNoteCard({
             type="button"
             disabled={!noteMessage || editing}
             aria-label="Start a branch from this note"
-            title="Start branch from note"
+            title="Start a child branch from this note"
             onClick={(event) => {
               event.stopPropagation();
               if (!noteMessage) return;
@@ -809,16 +839,25 @@ const BranchNoteCard = memo(function BranchNoteCard({
                   ? `Show ${data.childCount} descendant branches`
                   : `Fold ${data.childCount} descendant branches`
               }
-              title={folded ? "Show descendants" : "Fold descendants"}
+              title={
+                folded
+                  ? `Show ${data.childCount} descendant branches`
+                  : `Fold ${data.childCount} descendant branches`
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 data.onToggleFold(branch.id);
               }}
             >
-              <Icon
-                name={folded ? "chevron-right" : "chevron-down"}
-                size={14}
-              />
+              {folded ? (
+                <ListTree aria-hidden="true" size={14} strokeWidth={1.8} />
+              ) : (
+                <ListCollapse
+                  aria-hidden="true"
+                  size={14}
+                  strokeWidth={1.8}
+                />
+              )}
               <span>{data.childCount}</span>
             </button>
           ) : null}
