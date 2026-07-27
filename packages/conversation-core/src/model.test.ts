@@ -223,7 +223,7 @@ test("applyCanvasPatch updates viewport and node state while preserving normaliz
   });
 });
 
-test("focused child layout aligns the new child and compacts existing siblings", () => {
+test("focused child layout clears the expanded parent-child relationship", () => {
   const snapshot = createConversationSnapshot({
     id: "conversation",
     createdAt,
@@ -253,7 +253,42 @@ test("focused child layout aligns the new child and compacts existing siblings",
     y: 100,
   });
   assert.deepEqual(arrangeFocusedChildOnCanvas(snapshot, "root", "created"), {
-    existing: { expanded: false, y: 492 },
+    existing: { expanded: false, y: 832 },
+    root: { expanded: true },
+    created: { x: 1130, y: 100, expanded: true },
+  });
+});
+
+test("focused child layout preserves manual positions that do not obscure the pair", () => {
+  const snapshot = createConversationSnapshot({
+    id: "conversation",
+    createdAt,
+    settings: {
+      model: "gpt-5.6-terra",
+      temperature: 0,
+      composerDefaults: { preset: "fast", tools: [] },
+    },
+    rootBranch: {
+      id: "root",
+      title: "Root",
+      createdFrom: { messageId: "root-message" },
+      createdAt,
+    },
+  });
+  snapshot.branches.nearby = branch("nearby", "root");
+  snapshot.branches.manual = branch("manual", "root");
+  snapshot.branches.created = branch("created", "root");
+  snapshot.canvas = applyCanvasPatch(snapshot, {
+    nodes: {
+      root: { x: 200, y: 100, width: 820 },
+      nearby: { x: 1180, y: 300 },
+      manual: { x: 2600, y: -400 },
+    },
+  });
+
+  assert.deepEqual(arrangeFocusedChildOnCanvas(snapshot, "root", "created"), {
+    nearby: { expanded: false, y: 832 },
+    manual: { expanded: false },
     root: { expanded: true },
     created: { x: 1130, y: 100, expanded: true },
   });

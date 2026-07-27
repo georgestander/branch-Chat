@@ -477,6 +477,7 @@ function CanvasFlow({
   const draftViewportRef = useRef<{
     key: string;
     focusedBranchId: BranchId | null;
+    parentBranchId: BranchId;
     viewport: Viewport;
   } | null>(null);
   const [selectedId, setSelectedId] = useState<BranchId>(activeBranchId);
@@ -734,6 +735,17 @@ function CanvasFlow({
       draftViewportRef.current = null;
       const frame = window.requestAnimationFrame(() => {
         setSelectedId(createdChildId);
+        const parent = flow.getNode(draftSession.parentBranchId);
+        const child = flow.getNode(createdChildId);
+        if (parent && child) {
+          void flow.fitView({
+            nodes: [parent, child],
+            padding: 0.18,
+            duration: 300,
+            maxZoom: 1,
+          });
+          return;
+        }
         void flow.fitBounds(
           {
             x: createdChildState.x,
@@ -741,10 +753,7 @@ function CanvasFlow({
             width: createdChildState.width ?? EXPANDED_CARD_WIDTH,
             height: createdChildState.height ?? EXPANDED_CARD_HEIGHT,
           },
-          {
-            padding: 0.14,
-            duration: 300,
-          },
+          { padding: 0.14, duration: 300 },
         );
       });
       return () => window.cancelAnimationFrame(frame);
@@ -754,6 +763,7 @@ function CanvasFlow({
       draftViewportRef.current = {
         key: draftKey,
         focusedBranchId: snapshot.canvas.focusedBranchId,
+        parentBranchId: branchDraft.parentBranchId,
         viewport: flow.getViewport(),
       };
     }

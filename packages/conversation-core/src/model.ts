@@ -500,9 +500,27 @@ export function applyCanvasPatch(
 }
 
 const FOCUSED_CHILD_HORIZONTAL_GAP = 110;
-const FOCUSED_CHILD_CARD_HEIGHT = 360;
+const FOCUSED_CHILD_CARD_WIDTH = 680;
+const FOCUSED_CHILD_CARD_HEIGHT = 700;
+const COLLAPSED_BRANCH_CARD_WIDTH = 310;
 const COLLAPSED_BRANCH_CARD_HEIGHT = 190;
 const FOCUSED_CHILD_VERTICAL_GAP = 32;
+
+type CanvasBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function boundsOverlap(left: CanvasBounds, right: CanvasBounds): boolean {
+  return (
+    left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y
+  );
+}
 
 export function arrangeFocusedChildOnCanvas(
   snapshot: Pick<ConversationGraphSnapshot, "branches" | "canvas">,
@@ -512,8 +530,22 @@ export function arrangeFocusedChildOnCanvas(
   const parentNode = snapshot.canvas.nodes[parentBranchId];
   const parentX = parentNode?.x ?? 0;
   const parentY = parentNode?.y ?? 0;
-  const parentWidth = parentNode?.width ?? 680;
+  const parentWidth = parentNode?.width ?? FOCUSED_CHILD_CARD_WIDTH;
+  const parentHeight = parentNode?.height ?? FOCUSED_CHILD_CARD_HEIGHT;
   const updates: NonNullable<ConversationCanvasPatch["nodes"]> = {};
+
+  const parentBounds: CanvasBounds = {
+    x: parentX,
+    y: parentY,
+    width: parentWidth,
+    height: parentHeight,
+  };
+  const childBounds: CanvasBounds = {
+    x: parentX + parentWidth + FOCUSED_CHILD_HORIZONTAL_GAP,
+    y: parentY,
+    width: FOCUSED_CHILD_CARD_WIDTH,
+    height: FOCUSED_CHILD_CARD_HEIGHT,
+  };
 
   for (const existingBranch of Object.values(snapshot.branches)) {
     if (existingBranch.id === parentBranchId || existingBranch.id === branchId) {
@@ -522,11 +554,10 @@ export function arrangeFocusedChildOnCanvas(
     updates[existingBranch.id] = { expanded: false };
   }
 
-  const siblings = Object.values(snapshot.branches)
+  const otherBranches = Object.values(snapshot.branches)
     .filter(
       (existingBranch) =>
-        existingBranch.parentId === parentBranchId &&
-        existingBranch.id !== branchId,
+        existingBranch.id !== parentBranchId && existingBranch.id !== branchId,
     )
     .sort((left, right) => {
       const leftY = snapshot.canvas.nodes[left.id]?.y ?? 0;
@@ -537,21 +568,52 @@ export function arrangeFocusedChildOnCanvas(
         left.id.localeCompare(right.id)
       );
     });
-  const firstSiblingY =
-    parentY + FOCUSED_CHILD_CARD_HEIGHT + FOCUSED_CHILD_VERTICAL_GAP;
-  siblings.forEach((sibling, index) => {
-    updates[sibling.id] = {
-      ...updates[sibling.id],
-      y:
-        firstSiblingY +
-        index * (COLLAPSED_BRANCH_CARD_HEIGHT + FOCUSED_CHILD_VERTICAL_GAP),
+
+  const displacedBranches = otherBranches.filter((existingBranch) => {
+    const node = snapshot.canvas.nodes[existingBranch.id];
+    const bounds: CanvasBounds = {
+      x: node?.x ?? 0,
+      y: node?.y ?? 0,
+      width: COLLAPSED_BRANCH_CARD_WIDTH,
+      height: COLLAPSED_BRANCH_CARD_HEIGHT,
     };
+    return boundsOverlap(bounds, parentBounds) || boundsOverlap(bounds, childBounds);
   });
+  const stationaryBounds = otherBranches
+    .filter((existingBranch) => !displacedBranches.includes(existingBranch))
+    .map((existingBranch): CanvasBounds => {
+      const node = snapshot.canvas.nodes[existingBranch.id];
+      return {
+        x: node?.x ?? 0,
+        y: node?.y ?? 0,
+        width: COLLAPSED_BRANCH_CARD_WIDTH,
+        height: COLLAPSED_BRANCH_CARD_HEIGHT,
+      };
+    });
+  const occupiedBounds = [parentBounds, childBounds, ...stationaryBounds];
+  const firstAvailableY =
+    Math.max(parentBounds.y + parentBounds.height, childBounds.y + childBounds.height) +
+    FOCUSED_CHILD_VERTICAL_GAP;
+
+  for (const displacedBranch of displacedBranches) {
+    const node = snapshot.canvas.nodes[displacedBranch.id];
+    const bounds: CanvasBounds = {
+      x: node?.x ?? 0,
+      y: firstAvailableY,
+      width: COLLAPSED_BRANCH_CARD_WIDTH,
+      height: COLLAPSED_BRANCH_CARD_HEIGHT,
+    };
+    while (occupiedBounds.some((occupied) => boundsOverlap(bounds, occupied))) {
+      bounds.y += COLLAPSED_BRANCH_CARD_HEIGHT + FOCUSED_CHILD_VERTICAL_GAP;
+    }
+    updates[displacedBranch.id] = { ...updates[displacedBranch.id], y: bounds.y };
+    occupiedBounds.push(bounds);
+  }
 
   updates[parentBranchId] = { expanded: true };
   updates[branchId] = {
-    x: parentX + parentWidth + FOCUSED_CHILD_HORIZONTAL_GAP,
-    y: parentY,
+    x: childBounds.x,
+    y: childBounds.y,
     expanded: true,
   };
   return updates;
