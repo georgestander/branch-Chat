@@ -251,7 +251,6 @@ export class StdioCodexTransport implements CodexRpcTransport {
         }
         activeChild?.kill("SIGTERM");
       }, this.requestTimeoutMilliseconds);
-      timeout.unref?.();
       this.pending.set(id, {
         resolve: (value) => resolve(value as TResult),
         reject,
