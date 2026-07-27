@@ -48,6 +48,7 @@ class FakeCodex implements BranchyCodexGateway {
   deviceVerificationUrl = "https://auth.openai.com/codex/device";
   failNextStartMessage: string | null = null;
   deleteFailureMessage: string | null = null;
+  rejectOverlappingTurns = false;
   private readonly turns = new Map<string, FakeTurn>();
   private turnNumber = 0;
 
@@ -65,6 +66,9 @@ class FakeCodex implements BranchyCodexGateway {
     callback: (event: CodexTurnEvent) => void,
   ): Promise<CodexTurnSession> {
     this.inputs.push(structuredClone(input));
+    if (this.rejectOverlappingTurns && this.turns.size > 0) {
+      throw new Error("A Codex turn is still active");
+    }
     if (this.failNextStartMessage) {
       const message = this.failNextStartMessage;
       this.failNextStartMessage = null;
@@ -261,6 +265,7 @@ async function setup(
 
 test("first root exchange gets a fallback title then an isolated model title", async (t) => {
   const harness = await setup(t);
+  harness.codex.rejectOverlappingTurns = true;
   const created = harness.application.createConversation();
   const branchId = created.snapshot.conversation.rootBranchId;
 

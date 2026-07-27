@@ -100,6 +100,7 @@ const LOGIN_LIFETIME_MILLISECONDS = 15 * 60 * 1000;
 const DEFAULT_DRAFT_SAVE_DELAY_MILLISECONDS = 200;
 
 interface ActiveTurn {
+  automaticTitle: AutomaticConversationTitleInput | null;
   assistantMessageId: string;
   branchId: BranchId;
   content: string;
@@ -116,6 +117,13 @@ interface ActiveTurn {
   toolInvocations: Map<string, ToolInvocation>;
   turnId: string | null;
   userPrompt: string;
+}
+
+interface AutomaticConversationTitleInput {
+  assistantMessage: string;
+  expectedTitle: string;
+  model: string;
+  userMessage: string;
 }
 
 interface PendingDraftSave {
@@ -1282,6 +1290,7 @@ export class BranchyApplication {
         input.attachmentIds ?? [],
       );
       const state: ActiveTurn = {
+        automaticTitle: null,
         assistantMessageId: assistantMessage.id,
         branchId: branch.id,
         content: "",
@@ -1414,6 +1423,12 @@ export class BranchyApplication {
         await initial.state.processing.catch(() => undefined);
         this.activeTurns.delete(input.streamId);
         this.activeBranchStreams.delete(initial.branchKey);
+        if (initial.state.automaticTitle) {
+          this.scheduleAutomaticConversationTitle(
+            initial.state.conversationId,
+            initial.state.automaticTitle,
+          );
+        }
       });
     } catch (error) {
       await initial.state.processing.catch(() => undefined);
@@ -1697,6 +1712,7 @@ export class BranchyApplication {
     });
     state.terminal = true;
     if (canonical.automaticTitle) {
+      state.automaticTitle = canonical.automaticTitle;
       this.publishConversationTitle({
         conversationId: state.conversationId,
         title: canonical.automaticTitle.expectedTitle,
@@ -1720,12 +1736,6 @@ export class BranchyApplication {
       recovered: event.recovered,
       historyTruncated: event.historyTruncated,
     });
-    if (canonical.automaticTitle) {
-      this.scheduleAutomaticConversationTitle(
-        state.conversationId,
-        canonical.automaticTitle,
-      );
-    }
   }
 
   private async persistTurnProgress(state: ActiveTurn): Promise<void> {
@@ -2066,12 +2076,7 @@ export class BranchyApplication {
 
   private scheduleAutomaticConversationTitle(
     conversationId: string,
-    input: {
-      expectedTitle: string;
-      userMessage: string;
-      assistantMessage: string;
-      model: string;
-    },
+    input: AutomaticConversationTitleInput,
   ): void {
     const task = this.generateAutomaticConversationTitle(
       conversationId,
@@ -2089,12 +2094,7 @@ export class BranchyApplication {
 
   private async generateAutomaticConversationTitle(
     conversationId: string,
-    input: {
-      expectedTitle: string;
-      userMessage: string;
-      assistantMessage: string;
-      model: string;
-    },
+    input: AutomaticConversationTitleInput,
   ): Promise<void> {
     const streamId = `conversation-title-${randomUUID()}`;
     let threadId: string | null = null;
