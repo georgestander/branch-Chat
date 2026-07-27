@@ -90,6 +90,7 @@ type BranchNodeData = {
   loading: boolean;
   thread: ReactNode;
   onToggleCard: (branchId: BranchId) => void;
+  onQuickViewCard: (branchId: BranchId) => void;
   onToggleFold: (branchId: BranchId) => void;
   onRename: (branchId: BranchId) => void;
   onDelete: (branchId: BranchId) => void;
@@ -180,7 +181,19 @@ function visibleBranchIds(
   return visible;
 }
 
+function isCardInteractiveTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        '[data-card-interactive="true"], button, input, textarea, select, a, [contenteditable="true"]',
+      ),
+    )
+  );
+}
+
 function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
+  const clickTimer = useRef<number | null>(null);
   const { summary } = data;
   const sourceQuote = summary.branch.createdFrom.excerpt?.trim() || null;
   const headerTitle = sourceQuote || summary.branch.title || "Untitled branch";
@@ -189,6 +202,12 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
       ? `${summary.latestPreview.slice(0, 142)}…`
       : summary.latestPreview
     : "No messages yet.";
+
+  useEffect(() => {
+    return () => {
+      if (clickTimer.current !== null) window.clearTimeout(clickTimer.current);
+    };
+  }, []);
 
   return (
     <>
@@ -212,9 +231,20 @@ function BranchNode({ data, selected }: NodeProps<BranchFlowNode>) {
       />
       <article
         onClick={(event) => {
-          const target = event.target as HTMLElement;
-          if (target.closest('[data-card-interactive="true"]')) return;
-          data.onToggleCard(summary.branch.id);
+          if (isCardInteractiveTarget(event.target)) return;
+          if (clickTimer.current !== null) window.clearTimeout(clickTimer.current);
+          clickTimer.current = window.setTimeout(() => {
+            clickTimer.current = null;
+            data.onToggleCard(summary.branch.id);
+          }, 220);
+        }}
+        onDoubleClick={(event) => {
+          if (isCardInteractiveTarget(event.target)) return;
+          if (clickTimer.current !== null) {
+            window.clearTimeout(clickTimer.current);
+            clickTimer.current = null;
+          }
+          data.onQuickViewCard(summary.branch.id);
         }}
         className={cn(
           "group relative flex h-full w-full flex-col overflow-hidden rounded border bg-background text-left transition-[border-color,box-shadow]",
@@ -563,6 +593,23 @@ function CanvasFlow({
     ],
   );
 
+  const quickViewCard = useCallback(
+    (branchId: BranchId) => {
+      onCancelBranchDraft();
+      setSelectedId(branchId);
+      onPatchCanvas({ focusedBranchId: branchId });
+      const node = flow.getNode(branchId);
+      if (!node) return;
+      void flow.fitView({
+        nodes: [node],
+        padding: 0.32,
+        duration: 180,
+        maxZoom: Math.min(flow.getZoom(), 1),
+      });
+    },
+    [flow, onCancelBranchDraft, onPatchCanvas],
+  );
+
   const toggleFold = useCallback(
     (branchId: BranchId) => {
       const nextValue = !folded[branchId];
@@ -643,6 +690,7 @@ function CanvasFlow({
               ? renderBranchThread(branch, branch.id === selectedId)
               : null,
             onToggleCard: toggleCard,
+            onQuickViewCard: quickViewCard,
             onToggleFold: toggleFold,
             onRename: onRenameBranch,
             onDelete: onDeleteBranch,
@@ -691,6 +739,7 @@ function CanvasFlow({
     summaries,
     startBranchDraft,
     toggleCard,
+    quickViewCard,
     toggleFold,
     visibleIds,
   ]);
